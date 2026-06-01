@@ -10,6 +10,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "chart.js": "^4.5.1",
     "vanjs-core": "^1.6.0"
   }
 }
