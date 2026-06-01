@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strconv"
 
 	"code.sirenko.ca/grocer/internal/domain"
@@ -97,10 +98,13 @@ type ParseEvent struct {
 // ParseReceiptStream parses receipt from photo, emitting events as items are recognized.
 // Events are sent to the returned channel. Caller must consume all events.
 func (p *Parser) ParseReceiptStream(ctx context.Context, photo []byte, ownerID uint64) (<-chan ParseEvent, error) {
+	log.Printf("PARSE_STREAM: starting LLM stream, photo=%d bytes, ownerID=%d", len(photo), ownerID)
 	streamCh, err := p.llm.ParseReceiptStream(ctx, photo)
 	if err != nil {
+		log.Printf("PARSE_STREAM: LLM stream init error: %v", err)
 		return nil, fmt.Errorf("llm.ParseReceiptStream: %w", err)
 	}
+	log.Printf("PARSE_STREAM: LLM stream channel obtained, starting goroutine")
 
 	events := make(chan ParseEvent, 32)
 
@@ -111,13 +115,19 @@ func (p *Parser) ParseReceiptStream(ctx context.Context, photo []byte, ownerID u
 
 		var accumulated string
 		var lastItemCount int
+		chunkCount := 0
 
 		for chunk := range streamCh {
 			if chunk.Error != nil {
+				log.Printf("PARSE_STREAM: chunk error: %v", chunk.Error)
 				events <- ParseEvent{Type: "error", Message: chunk.Error.Error()}
 				return
 			}
+			chunkCount++
 			accumulated += chunk.Text
+			if chunkCount%10 == 0 {
+				log.Printf("PARSE_STREAM: received %d chunks, accumulated %d chars", chunkCount, len(accumulated))
+			}
 
 			// Try to parse accumulated JSON to detect new items
 			var partial struct {

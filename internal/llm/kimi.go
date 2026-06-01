@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 
@@ -119,6 +120,7 @@ func (k *KimiProvider) ParseReceipt(ctx context.Context, photo []byte) (*ParsedR
 func (k *KimiProvider) ParseReceiptStream(ctx context.Context, photo []byte) (<-chan StreamChunk, error) {
 	b64 := encodeImageToBase64(photo)
 	prompt := buildReceiptPrompt()
+	log.Printf("KIMI_STREAM: starting, model=%s, image=%d chars", k.model, len(b64))
 
 	req := kimiChatRequest{
 		Model:  k.model,
@@ -157,8 +159,10 @@ func (k *KimiProvider) ParseReceiptStream(ctx context.Context, photo []byte) (<-
 
 	resp, err := k.client.Do(httpReq)
 	if err != nil {
+		log.Printf("KIMI_STREAM: request error: %v", err)
 		return nil, fmt.Errorf("do request: %w", err)
 	}
+	log.Printf("KIMI_STREAM: got response, status=%d", resp.StatusCode)
 
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
@@ -172,8 +176,13 @@ func (k *KimiProvider) ParseReceiptStream(ctx context.Context, photo []byte) (<-
 		defer close(ch)
 
 		scanner := bufio.NewScanner(resp.Body)
+		lineCount := 0
 		for scanner.Scan() {
 			line := scanner.Text()
+			lineCount++
+			if lineCount%20 == 0 {
+				log.Printf("KIMI_STREAM: read %d lines", lineCount)
+			}
 			if !strings.HasPrefix(line, "data: ") {
 				continue
 			}

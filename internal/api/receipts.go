@@ -219,14 +219,17 @@ func resizeImageForLLM(data []byte) []byte {
 // handleUploadReceiptStream handles receipt upload with SSE streaming progress.
 func (r *Router) handleUploadReceiptStream(w http.ResponseWriter, req *http.Request) {
 	userID := r.getUserID(req)
+	log.Printf("SSE: upload stream started, userID=%d", userID)
 
 	if err := req.ParseMultipartForm(10 << 20); err != nil {
+		log.Printf("SSE: parse form error: %v", err)
 		handleSSEError(w, "file too large")
 		return
 	}
 
 	file, _, err := req.FormFile("photo")
 	if err != nil {
+		log.Printf("SSE: missing photo: %v", err)
 		handleSSEError(w, "missing photo")
 		return
 	}
@@ -234,9 +237,11 @@ func (r *Router) handleUploadReceiptStream(w http.ResponseWriter, req *http.Requ
 
 	photoData, err := io.ReadAll(file)
 	if err != nil {
+		log.Printf("SSE: read file error: %v", err)
 		handleSSEError(w, "failed to read file")
 		return
 	}
+	log.Printf("SSE: photo read, %d bytes", len(photoData))
 
 	// Set SSE headers BEFORE any writes
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -245,34 +250,41 @@ func (r *Router) handleUploadReceiptStream(w http.ResponseWriter, req *http.Requ
 	w.Header().Del("Content-Length")
 	flusher, ok := w.(http.Flusher)
 	if !ok {
+		log.Printf("SSE: flusher not available")
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
 		return
 	}
 
 	writeSSE := func(event string, data interface{}) {
 		jsonData, _ := json.Marshal(data)
-		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, jsonData)
+		n, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, jsonData)
+		log.Printf("SSE: wrote event=%s, bytes=%d, err=%v", event, n, err)
 		flusher.Flush()
 	}
 
-	// Immediate feedback — don't wait for LLM
+	// Immediate feedback
 	writeSSE("progress", receipt.ParseEvent{Type: "progress", Message: "Connecting to AI..."})
 
 	// Resize for LLM
 	llmData := resizeImageForLLM(photoData)
+	log.Printf("SSE: resized photo, %d bytes -> %d bytes", len(photoData), len(llmData))
 
 	writeSSE("progress", receipt.ParseEvent{Type: "progress", Message: "Sending image to AI..."})
 
+	log.Printf("SSE: starting ParseReceiptStream...")
 	events, err := r.parser.ParseReceiptStream(req.Context(), llmData, userID)
 	if err != nil {
-		log.Printf("ERROR: stream parse init failed: %v", err)
+		log.Printf("SSE: ParseReceiptStream init error: %v", err)
 		writeSSE("error", receipt.ParseEvent{Type: "error", Message: err.Error()})
 		return
 	}
+	log.Printf("SSE: ParseReceiptStream returned channel, reading events...")
 
 	for event := range events {
+		log.Printf("SSE: got event type=%s", event.Type)
 		writeSSE(event.Type, event)
 	}
+	log.Printf("SSE: stream complete")
 }
 
 func handleSSEError(w http.ResponseWriter, msg string) {
