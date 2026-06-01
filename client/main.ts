@@ -61,7 +61,9 @@ const Layout = (content: any) => div({ class: "layout" },
 import Login from "./pages/login"
 import ReceiptsPage from "./pages/receipts"
 import ReceiptDetailPage from "./pages/receipt"
+import UploadPage from "./pages/upload"
 import ProposalsPage from "./pages/proposals"
+import ProposalDetailPage from "./pages/proposal"
 import ItemsPage from "./pages/items"
 import CategoriesPage from "./pages/categories"
 import AnalysisPage from "./pages/analysis"
@@ -88,8 +90,10 @@ const App = () => {
 
 const PageContent = (path: string) => {
   if (path === "/receipts") return ReceiptsPage()
+  if (path === "/receipts/upload") return UploadPage()
   if (path.startsWith("/receipts/")) return ReceiptDetailPage()
   if (path === "/proposals") return ProposalsPage()
+  if (path.startsWith("/proposals/")) return ProposalDetailPage()
   if (path === "/items") return ItemsPage()
   if (path === "/categories") return CategoriesPage()
   if (path === "/analysis") return AnalysisPage()
