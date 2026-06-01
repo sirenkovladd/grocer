@@ -42,3 +42,11 @@ credentials.json
 *.key
 *.pem
 service-account.json
+
+# proto generated files (only proto/out_proto/ should be committed)
+proto/*.pb.go
+out_proto/
+lib/database/out_proto/
+
+# misc
+*.zip
