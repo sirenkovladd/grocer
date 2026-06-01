@@ -185,6 +185,25 @@ func (s *Store) GetUserByUserID(userID uint64) (*domain.User, error) {
 	return nil, ErrNotFound
 }
 
+func (s *Store) ListUsers() ([]*domain.User, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	txn := s.db.Txn(false)
+	defer txn.Abort()
+
+	iter, err := txn.Get("users", "id")
+	if err != nil {
+		return nil, err
+	}
+
+	var users []*domain.User
+	for raw := iter.Next(); raw != nil; raw = iter.Next() {
+		users = append(users, raw.(*domain.User))
+	}
+	return users, nil
+}
+
 // Session operations
 
 func (s *Store) CreateSession(sess *Session) error {

@@ -124,6 +124,24 @@ func (p *Parser) categorizeItem(ctx context.Context, itemName string) (*llm.Cate
 	return p.llm.CategorizeItem(ctx, itemName, categories)
 }
 
+func (p *Parser) HandlePhoto(ctx context.Context, photo []byte, senderID string) (uint64, error) {
+	// For now, use a default user ID (first user)
+	// TODO: Implement proper bot user mapping
+	users, err := p.store.ListUsers()
+	if err != nil || len(users) == 0 {
+		return 0, fmt.Errorf("no users found")
+	}
+
+	ownerID := users[0].UserID
+
+	proposal, err := p.ParseReceipt(ctx, photo, ownerID)
+	if err != nil {
+		return 0, err
+	}
+
+	return proposal.ProposalID, nil
+}
+
 func (p *Parser) ApproveProposal(ctx context.Context, proposalID uint64, choices map[int]string) (*domain.Receipt, error) {
 	proposal, err := p.store.GetProposal(proposalID)
 	if err != nil {
