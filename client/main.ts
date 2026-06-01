@@ -86,7 +86,9 @@ const App = () => {
         return div()
       }
       
-      return Layout(PageContent(path))
+      return Layout(
+        () => PageContent(currentPath.val)
+      )
     }
   )
 }
