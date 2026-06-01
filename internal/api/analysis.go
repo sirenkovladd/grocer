@@ -17,29 +17,43 @@ func (r *Router) handleAnalysisSpending(w http.ResponseWriter, req *http.Request
 		granularity = "month"
 	}
 
-	receipts, err := r.store.ListReceipts()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-
-	// Filter by date range
+	// Use optimized date range query
 	var filtered []*domain.Receipt
-	for _, receipt := range receipts {
-		receiptDate := time.Unix(receipt.Date, 0)
-		if from != "" {
-			fromDate, err := time.Parse("2006-01-02", from)
-			if err == nil && receiptDate.Before(fromDate) {
-				continue
-			}
+	if from != "" && to != "" {
+		fromDate, err1 := time.Parse("2006-01-02", from)
+		toDate, err2 := time.Parse("2006-01-02", to)
+		if err1 == nil && err2 == nil {
+			// Use end of day for toDate
+			toDate = toDate.Add(24*time.Hour - time.Second)
+			filtered, _ = r.store.ListReceiptsByDateRange(fromDate.Unix(), toDate.Unix())
 		}
-		if to != "" {
-			toDate, err := time.Parse("2006-01-02", to)
-			if err == nil && receiptDate.After(toDate) {
-				continue
-			}
+	}
+	
+	// Fallback to loading all if date range not specified or parsing failed
+	if filtered == nil {
+		receipts, err := r.store.ListReceipts()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
 		}
-		filtered = append(filtered, receipt)
+
+		// Filter by date range if provided
+		for _, receipt := range receipts {
+			receiptDate := time.Unix(receipt.Date, 0)
+			if from != "" {
+				fromDate, err := time.Parse("2006-01-02", from)
+				if err == nil && receiptDate.Before(fromDate) {
+					continue
+				}
+			}
+			if to != "" {
+				toDate, err := time.Parse("2006-01-02", to)
+				if err == nil && receiptDate.After(toDate) {
+					continue
+				}
+			}
+			filtered = append(filtered, receipt)
+		}
 	}
 
 	// Group by granularity
@@ -77,15 +91,28 @@ func (r *Router) handleAnalysisCategories(w http.ResponseWriter, req *http.Reque
 	to := req.URL.Query().Get("to")
 	owner := req.URL.Query().Get("owner")
 
-	receipts, err := r.store.ListReceipts()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
+	// Optimize: if owner is specified, use owner index
+	var filtered []*domain.Receipt
+	if owner != "" {
+		ownerID, err := strconv.ParseUint(owner, 10, 64)
+		if err == nil {
+			filtered, _ = r.store.ListReceiptsByOwner(ownerID)
+		}
+	}
+	
+	// Fallback to loading all if owner not specified
+	if filtered == nil {
+		receipts, err := r.store.ListReceipts()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		filtered = receipts
 	}
 
-	// Filter
-	var filtered []*domain.Receipt
-	for _, receipt := range receipts {
+	// Filter by date range
+	var dateFiltered []*domain.Receipt
+	for _, receipt := range filtered {
 		receiptDate := time.Unix(receipt.Date, 0)
 		if from != "" {
 			fromDate, err := time.Parse("2006-01-02", from)
@@ -99,14 +126,9 @@ func (r *Router) handleAnalysisCategories(w http.ResponseWriter, req *http.Reque
 				continue
 			}
 		}
-		if owner != "" {
-			ownerID, err := strconv.ParseUint(owner, 10, 64)
-			if err == nil && receipt.OwnerID != ownerID {
-				continue
-			}
-		}
-		filtered = append(filtered, receipt)
+		dateFiltered = append(dateFiltered, receipt)
 	}
+	filtered = dateFiltered
 
 	// Aggregate by category
 	type CategoryTotal struct {
@@ -143,29 +165,42 @@ func (r *Router) handleAnalysisFamily(w http.ResponseWriter, req *http.Request) 
 	from := req.URL.Query().Get("from")
 	to := req.URL.Query().Get("to")
 
-	receipts, err := r.store.ListReceipts()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-
-	// Filter
+	// Use optimized date range query if both dates provided
 	var filtered []*domain.Receipt
-	for _, receipt := range receipts {
-		receiptDate := time.Unix(receipt.Date, 0)
-		if from != "" {
-			fromDate, err := time.Parse("2006-01-02", from)
-			if err == nil && receiptDate.Before(fromDate) {
-				continue
-			}
+	if from != "" && to != "" {
+		fromDate, err1 := time.Parse("2006-01-02", from)
+		toDate, err2 := time.Parse("2006-01-02", to)
+		if err1 == nil && err2 == nil {
+			toDate = toDate.Add(24*time.Hour - time.Second)
+			filtered, _ = r.store.ListReceiptsByDateRange(fromDate.Unix(), toDate.Unix())
 		}
-		if to != "" {
-			toDate, err := time.Parse("2006-01-02", to)
-			if err == nil && receiptDate.After(toDate) {
-				continue
-			}
+	}
+	
+	// Fallback to loading all if date range not specified or parsing failed
+	if filtered == nil {
+		receipts, err := r.store.ListReceipts()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
 		}
-		filtered = append(filtered, receipt)
+
+		// Filter by date range
+		for _, receipt := range receipts {
+			receiptDate := time.Unix(receipt.Date, 0)
+			if from != "" {
+				fromDate, err := time.Parse("2006-01-02", from)
+				if err == nil && receiptDate.Before(fromDate) {
+					continue
+				}
+			}
+			if to != "" {
+				toDate, err := time.Parse("2006-01-02", to)
+				if err == nil && receiptDate.After(toDate) {
+					continue
+				}
+			}
+			filtered = append(filtered, receipt)
+		}
 	}
 
 	// Aggregate by owner

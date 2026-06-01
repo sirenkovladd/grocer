@@ -83,6 +83,10 @@ func (r *Router) setupRoutes() {
 	// Photos
 	r.mux.HandleFunc("GET /api/photos/{id}", r.withCORS(r.withAuth(r.handleGetPhoto)))
 
+	// Search
+	r.mux.HandleFunc("GET /api/search/receipts", r.withCORS(r.withAuth(r.withAuditLogging("search", "receipts", r.handleSearchReceipts))))
+	r.mux.HandleFunc("GET /api/search/items", r.withCORS(r.withAuth(r.withAuditLogging("search", "items", r.handleSearchItems))))
+
 	// Serve static files from dist/ — SPA fallback
 	r.mux.Handle("GET /", r.serveSPA())
 }

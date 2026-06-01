@@ -6,7 +6,7 @@ const { div, h1, h2, table, tr, td, th, button, select, option, img, p } = van.t
 interface ProposalItem {
   parsedName: string
   quantity: number
-  unitPrice: number
+  unitPriceCents: number
   matchedItemId: number
   confidence: number
   categoryId: number
@@ -21,7 +21,7 @@ interface Proposal {
   date: number
   photoUrl: string
   items: ProposalItem[]
-  total: number
+  totalCents: number
   status: string
 }
 
@@ -100,7 +100,7 @@ const ProposalDetailPage = () => {
                     tr(
                       td(item.parsedName),
                       td(item.quantity.toString()),
-                      td(`$${item.unitPrice.toFixed(2)}`),
+                      td(`$${(item.unitPriceCents / 100).toFixed(2)}`),
                       td(`${(item.confidence * 100).toFixed(0)}%`),
                       td(
                         item.confidence >= 0.99
@@ -118,7 +118,7 @@ const ProposalDetailPage = () => {
                   ),
                 ),
                 div({ class: "proposal-summary" },
-                  p(`Total: $${proposal.val.total.toFixed(2)}`),
+                  p(`Total: $${(proposal.val.totalCents / 100).toFixed(2)}`),
                   p(`Date: ${new Date(proposal.val.date * 1000).toLocaleDateString()}`),
                 ),
                 () => error.val ? p({ class: "error" }, error.val) : "",

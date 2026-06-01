@@ -28,7 +28,7 @@ func (r *Router) handleListReceipts(w http.ResponseWriter, req *http.Request) {
 		if err == nil {
 			var result []*domain.Receipt
 			for _, receipt := range filtered {
-				if time.Unix(receipt.Date, 0).After(fromDate) || time.Unix(receipt.Date, 0).Equal(fromDate) {
+				if !time.Unix(receipt.Date, 0).Before(fromDate) {
 					result = append(result, receipt)
 				}
 			}
@@ -41,7 +41,7 @@ func (r *Router) handleListReceipts(w http.ResponseWriter, req *http.Request) {
 		if err == nil {
 			var result []*domain.Receipt
 			for _, receipt := range filtered {
-				if time.Unix(receipt.Date, 0).Before(toDate) || time.Unix(receipt.Date, 0).Equal(toDate) {
+				if !time.Unix(receipt.Date, 0).After(toDate) {
 					result = append(result, receipt)
 				}
 			}
@@ -143,19 +143,25 @@ func (r *Router) handleUploadReceipt(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	proposal, err := r.parser.ParseReceipt(req.Context(), photoData, userID)
+	// Parse receipt data without saving
+	proposal, err := r.parser.ParseReceiptData(req.Context(), photoData, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to parse receipt")
 		return
 	}
 
-	// Save photo if photo store is configured
+	// Save photo first if photo store is configured
 	if r.photoStore != nil {
 		photoURL, err := r.photoStore.Save(req.Context(), proposal.ProposalID, photoData)
 		if err == nil {
 			proposal.PhotoURL = photoURL
-			r.store.UpdateProposal(proposal)
 		}
+	}
+
+	// Now save the proposal with photo URL
+	if err := r.store.CreateProposal(proposal); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save proposal")
+		return
 	}
 
 	writeJSON(w, http.StatusOK, proposal)

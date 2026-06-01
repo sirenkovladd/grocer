@@ -9,8 +9,8 @@ interface Receipt {
   ownerId: number
   date: number
   photoUrl: string
-  items: { itemId: number; quantity: number; unitPrice: number }[]
-  total: number
+  items: { itemId: number; quantity: number; unitPriceCents: number }[]
+  totalCents: number
 }
 
 const ReceiptCard = (receipt: Receipt) => {
@@ -24,7 +24,7 @@ const ReceiptCard = (receipt: Receipt) => {
     ),
     div({ class: "receipt-body" },
       p(`${receipt.items.length} items`),
-      p({ class: "receipt-total" }, `$${receipt.total.toFixed(2)}`),
+      p({ class: "receipt-total" }, `$${(receipt.totalCents / 100).toFixed(2)}`),
     ),
   )
 }

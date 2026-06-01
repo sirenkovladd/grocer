@@ -103,6 +103,20 @@ func (r *Router) handleDeleteCategory(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
+	// Check if any items are using this category
+	items, err := r.store.ListItems()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	for _, item := range items {
+		if item.CategoryID == id {
+			writeError(w, http.StatusBadRequest, "cannot delete category: items are using this category")
+			return
+		}
+	}
+
 	if err := r.store.DeleteCategory(id); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return

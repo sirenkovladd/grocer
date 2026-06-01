@@ -263,19 +263,14 @@ func (s *Store) GetUserByUserID(userID uint64) (*domain.User, error) {
 	txn := s.db.Txn(false)
 	defer txn.Abort()
 
-	iter, err := txn.Get("users", "id")
+	raw, err := txn.First("users", "user_id", userID)
 	if err != nil {
 		return nil, err
 	}
-
-	for raw := iter.Next(); raw != nil; raw = iter.Next() {
-		user := raw.(*domain.User)
-		if user.UserID == userID {
-			return user, nil
-		}
+	if raw == nil {
+		return nil, ErrNotFound
 	}
-
-	return nil, ErrNotFound
+	return raw.(*domain.User), nil
 }
 
 func (s *Store) ListUsers() ([]*domain.User, error) {
@@ -514,6 +509,30 @@ func (s *Store) ListMerchants() ([]*domain.Merchant, error) {
 		merchants = append(merchants, raw.(*domain.Merchant))
 	}
 	return merchants, nil
+}
+
+func (s *Store) GetMerchantByName(name string) (*domain.Merchant, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	txn := s.db.Txn(false)
+	defer txn.Abort()
+
+	// Get all merchants and do case-insensitive comparison
+	// Note: memdb doesn't support case-insensitive string index, so we iterate
+	iter, err := txn.Get("merchants", "id")
+	if err != nil {
+		return nil, err
+	}
+
+	for raw := iter.Next(); raw != nil; raw = iter.Next() {
+		merchant := raw.(*domain.Merchant)
+		if strings.EqualFold(merchant.Name, name) {
+			return merchant, nil
+		}
+	}
+
+	return nil, ErrNotFound
 }
 
 func (s *Store) UpdateMerchant(m *domain.Merchant) error {
@@ -867,6 +886,50 @@ func (s *Store) DeleteBotUser(externalID string) error {
 	return nil
 }
 
+func (s *Store) ListReceiptsByDateRange(fromDate, toDate int64) ([]*domain.Receipt, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	txn := s.db.Txn(false)
+	defer txn.Abort()
+
+	// Use the date index to get receipts in range
+	iter, err := txn.LowerBound("receipts", "date", fromDate)
+	if err != nil {
+		return nil, err
+	}
+
+	var receipts []*domain.Receipt
+	for raw := iter.Next(); raw != nil; raw = iter.Next() {
+		receipt := raw.(*domain.Receipt)
+		if receipt.Date <= toDate {
+			receipts = append(receipts, receipt)
+		} else {
+			break // Past the end date
+		}
+	}
+	return receipts, nil
+}
+
+func (s *Store) ListReceiptsByOwner(ownerID uint64) ([]*domain.Receipt, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	txn := s.db.Txn(false)
+	defer txn.Abort()
+
+	iter, err := txn.Get("receipts", "owner_id", ownerID)
+	if err != nil {
+		return nil, err
+	}
+
+	var receipts []*domain.Receipt
+	for raw := iter.Next(); raw != nil; raw = iter.Next() {
+		receipts = append(receipts, raw.(*domain.Receipt))
+	}
+	return receipts, nil
+}
+
 // Token parsing utility
 
 func ParseTokenString(tokenString string) (uint64, string, error) {
@@ -1038,6 +1101,33 @@ func (s *Store) SaveSnapshot(ctx context.Context) error {
 	}
 
 	return s.snapshot.Push(ctx, data)
+}
+
+func (s *Store) DeleteSessionsByUserID(userID uint64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	txn := s.db.Txn(true)
+	defer txn.Abort()
+
+	iter, err := txn.Get("sessions", "user_id", userID)
+	if err != nil {
+		return err
+	}
+
+	var toDelete []*Session
+	for raw := iter.Next(); raw != nil; raw = iter.Next() {
+		toDelete = append(toDelete, raw.(*Session))
+	}
+
+	for _, sess := range toDelete {
+		if err := txn.Delete("sessions", sess); err != nil {
+			return err
+		}
+	}
+
+	txn.Commit()
+	return nil
 }
 
 func (s *Store) SaveSnapshotAsync(ctx context.Context) {

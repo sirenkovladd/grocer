@@ -6,7 +6,7 @@ const { div, h1, h2, table, tr, td, th, button, select, option } = van.tags
 interface ProposalItem {
   parsedName: string
   quantity: number
-  unitPrice: number
+  unitPriceCents: number
   matchedItemId: number
   confidence: number
   categoryId: number
@@ -21,7 +21,7 @@ interface Proposal {
   date: number
   photoUrl: string
   items: ProposalItem[]
-  total: number
+  totalCents: number
   status: string
 }
 
@@ -57,7 +57,7 @@ const ProposalForm = (proposal: Proposal, onApproved: () => void) => {
         tr(
           td(item.parsedName),
           td(item.quantity.toString()),
-          td(`$${item.unitPrice.toFixed(2)}`),
+          td(`$${(item.unitPriceCents / 100).toFixed(2)}`),
           td(`${(item.confidence * 100).toFixed(0)}%`),
           td(
             item.confidence >= 0.99

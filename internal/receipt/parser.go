@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"code.sirenko.ca/grocer/internal/domain"
 	"code.sirenko.ca/grocer/internal/llm"
@@ -25,7 +24,8 @@ func NewParser(store *store.Store, llmProvider llm.Provider) *Parser {
 	}
 }
 
-func (p *Parser) ParseReceipt(ctx context.Context, photo []byte, ownerID uint64) (*domain.Proposal, error) {
+// ParseReceiptData parses receipt from photo without saving (caller handles persistence)
+func (p *Parser) ParseReceiptData(ctx context.Context, photo []byte, ownerID uint64) (*domain.Proposal, error) {
 	parsed, err := p.llm.ParseReceipt(ctx, photo)
 	if err != nil {
 		return nil, fmt.Errorf("llm.ParseReceipt: %w", err)
@@ -81,6 +81,15 @@ func (p *Parser) ParseReceipt(ctx context.Context, photo []byte, ownerID uint64)
 		Status:     "pending",
 	}
 
+	return proposal, nil
+}
+
+func (p *Parser) ParseReceipt(ctx context.Context, photo []byte, ownerID uint64) (*domain.Proposal, error) {
+	proposal, err := p.ParseReceiptData(ctx, photo, ownerID)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := p.store.CreateProposal(proposal); err != nil {
 		return nil, fmt.Errorf("CreateProposal: %w", err)
 	}
@@ -89,18 +98,14 @@ func (p *Parser) ParseReceipt(ctx context.Context, photo []byte, ownerID uint64)
 }
 
 func (p *Parser) findOrCreateMerchant(name string) (*domain.Merchant, error) {
-	merchants, err := p.store.ListMerchants()
-	if err != nil {
-		return nil, err
+	// Try to find existing merchant first
+	merchant, err := p.store.GetMerchantByName(name)
+	if err == nil {
+		return merchant, nil
 	}
 
-	for _, m := range merchants {
-		if strings.EqualFold(m.Name, name) {
-			return m, nil
-		}
-	}
-
-	merchant := &domain.Merchant{
+	// Create new merchant if not found
+	merchant = &domain.Merchant{
 		MerchantID: p.store.MerchantID.Gen(),
 		Name:       name,
 	}
@@ -163,7 +168,10 @@ func (p *Parser) ApproveProposal(ctx context.Context, proposalID uint64, choices
 		proposal.Items[i].UserChoice = choice
 	}
 
+	// Prepare items to create and receipt items
+	var itemsToCreate []*domain.Item
 	receiptItems := make([]domain.ReceiptItem, len(proposal.Items))
+	
 	for i, pi := range proposal.Items {
 		var itemID uint64
 
@@ -177,10 +185,7 @@ func (p *Parser) ApproveProposal(ctx context.Context, proposalID uint64, choices
 				Normalized: normalizeName(pi.ParsedName),
 				Aliases:    []string{pi.ParsedName},
 			}
-
-			if err := p.store.CreateItem(item); err != nil {
-				return nil, err
-			}
+			itemsToCreate = append(itemsToCreate, item)
 			itemID = item.ItemID
 		}
 
@@ -201,12 +206,8 @@ func (p *Parser) ApproveProposal(ctx context.Context, proposalID uint64, choices
 		TotalCents: proposal.TotalCents,
 	}
 
-	if err := p.store.CreateReceipt(receipt); err != nil {
-		return nil, err
-	}
-
-	proposal.Status = "approved"
-	if err := p.store.UpdateProposal(proposal); err != nil {
+	// Use transaction for atomic operation
+	if err := p.store.ApproveProposalWithTransaction(proposalID, itemsToCreate, receipt); err != nil {
 		return nil, err
 	}
 

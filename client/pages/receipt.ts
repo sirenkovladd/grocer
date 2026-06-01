@@ -9,8 +9,8 @@ interface Receipt {
   ownerId: number
   date: number
   photoUrl: string
-  items: { itemId: number; quantity: number; unitPrice: number }[]
-  total: number
+  items: { itemId: number; quantity: number; unitPriceCents: number }[]
+  totalCents: number
 }
 
 const ReceiptDetailPage = () => {
@@ -45,7 +45,7 @@ const ReceiptDetailPage = () => {
             ),
             div({ class: "receipt-info card" },
               p(`Date: ${new Date(receipt.val.date * 1000).toLocaleDateString()}`),
-              p(`Total: $${receipt.val.total.toFixed(2)}`),
+              p(`Total: $${(receipt.val.totalCents / 100).toFixed(2)}`),
             ),
             h2("Items"),
             table({ class: "items-table" },
@@ -59,8 +59,8 @@ const ReceiptDetailPage = () => {
                 tr(
                   td(`Item #${item.itemId}`),
                   td(item.quantity.toString()),
-                  td(`$${item.unitPrice.toFixed(2)}`),
-                  td(`$${(item.quantity * item.unitPrice).toFixed(2)}`),
+                  td(`$${(item.unitPriceCents / 100).toFixed(2)}`),
+                  td(`$${(item.quantity * item.unitPriceCents / 100).toFixed(2)}`),
                 )
               ),
             ),

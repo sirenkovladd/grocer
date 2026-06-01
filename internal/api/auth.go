@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -45,6 +46,11 @@ func (r *Router) handleLogin(w http.ResponseWriter, req *http.Request) {
 	if err != nil || !match {
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
+	}
+
+	// Cleanup all existing sessions for this user
+	if err := r.store.DeleteSessionsByUserID(user.UserID); err != nil {
+		log.Printf("Warning: Failed to cleanup sessions for user %d: %v", user.UserID, err)
 	}
 
 	// Create session token (32 random bytes)
