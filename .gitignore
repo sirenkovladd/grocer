@@ -34,4 +34,5 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .DS_Store
 *.pem
 
-lib/database/out_proto
+lib/database/out_protorecipes -3-001.zip
+server

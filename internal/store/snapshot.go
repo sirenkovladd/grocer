@@ -1,0 +1,295 @@
+package store
+
+import (
+	"bytes"
+	"compress/gzip"
+	"io"
+
+	"code.sirenko.ca/grocer/internal/domain"
+	pb "code.sirenko.ca/grocer/proto/out_proto"
+	"google.golang.org/protobuf/proto"
+)
+
+type SnapshotData struct {
+	Users      []*domain.User
+	Categories []*domain.Category
+	Merchants  []*domain.Merchant
+	Items      []*domain.Item
+	Receipts   []*domain.Receipt
+	Proposals  []*domain.Proposal
+	BotUsers   []*BotUser
+}
+
+func SerializeSnapshot(data *SnapshotData) ([]byte, error) {
+	snapshot := &pb.Snapshot{
+		Users:      usersToProto(data.Users),
+		Categories: categoriesToProto(data.Categories),
+		Merchants:  merchantsToProto(data.Merchants),
+		Items:      itemsToProto(data.Items),
+		Receipts:   receiptsToProto(data.Receipts),
+		Proposals:  proposalsToProto(data.Proposals),
+	}
+
+	raw, err := proto.Marshal(snapshot)
+	if err != nil {
+		return nil, err
+	}
+
+	var buf bytes.Buffer
+	w := gzip.NewWriter(&buf)
+	if _, err := w.Write(raw); err != nil {
+		return nil, err
+	}
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+func DeserializeSnapshot(data []byte) (*SnapshotData, error) {
+	r, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+
+	var snapshot pb.Snapshot
+	if err := proto.Unmarshal(raw, &snapshot); err != nil {
+		return nil, err
+	}
+
+	return &SnapshotData{
+		Users:      usersFromProto(snapshot.Users),
+		Categories: categoriesFromProto(snapshot.Categories),
+		Merchants:  merchantsFromProto(snapshot.Merchants),
+		Items:      itemsFromProto(snapshot.Items),
+		Receipts:   receiptsFromProto(snapshot.Receipts),
+		Proposals:  proposalsFromProto(snapshot.Proposals),
+	}, nil
+}
+
+// Proto conversion functions
+
+func usersToProto(users []*domain.User) []*pb.User {
+	result := make([]*pb.User, len(users))
+	for i, u := range users {
+		result[i] = &pb.User{
+			UserId:       u.UserID,
+			Name:         u.Name,
+			Username:     u.Username,
+			PasswordHash: u.PasswordHash,
+		}
+	}
+	return result
+}
+
+func usersFromProto(users []*pb.User) []*domain.User {
+	result := make([]*domain.User, len(users))
+	for i, u := range users {
+		result[i] = &domain.User{
+			UserID:       u.UserId,
+			Name:         u.Name,
+			Username:     u.Username,
+			PasswordHash: u.PasswordHash,
+		}
+	}
+	return result
+}
+
+func categoriesToProto(cats []*domain.Category) []*pb.Category {
+	result := make([]*pb.Category, len(cats))
+	for i, c := range cats {
+		cat := &pb.Category{
+			CategoryId: c.CategoryID,
+			Name:       c.Name,
+			SortOrder:  c.SortOrder,
+		}
+		if c.ParentID != nil {
+			cat.ParentId = c.ParentID
+		}
+		result[i] = cat
+	}
+	return result
+}
+
+func categoriesFromProto(cats []*pb.Category) []*domain.Category {
+	result := make([]*domain.Category, len(cats))
+	for i, c := range cats {
+		cat := &domain.Category{
+			CategoryID: c.CategoryId,
+			Name:       c.Name,
+			SortOrder:  c.SortOrder,
+		}
+		if c.ParentId != nil {
+			cat.ParentID = c.ParentId
+		}
+		result[i] = cat
+	}
+	return result
+}
+
+func merchantsToProto(merchants []*domain.Merchant) []*pb.Merchant {
+	result := make([]*pb.Merchant, len(merchants))
+	for i, m := range merchants {
+		result[i] = &pb.Merchant{
+			MerchantId: m.MerchantID,
+			Name:       m.Name,
+		}
+	}
+	return result
+}
+
+func merchantsFromProto(merchants []*pb.Merchant) []*domain.Merchant {
+	result := make([]*domain.Merchant, len(merchants))
+	for i, m := range merchants {
+		result[i] = &domain.Merchant{
+			MerchantID: m.MerchantId,
+			Name:       m.Name,
+		}
+	}
+	return result
+}
+
+func itemsToProto(items []*domain.Item) []*pb.Item {
+	result := make([]*pb.Item, len(items))
+	for i, item := range items {
+		result[i] = &pb.Item{
+			ItemId:     item.ItemID,
+			Name:       item.Name,
+			CategoryId: item.CategoryID,
+			MerchantId: item.MerchantID,
+			Normalized: item.Normalized,
+			Aliases:    item.Aliases,
+		}
+	}
+	return result
+}
+
+func itemsFromProto(items []*pb.Item) []*domain.Item {
+	result := make([]*domain.Item, len(items))
+	for i, item := range items {
+		result[i] = &domain.Item{
+			ItemID:     item.ItemId,
+			Name:       item.Name,
+			CategoryID: item.CategoryId,
+			MerchantID: item.MerchantId,
+			Normalized: item.Normalized,
+			Aliases:    item.Aliases,
+		}
+	}
+	return result
+}
+
+func receiptsToProto(receipts []*domain.Receipt) []*pb.Receipt {
+	result := make([]*pb.Receipt, len(receipts))
+	for i, r := range receipts {
+		items := make([]*pb.ReceiptItem, len(r.Items))
+		for j, item := range r.Items {
+			items[j] = &pb.ReceiptItem{
+				ItemId:    item.ItemID,
+				Quantity:  item.Quantity,
+				UnitPrice: float32(item.UnitPrice),
+			}
+		}
+		result[i] = &pb.Receipt{
+			ReceiptId:  r.ReceiptID,
+			MerchantId: r.MerchantID,
+			OwnerId:    r.OwnerID,
+			Date:       uint64(r.Date),
+			PhotoUrl:   r.PhotoURL,
+			Items:      items,
+			Total:      float32(r.Total),
+		}
+	}
+	return result
+}
+
+func receiptsFromProto(receipts []*pb.Receipt) []*domain.Receipt {
+	result := make([]*domain.Receipt, len(receipts))
+	for i, r := range receipts {
+		items := make([]domain.ReceiptItem, len(r.Items))
+		for j, item := range r.Items {
+			items[j] = domain.ReceiptItem{
+				ItemID:    item.ItemId,
+				Quantity:  item.Quantity,
+				UnitPrice: float64(item.UnitPrice),
+			}
+		}
+		result[i] = &domain.Receipt{
+			ReceiptID:  r.ReceiptId,
+			MerchantID: r.MerchantId,
+			OwnerID:    r.OwnerId,
+			Date:       int64(r.Date),
+			PhotoURL:   r.PhotoUrl,
+			Items:      items,
+			Total:      float64(r.Total),
+		}
+	}
+	return result
+}
+
+func proposalsToProto(proposals []*domain.Proposal) []*pb.Proposal {
+	result := make([]*pb.Proposal, len(proposals))
+	for i, p := range proposals {
+		items := make([]*pb.ProposalItem, len(p.Items))
+		for j, item := range p.Items {
+			items[j] = &pb.ProposalItem{
+				ParsedName:    item.ParsedName,
+				Quantity:      item.Quantity,
+				UnitPrice:     float32(item.UnitPrice),
+				MatchedItemId: item.MatchedItemID,
+				Confidence:    float32(item.Confidence),
+				CategoryId:    item.CategoryID,
+				IsNewCategory: item.IsNewCategory,
+				UserChoice:    item.UserChoice,
+			}
+		}
+		result[i] = &pb.Proposal{
+			ProposalId: p.ProposalID,
+			OwnerId:    p.OwnerID,
+			Merchant:   p.Merchant,
+			Date:       uint64(p.Date),
+			PhotoUrl:   p.PhotoURL,
+			Items:      items,
+			Total:      float32(p.Total),
+			Status:     p.Status,
+		}
+	}
+	return result
+}
+
+func proposalsFromProto(proposals []*pb.Proposal) []*domain.Proposal {
+	result := make([]*domain.Proposal, len(proposals))
+	for i, p := range proposals {
+		items := make([]domain.ProposalItem, len(p.Items))
+		for j, item := range p.Items {
+			items[j] = domain.ProposalItem{
+				ParsedName:    item.ParsedName,
+				Quantity:      item.Quantity,
+				UnitPrice:     float64(item.UnitPrice),
+				MatchedItemID: item.MatchedItemId,
+				Confidence:    float64(item.Confidence),
+				CategoryID:    item.CategoryId,
+				IsNewCategory: item.IsNewCategory,
+				UserChoice:    item.UserChoice,
+			}
+		}
+		result[i] = &domain.Proposal{
+			ProposalID: p.ProposalId,
+			OwnerID:    p.OwnerId,
+			Merchant:   p.Merchant,
+			Date:       int64(p.Date),
+			PhotoURL:   p.PhotoUrl,
+			Items:      items,
+			Total:      float64(p.Total),
+			Status:     p.Status,
+		}
+	}
+	return result
+}

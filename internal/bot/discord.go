@@ -5,21 +5,25 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 
+	"code.sirenko.ca/grocer/internal/store"
 	"github.com/bwmarrin/discordgo"
 )
 
 type DiscordBot struct {
 	token   string
 	webURL  string
+	store   *store.Store
 	handler ReceiptHandler
 	session *discordgo.Session
 }
 
-func NewDiscordBot(token, webURL string, handler ReceiptHandler) *DiscordBot {
+func NewDiscordBot(token, webURL string, store *store.Store, handler ReceiptHandler) *DiscordBot {
 	return &DiscordBot{
 		token:   token,
 		webURL:  webURL,
+		store:   store,
 		handler: handler,
 	}
 }
@@ -52,6 +56,14 @@ func (d *DiscordBot) handleMessage(s *discordgo.Session, m *discordgo.MessageCre
 	// Handle messages with attachments (photos)
 	for _, att := range m.Attachments {
 		if att.ContentType == "image/jpeg" || att.ContentType == "image/png" {
+			// Look up user by Discord ID
+			externalID := fmt.Sprintf("discord:%s", m.Author.ID)
+			botUser, err := d.store.GetBotUser(externalID)
+			if err != nil {
+				s.ChannelMessageSend(m.ChannelID, "Unknown user. Link your account at the web app first.")
+				continue
+			}
+
 			resp, err := http.Get(att.URL)
 			if err != nil {
 				s.ChannelMessageSend(m.ChannelID, "Failed to download photo")
@@ -65,7 +77,8 @@ func (d *DiscordBot) handleMessage(s *discordgo.Session, m *discordgo.MessageCre
 				continue
 			}
 
-			proposalID, err := d.handler.HandlePhoto(context.Background(), photoData, m.Author.ID)
+			senderID := strconv.FormatUint(botUser.UserID, 10)
+			proposalID, err := d.handler.HandlePhoto(context.Background(), photoData, senderID)
 			if err != nil {
 				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Failed to parse receipt: %v", err))
 				continue

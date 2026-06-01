@@ -1,7 +1,10 @@
 package store
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"log"
 	"strings"
 	"sync"
 
@@ -24,12 +27,18 @@ type Store struct {
 	ItemID     *Generator
 	ReceiptID  *Generator
 	ProposalID *Generator
+	snapshot   *GCloudStorage
 }
 
 type Session struct {
 	SessionID uint64
 	TokenHash string
 	UserID    uint64
+}
+
+type BotUser struct {
+	ExternalID string
+	UserID     uint64
 }
 
 func NewStore() (*Store, error) {
@@ -110,6 +119,16 @@ func NewStore() (*Store, error) {
 					},
 				},
 			},
+			"bot_users": {
+				Name: "bot_users",
+				Indexes: map[string]*memdb.IndexSchema{
+					"id": {
+						Name:    "id",
+						Unique:  true,
+						Indexer: &memdb.StringFieldIndex{Field: "ExternalID"},
+					},
+				},
+			},
 		},
 	}
 
@@ -143,6 +162,7 @@ func (s *Store) CreateUser(user *domain.User) error {
 		return err
 	}
 	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
 	return nil
 }
 
@@ -217,6 +237,7 @@ func (s *Store) CreateSession(sess *Session) error {
 		return err
 	}
 	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
 	return nil
 }
 
@@ -250,6 +271,7 @@ func (s *Store) CreateCategory(cat *domain.Category) error {
 		return err
 	}
 	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
 	return nil
 }
 
@@ -300,6 +322,7 @@ func (s *Store) UpdateCategory(cat *domain.Category) error {
 		return err
 	}
 	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
 	return nil
 }
 
@@ -314,6 +337,7 @@ func (s *Store) DeleteCategory(id uint64) error {
 		return err
 	}
 	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
 	return nil
 }
 
@@ -330,6 +354,7 @@ func (s *Store) CreateMerchant(m *domain.Merchant) error {
 		return err
 	}
 	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
 	return nil
 }
 
@@ -380,6 +405,7 @@ func (s *Store) UpdateMerchant(m *domain.Merchant) error {
 		return err
 	}
 	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
 	return nil
 }
 
@@ -396,6 +422,7 @@ func (s *Store) CreateItem(item *domain.Item) error {
 		return err
 	}
 	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
 	return nil
 }
 
@@ -465,6 +492,7 @@ func (s *Store) UpdateItem(item *domain.Item) error {
 		return err
 	}
 	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
 	return nil
 }
 
@@ -481,6 +509,7 @@ func (s *Store) CreateReceipt(r *domain.Receipt) error {
 		return err
 	}
 	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
 	return nil
 }
 
@@ -533,6 +562,7 @@ func (s *Store) CreateProposal(p *domain.Proposal) error {
 		return err
 	}
 	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
 	return nil
 }
 
@@ -583,6 +613,75 @@ func (s *Store) UpdateProposal(p *domain.Proposal) error {
 		return err
 	}
 	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
+	return nil
+}
+
+// BotUser operations
+
+func (s *Store) CreateBotUser(bu *BotUser) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	txn := s.db.Txn(true)
+	defer txn.Abort()
+
+	if err := txn.Insert("bot_users", bu); err != nil {
+		return err
+	}
+	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
+	return nil
+}
+
+func (s *Store) GetBotUser(externalID string) (*BotUser, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	txn := s.db.Txn(false)
+	defer txn.Abort()
+
+	raw, err := txn.First("bot_users", "id", externalID)
+	if err != nil {
+		return nil, err
+	}
+	if raw == nil {
+		return nil, ErrNotFound
+	}
+	return raw.(*BotUser), nil
+}
+
+func (s *Store) ListBotUsers() ([]*BotUser, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	txn := s.db.Txn(false)
+	defer txn.Abort()
+
+	iter, err := txn.Get("bot_users", "id")
+	if err != nil {
+		return nil, err
+	}
+
+	var botUsers []*BotUser
+	for raw := iter.Next(); raw != nil; raw = iter.Next() {
+		botUsers = append(botUsers, raw.(*BotUser))
+	}
+	return botUsers, nil
+}
+
+func (s *Store) DeleteBotUser(externalID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	txn := s.db.Txn(true)
+	defer txn.Abort()
+
+	if err := txn.Delete("bot_users", &BotUser{ExternalID: externalID}); err != nil {
+		return err
+	}
+	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
 	return nil
 }
 
@@ -602,4 +701,142 @@ func ParseTokenString(tokenString string) (uint64, string, error) {
 		id = id*10 + uint64(c-'0')
 	}
 	return id, vals[1], nil
+}
+
+// Snapshot operations
+
+func (s *Store) SetSnapshotStorage(storage *GCloudStorage) {
+	s.snapshot = storage
+}
+
+func (s *Store) LoadSnapshot(ctx context.Context) error {
+	if s.snapshot == nil {
+		return nil
+	}
+
+	data, err := s.snapshot.Pull(ctx)
+	if err != nil {
+		return fmt.Errorf("pull snapshot: %w", err)
+	}
+	if data == nil {
+		return nil
+	}
+
+	snapshot, err := DeserializeSnapshot(data)
+	if err != nil {
+		return fmt.Errorf("deserialize snapshot: %w", err)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	txn := s.db.Txn(true)
+	defer txn.Abort()
+
+	for _, u := range snapshot.Users {
+		if err := txn.Insert("users", u); err != nil {
+			return err
+		}
+	}
+	for _, c := range snapshot.Categories {
+		if err := txn.Insert("categories", c); err != nil {
+			return err
+		}
+	}
+	for _, m := range snapshot.Merchants {
+		if err := txn.Insert("merchants", m); err != nil {
+			return err
+		}
+	}
+	for _, item := range snapshot.Items {
+		if err := txn.Insert("items", item); err != nil {
+			return err
+		}
+	}
+	for _, r := range snapshot.Receipts {
+		if err := txn.Insert("receipts", r); err != nil {
+			return err
+		}
+	}
+	for _, p := range snapshot.Proposals {
+		if err := txn.Insert("proposals", p); err != nil {
+			return err
+		}
+	}
+
+	txn.Commit()
+	log.Printf("Loaded snapshot: %d users, %d items, %d receipts",
+		len(snapshot.Users), len(snapshot.Items), len(snapshot.Receipts))
+
+	return nil
+}
+
+func (s *Store) SaveSnapshot(ctx context.Context) error {
+	if s.snapshot == nil {
+		return nil
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	txn := s.db.Txn(false)
+	defer txn.Abort()
+
+	var users []*domain.User
+	iter, _ := txn.Get("users", "id")
+	for raw := iter.Next(); raw != nil; raw = iter.Next() {
+		users = append(users, raw.(*domain.User))
+	}
+
+	var categories []*domain.Category
+	iter, _ = txn.Get("categories", "id")
+	for raw := iter.Next(); raw != nil; raw = iter.Next() {
+		categories = append(categories, raw.(*domain.Category))
+	}
+
+	var merchants []*domain.Merchant
+	iter, _ = txn.Get("merchants", "id")
+	for raw := iter.Next(); raw != nil; raw = iter.Next() {
+		merchants = append(merchants, raw.(*domain.Merchant))
+	}
+
+	var items []*domain.Item
+	iter, _ = txn.Get("items", "id")
+	for raw := iter.Next(); raw != nil; raw = iter.Next() {
+		items = append(items, raw.(*domain.Item))
+	}
+
+	var receipts []*domain.Receipt
+	iter, _ = txn.Get("receipts", "id")
+	for raw := iter.Next(); raw != nil; raw = iter.Next() {
+		receipts = append(receipts, raw.(*domain.Receipt))
+	}
+
+	var proposals []*domain.Proposal
+	iter, _ = txn.Get("proposals", "id")
+	for raw := iter.Next(); raw != nil; raw = iter.Next() {
+		proposals = append(proposals, raw.(*domain.Proposal))
+	}
+
+	data, err := SerializeSnapshot(&SnapshotData{
+		Users:      users,
+		Categories: categories,
+		Merchants:  merchants,
+		Items:      items,
+		Receipts:   receipts,
+		Proposals:  proposals,
+	})
+	if err != nil {
+		return fmt.Errorf("serialize snapshot: %w", err)
+	}
+
+	return s.snapshot.Push(ctx, data)
+}
+
+func (s *Store) SaveSnapshotAsync(ctx context.Context) {
+	go func() {
+		if err := s.SaveSnapshot(ctx); err != nil {
+			log.Printf("Failed to save snapshot: %v", err)
+		}
+	}()
 }

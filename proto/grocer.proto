@@ -1,0 +1,84 @@
+syntax = "proto3";
+package grocer;
+
+option go_package = "./out_proto";
+
+message User {
+  fixed64 userId = 1;
+  string name = 2;
+  string username = 3;
+  string passwordHash = 4;
+}
+
+message Category {
+  fixed64 categoryId = 1;
+  string name = 2;
+  optional fixed64 parentId = 3;
+  int32 sortOrder = 4;
+}
+
+message Merchant {
+  fixed64 merchantId = 1;
+  string name = 2;
+}
+
+message Item {
+  fixed64 itemId = 1;
+  string name = 2;
+  fixed64 categoryId = 3;
+  fixed64 merchantId = 4;
+  string normalized = 5;
+  repeated string aliases = 6;
+}
+
+message Receipt {
+  fixed64 receiptId = 1;
+  fixed64 merchantId = 2;
+  fixed64 ownerId = 3;
+  fixed64 date = 4;
+  string photoUrl = 5;
+  repeated ReceiptItem items = 6;
+  float total = 7;
+}
+
+message ReceiptItem {
+  fixed64 itemId = 1;
+  uint32 quantity = 2;
+  float unitPrice = 3;
+}
+
+message Proposal {
+  fixed64 proposalId = 1;
+  fixed64 ownerId = 2;
+  string merchant = 3;
+  fixed64 date = 4;
+  string photoUrl = 5;
+  repeated ProposalItem items = 6;
+  float total = 7;
+  string status = 8;
+}
+
+message ProposalItem {
+  string parsedName = 1;
+  uint32 quantity = 2;
+  float unitPrice = 3;
+  fixed64 matchedItemId = 4;
+  float confidence = 5;
+  fixed64 categoryId = 6;
+  bool isNewCategory = 7;
+  string userChoice = 8;
+}
+
+message Snapshot {
+  repeated User users = 1;
+  repeated Category categories = 2;
+  repeated Merchant merchants = 3;
+  repeated Item items = 4;
+  repeated Receipt receipts = 5;
+  repeated Proposal proposals = 6;
+}
+
+message BotUser {
+  string externalId = 1;
+  fixed64 userId = 2;
+}

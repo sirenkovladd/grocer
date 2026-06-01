@@ -7,20 +7,23 @@ import (
 	"net/http"
 	"strconv"
 
+	"code.sirenko.ca/grocer/internal/store"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 type TelegramBot struct {
 	token   string
 	webURL  string
+	store   *store.Store
 	handler ReceiptHandler
 	bot     *tgbotapi.BotAPI
 }
 
-func NewTelegramBot(token, webURL string, handler ReceiptHandler) *TelegramBot {
+func NewTelegramBot(token, webURL string, store *store.Store, handler ReceiptHandler) *TelegramBot {
 	return &TelegramBot{
 		token:   token,
 		webURL:  webURL,
+		store:   store,
 		handler: handler,
 	}
 }
@@ -64,6 +67,14 @@ func (t *TelegramBot) handleUpdate(ctx context.Context, update tgbotapi.Update) 
 
 	// Handle photo messages
 	if update.Message.Photo != nil {
+		// Look up user by Telegram ID
+		externalID := fmt.Sprintf("telegram:%d", update.Message.From.ID)
+		botUser, err := t.store.GetBotUser(externalID)
+		if err != nil {
+			t.sendMessage(update.Message.Chat.ID, "Unknown user. Link your account at the web app first.")
+			return
+		}
+
 		photo := update.Message.Photo[len(update.Message.Photo)-1]
 
 		file, err := t.bot.GetFile(tgbotapi.FileConfig{FileID: photo.FileID})
@@ -85,7 +96,7 @@ func (t *TelegramBot) handleUpdate(ctx context.Context, update tgbotapi.Update) 
 			return
 		}
 
-		senderID := strconv.FormatInt(update.Message.From.ID, 10)
+		senderID := strconv.FormatUint(botUser.UserID, 10)
 		proposalID, err := t.handler.HandlePhoto(ctx, photoData, senderID)
 		if err != nil {
 			t.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Failed to parse receipt: %v", err))
