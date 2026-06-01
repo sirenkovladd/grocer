@@ -1,6 +1,7 @@
 import van from "vanjs-core"
 import { api } from "../main"
 import { Chart, registerables } from "chart.js"
+import DateRange from "../components/date-range"
 
 Chart.register(...registerables)
 
@@ -74,6 +75,8 @@ const createBarChart = (canvas: HTMLCanvasElement, data: any) => {
 
 const AnalysisPage = () => {
   const granularity = van.state("month")
+  const from = van.state("")
+  const to = van.state("")
   const spendingData = van.state<any[]>([])
   const categoryData = van.state<any[]>([])
   const familyData = van.state<any[]>([])
@@ -82,10 +85,14 @@ const AnalysisPage = () => {
   const loadData = async () => {
     loading.val = true
     try {
+      const params = new URLSearchParams({ granularity: granularity.val })
+      if (from.val) params.set("from", from.val)
+      if (to.val) params.set("to", to.val)
+
       const [spending, categories, family] = await Promise.all([
-        api.get(`/analysis/spending?granularity=${granularity.val}`),
-        api.get("/analysis/categories"),
-        api.get("/analysis/family"),
+        api.get(`/analysis/spending?${params}`),
+        api.get(`/analysis/categories?${params}`),
+        api.get(`/analysis/family?${params}`),
       ])
       spendingData.val = spending || []
       categoryData.val = categories || []
@@ -98,7 +105,6 @@ const AnalysisPage = () => {
 
   loadData()
 
-  // Charts will be initialized after DOM is ready
   let spendingChart: Chart | null = null
   let categoryChart: Chart | null = null
   let familyChart: Chart | null = null
@@ -117,6 +123,7 @@ const AnalysisPage = () => {
           data: spendingData.val.map((d: any) => d.total),
           borderColor: "#3b82f6",
           backgroundColor: "rgba(59, 130, 246, 0.1)",
+          fill: true,
         }],
       })
     }
@@ -131,6 +138,7 @@ const AnalysisPage = () => {
           backgroundColor: [
             "#3b82f6", "#22c55e", "#eab308", "#ef4444",
             "#8b5cf6", "#ec4899", "#14b8a6", "#f97316",
+            "#6366f1", "#84cc16", "#14b8a6", "#f43f5e",
           ],
         }],
       })
@@ -143,14 +151,18 @@ const AnalysisPage = () => {
         datasets: [{
           label: "Spending by Member",
           data: familyData.val.map((d: any) => d.total),
-          backgroundColor: "#3b82f6",
+          backgroundColor: ["#3b82f6", "#22c55e", "#eab308", "#ef4444"],
         }],
       })
     }
   }
 
-  // Initialize charts after render
   setTimeout(initCharts, 100)
+
+  const handleFilterChange = () => {
+    loadData()
+    setTimeout(initCharts, 100)
+  }
 
   return div({ class: "analysis-page" },
     div({ class: "page-header" },
@@ -159,8 +171,7 @@ const AnalysisPage = () => {
         value: granularity,
         onchange: (e: Event) => {
           granularity.val = (e.target as HTMLSelectElement).value
-          loadData()
-          setTimeout(initCharts, 100)
+          handleFilterChange()
         },
       },
         option({ value: "day" }, "Daily"),
@@ -168,8 +179,9 @@ const AnalysisPage = () => {
         option({ value: "month" }, "Monthly"),
       ),
     ),
+    DateRange({ from, to, onChange: handleFilterChange }),
     () => loading.val
-      ? div("Loading...")
+      ? div({ class: "loading" }, "Loading...")
       : div({ class: "charts-grid" },
           div({ class: "chart-container card" },
             h2("Spending Over Time"),

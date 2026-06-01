@@ -392,3 +392,128 @@ th {
     grid-template-columns: 1fr;
   }
 }
+
+/* Date Range */
+.date-range {
+  margin-bottom: 1.5rem;
+}
+
+.date-presets {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.preset-btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+}
+
+.preset-btn:hover {
+  background: var(--bg-secondary);
+}
+
+.preset-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.date-inputs {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.date-inputs input {
+  padding: 0.5rem;
+}
+
+.date-inputs span {
+  color: var(--text-secondary);
+}
+
+/* Item Detail Page */
+.item-detail-page {
+  max-width: 1000px;
+}
+
+.item-info {
+  margin-bottom: 1.5rem;
+}
+
+.item-info p {
+  margin-bottom: 0.5rem;
+}
+
+.price-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.stat-card {
+  text-align: center;
+  padding: 1rem;
+}
+
+.stat-label {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+}
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.trend-up {
+  color: var(--error);
+}
+
+.trend-down {
+  color: var(--success);
+}
+
+.trend-stable {
+  color: var(--text-secondary);
+}
+
+.purchase-history {
+  margin-top: 1.5rem;
+}
+
+/* Merchants Page */
+.merchants-page {
+  max-width: 800px;
+}
+
+.item-selector {
+  margin-bottom: 1.5rem;
+}
+
+.item-selector select {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.comparison-results {
+  margin-top: 1.5rem;
+}
+
+.no-data {
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 2rem;
+}
+
+/* Loading */
+.loading {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-secondary);
+}

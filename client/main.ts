@@ -51,6 +51,7 @@ const Layout = (content: any) => div({ class: "layout" },
     a({ href: "#/receipts", onclick: () => navigate("/receipts") }, "Receipts"),
     a({ href: "#/proposals", onclick: () => navigate("/proposals") }, "Proposals"),
     a({ href: "#/items", onclick: () => navigate("/items") }, "Items"),
+    a({ href: "#/merchants", onclick: () => navigate("/merchants") }, "Merchants"),
     a({ href: "#/categories", onclick: () => navigate("/categories") }, "Categories"),
     a({ href: "#/analysis", onclick: () => navigate("/analysis") }, "Analysis"),
   ),
@@ -65,6 +66,8 @@ import UploadPage from "./pages/upload"
 import ProposalsPage from "./pages/proposals"
 import ProposalDetailPage from "./pages/proposal"
 import ItemsPage from "./pages/items"
+import ItemDetailPage from "./pages/item-detail"
+import MerchantsPage from "./pages/merchants"
 import CategoriesPage from "./pages/categories"
 import AnalysisPage from "./pages/analysis"
 
@@ -95,6 +98,8 @@ const PageContent = (path: string) => {
   if (path === "/proposals") return ProposalsPage()
   if (path.startsWith("/proposals/")) return ProposalDetailPage()
   if (path === "/items") return ItemsPage()
+  if (path.startsWith("/items/")) return ItemDetailPage()
+  if (path === "/merchants") return MerchantsPage()
   if (path === "/categories") return CategoriesPage()
   if (path === "/analysis") return AnalysisPage()
   return div("404 - Page not found")
