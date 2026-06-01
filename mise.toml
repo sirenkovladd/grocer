@@ -1,17 +1,14 @@
 [env]
-'_'.file = ".env"
+_.file = ".env"
 GIT_COMMIT = "{{exec(command='git rev-parse --short HEAD')}}"
 
 [settings]
 task_output = "interleave"
 
 [tasks.proto]
-sources = ["lib/database/grocer.proto"]
-outputs = ["lib/database/proto/*"]
-run = "protoc --go_out=lib/database/ lib/database/grocer.proto"
-
-[tasks.dump_schema]
-run = "pg_dump -s postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST:5432/$POSTGRES_DB > schema.sql"
+sources = ["proto/grocer.proto"]
+outputs = ["proto/out_proto/*"]
+run = "protoc --go_out=. --go_opt=paths=source_relative proto/grocer.proto && mv proto/grocer.pb.go proto/out_proto/"
 
 [tasks.build_client]
 run = [
@@ -30,31 +27,38 @@ outputs = ["dist/*"]
 sources = ["client/*"]
 
 [tasks.start_server]
-env.KEY_FILE = "q.pem"
-env.CERT_FILE = "q.pem.pub"
 env.BUILD_TIME = "{{exec(command='date -u +%Y-%m-%dT%H:%M:%SZ')}}"
-env.FLAG = """
--X 'main.GitCommit={{env.GIT_COMMIT}}' -X 'main.BuildTime={{env.BUILD_TIME}}'
-"""
-run = ["gow run -ldflags \"$FLAG\" ./cli/server"]
+run = "go run ./cmd/server"
 sources = ["**/*.go"]
-
-[tasks.start_server_prod]
-env.BUILD_TIME = "{{exec(command='date -u +%Y-%m-%dT%H:%M:%SZ')}}"
-env.FLAG = """
--X 'main.GitCommit={{env.GIT_COMMIT}}' -X 'main.BuildTime={{env.BUILD_TIME}}'
-"""
-run = ["go run -ldflags \"$FLAG\" -tags prod ./cli/server"]
 
 [tasks.build_server]
 env.GIT_COMMIT = "{{exec(command='git rev-parse --short HEAD')}}"
 env.BUILD_TIME = "{{exec(command='date -u +%Y-%m-%dT%H:%M:%SZ')}}"
-env.FLAG = """
--s -w -X 'main.GitCommit={{env.GIT_COMMIT}}' -X 'main.BuildTime={{env.BUILD_TIME}}'
-"""
-run = ["go build -ldflags \"$FLAG\" -tags prod -o ./dist/server ./cli/server"]
+env.FLAG = "-s -w -X 'main.GitCommit={{env.GIT_COMMIT}}' -X 'main.BuildTime={{env.BUILD_TIME}}'"
+run = "go build -ldflags '{{env.FLAG}}' -o ./dist/server ./cmd/server"
 sources = ["**/*.go"]
 outputs = ["dist/server"]
+
+[tasks.create_user]
+run = "go run ./cmd/server --create-user --name {{arg(name='name')}} --username {{arg(name='username')}} --password {{arg(name='password')}}"
+
+[tasks.link_bot]
+run = "go run ./cmd/server --link-bot --username {{arg(name='username')}} --{{arg(name='platform')}} {{arg(name='id')}}"
+
+[tasks.backup_export]
+run = "go run ./cmd/backup export {{arg(name='output', default='snapshot.pb.gz')}}"
+
+[tasks.backup_import]
+run = "go run ./cmd/backup import {{arg(name='file')}}"
+
+[tasks.docker_build]
+run = "docker build -f deploy/Dockerfile -t grocer ."
+
+[tasks.docker_up]
+run = "docker compose -f deploy/docker-compose.yml up"
+
+[tasks.docker_down]
+run = "docker compose -f deploy/docker-compose.yml down"
 
 [tools]
 bun = "latest"
