@@ -37,6 +37,9 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) setupRoutes() {
+	// Health check
+	r.mux.HandleFunc("GET /api/health", r.handleHealth)
+
 	// Auth
 	r.mux.HandleFunc("POST /api/auth/login", r.handleLogin)
 
@@ -130,4 +133,11 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
+}
+
+func (r *Router) handleHealth(w http.ResponseWriter, req *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":  "ok",
+		"version": "1.0.0",
+	})
 }

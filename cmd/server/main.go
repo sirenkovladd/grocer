@@ -210,9 +210,12 @@ func main() {
 		addr = ":" + port
 	}
 
+	// Apply middleware
+	handler := api.RecoveryMiddleware(api.LoggingMiddleware(router))
+
 	server := &http.Server{
 		Addr:    addr,
-		Handler: router,
+		Handler: handler,
 	}
 
 	// Graceful shutdown
