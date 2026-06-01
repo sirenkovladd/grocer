@@ -455,6 +455,7 @@ type Proposal struct {
 	Items         []*ProposalItem        `protobuf:"bytes,6,rep,name=items,proto3" json:"items,omitempty"`
 	TotalCents    int64                  `protobuf:"varint,7,opt,name=totalCents,proto3" json:"totalCents,omitempty"`
 	Status        string                 `protobuf:"bytes,8,opt,name=status,proto3" json:"status,omitempty"`
+	MerchantId    uint64                 `protobuf:"fixed64,9,opt,name=merchantId,proto3" json:"merchantId,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -545,13 +546,20 @@ func (x *Proposal) GetStatus() string {
 	return ""
 }
 
+func (x *Proposal) GetMerchantId() uint64 {
+	if x != nil {
+		return x.MerchantId
+	}
+	return 0
+}
+
 type ProposalItem struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	ParsedName     string                 `protobuf:"bytes,1,opt,name=parsedName,proto3" json:"parsedName,omitempty"`
 	Quantity       uint32                 `protobuf:"varint,2,opt,name=quantity,proto3" json:"quantity,omitempty"`
 	UnitPriceCents int64                  `protobuf:"varint,3,opt,name=unitPriceCents,proto3" json:"unitPriceCents,omitempty"`
 	MatchedItemId  uint64                 `protobuf:"fixed64,4,opt,name=matchedItemId,proto3" json:"matchedItemId,omitempty"`
-	Confidence     float32                `protobuf:"fixed32,5,opt,name=confidence,proto3" json:"confidence,omitempty"`
+	Confidence     float64                `protobuf:"fixed64,5,opt,name=confidence,proto3" json:"confidence,omitempty"`
 	CategoryId     uint64                 `protobuf:"fixed64,6,opt,name=categoryId,proto3" json:"categoryId,omitempty"`
 	IsNewCategory  bool                   `protobuf:"varint,7,opt,name=isNewCategory,proto3" json:"isNewCategory,omitempty"`
 	UserChoice     string                 `protobuf:"bytes,8,opt,name=userChoice,proto3" json:"userChoice,omitempty"`
@@ -617,7 +625,7 @@ func (x *ProposalItem) GetMatchedItemId() uint64 {
 	return 0
 }
 
-func (x *ProposalItem) GetConfidence() float32 {
+func (x *ProposalItem) GetConfidence() float64 {
 	if x != nil {
 		return x.Confidence
 	}
@@ -908,7 +916,7 @@ const file_grocer_proto_rawDesc = "" +
 	"\vReceiptItem\x12\x16\n" +
 	"\x06itemId\x18\x01 \x01(\x06R\x06itemId\x12\x1a\n" +
 	"\bquantity\x18\x02 \x01(\rR\bquantity\x12&\n" +
-	"\x0eunitPriceCents\x18\x03 \x01(\x03R\x0eunitPriceCents\"\xf4\x01\n" +
+	"\x0eunitPriceCents\x18\x03 \x01(\x03R\x0eunitPriceCents\"\x94\x02\n" +
 	"\bProposal\x12\x1e\n" +
 	"\n" +
 	"proposalId\x18\x01 \x01(\x06R\n" +
@@ -921,7 +929,10 @@ const file_grocer_proto_rawDesc = "" +
 	"\n" +
 	"totalCents\x18\a \x01(\x03R\n" +
 	"totalCents\x12\x16\n" +
-	"\x06status\x18\b \x01(\tR\x06status\"\x9e\x02\n" +
+	"\x06status\x18\b \x01(\tR\x06status\x12\x1e\n" +
+	"\n" +
+	"merchantId\x18\t \x01(\x06R\n" +
+	"merchantId\"\x9e\x02\n" +
 	"\fProposalItem\x12\x1e\n" +
 	"\n" +
 	"parsedName\x18\x01 \x01(\tR\n" +
@@ -930,7 +941,7 @@ const file_grocer_proto_rawDesc = "" +
 	"\x0eunitPriceCents\x18\x03 \x01(\x03R\x0eunitPriceCents\x12$\n" +
 	"\rmatchedItemId\x18\x04 \x01(\x06R\rmatchedItemId\x12\x1e\n" +
 	"\n" +
-	"confidence\x18\x05 \x01(\x02R\n" +
+	"confidence\x18\x05 \x01(\x01R\n" +
 	"confidence\x12\x1e\n" +
 	"\n" +
 	"categoryId\x18\x06 \x01(\x06R\n" +

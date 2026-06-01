@@ -249,7 +249,7 @@ func proposalsToProto(proposals []*domain.Proposal) []*pb.Proposal {
 				Quantity:       item.Quantity,
 				UnitPriceCents: item.UnitPriceCents,
 				MatchedItemId:  item.MatchedItemID,
-				Confidence:     float32(item.Confidence),
+				Confidence:     item.Confidence,
 				CategoryId:     item.CategoryID,
 				IsNewCategory:  item.IsNewCategory,
 				UserChoice:     item.UserChoice,
@@ -258,6 +258,7 @@ func proposalsToProto(proposals []*domain.Proposal) []*pb.Proposal {
 		result[i] = &pb.Proposal{
 			ProposalId: p.ProposalID,
 			OwnerId:    p.OwnerID,
+			MerchantId: p.MerchantID,
 			Merchant:   p.Merchant,
 			Date:       uint64(p.Date),
 			PhotoUrl:   p.PhotoURL,
@@ -279,7 +280,7 @@ func proposalsFromProto(proposals []*pb.Proposal) []*domain.Proposal {
 				Quantity:       item.Quantity,
 				UnitPriceCents: item.UnitPriceCents,
 				MatchedItemID:  item.MatchedItemId,
-				Confidence:     float64(item.Confidence),
+				Confidence:     item.Confidence,
 				CategoryID:     item.CategoryId,
 				IsNewCategory:  item.IsNewCategory,
 				UserChoice:     item.UserChoice,
@@ -288,6 +289,7 @@ func proposalsFromProto(proposals []*pb.Proposal) []*domain.Proposal {
 		result[i] = &domain.Proposal{
 			ProposalID: p.ProposalId,
 			OwnerID:    p.OwnerId,
+			MerchantID: p.MerchantId,
 			Merchant:   p.Merchant,
 			Date:       int64(p.Date),
 			PhotoURL:   p.PhotoUrl,
