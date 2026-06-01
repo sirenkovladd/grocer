@@ -2,7 +2,7 @@
 FROM oven/bun:1 as client
 WORKDIR /app
 COPY client ./client
-COPY package.json bun.lock .
+COPY package.json bun.lock tsconfig.json .
 RUN bun install --frozen-lockfile
 RUN bun build --production --outdir=dist ./client/index.html
 
@@ -10,22 +10,19 @@ RUN bun build --production --outdir=dist ./client/index.html
 FROM golang:1.25.1 as server
 WORKDIR /app
 ENV CGO_ENABLED=0
-COPY assets.go go.mod go.sum .
-RUN --mount=type=cache,target=/go/pkg/mod go mod download
-COPY src src
-COPY server server
-COPY cli cli
-# RUN ls -la & sleep 12
+COPY go.mod go.sum .
+RUN go mod download
+COPY cmd cmd
+COPY internal internal
+COPY proto proto
 COPY --from=client /app/dist ./dist
 ARG GIT_COMMIT=unknown
 ARG BUILD_TIME=unknown
-ENV GOCACHE=/go-build-cache
-RUN --mount=type=cache,target=/go-build-cache go build -ldflags "-s -w -X 'main.GitCommit=$GIT_COMMIT' -X 'main.BuildTime=$BUILD_TIME'" -tags prod -o /app/app ./cli/server/server.go
+RUN go build -ldflags "-s -w -X 'main.GitCommit=$GIT_COMMIT' -X 'main.BuildTime=$BUILD_TIME'" -o /app/app ./cmd/server
 
 # Stage 3: Final image
 FROM gcr.io/distroless/static-debian12
 WORKDIR /app
-COPY ./server/migrations ./server/migrations
 COPY --from=server /app/app .
 EXPOSE 8080
 CMD ["./app"]
