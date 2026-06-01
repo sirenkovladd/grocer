@@ -1,7 +1,6 @@
 package api
 
 import (
-	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -10,10 +9,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
-	"sync"
 
 	"code.sirenko.ca/grocer/internal/store"
 	"golang.org/x/crypto/argon2"
@@ -119,35 +116,12 @@ func verifyPassword(password, encodedHash string) (bool, error) {
 	return subtle.ConstantTimeCompare(hash, otherHash) == 1, nil
 }
 
-// getSessionHMACKey returns the HMAC key for session tokens.
-// Uses environment variable or generates a stable random one on first use.
-var (
-	hmacKeyOnce sync.Once
-	hmacKey     []byte
-)
-
-func getSessionHMACKey() []byte {
-	hmacKeyOnce.Do(func() {
-		key := os.Getenv("SESSION_HMAC_KEY")
-		if key != "" {
-			hmacKey = []byte(key)
-			return
-		}
-		// Generate a stable random key (persists for the lifetime of the process)
-		// In production, you MUST set SESSION_HMAC_KEY
-		hmacKey = make([]byte, 32)
-		rand.Read(hmacKey)
-	})
-	return hmacKey
-}
-
-// hashSessionToken creates an HMAC-SHA256 hash of the session token.
-// This is fast and secure for session verification.
+// hashSessionToken creates a SHA-256 hash of the session token.
+// The token is already 32 bytes of cryptographic randomness,
+// so plain SHA-256 is sufficient for constant-time comparison.
 func hashSessionToken(token string) string {
-	key := getSessionHMACKey()
-	h := hmac.New(sha256.New, key)
-	h.Write([]byte(token))
-	return base64.RawStdEncoding.EncodeToString(h.Sum(nil))
+	h := sha256.Sum256([]byte(token))
+	return base64.RawStdEncoding.EncodeToString(h[:])
 }
 
 // verifySessionToken verifies a session token against its HMAC hash.
