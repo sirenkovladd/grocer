@@ -67,7 +67,8 @@ type kimiChatResponse struct {
 type kimiStreamDelta struct {
 	Choices []struct {
 		Delta struct {
-			Content string `json:"content"`
+			Content          string `json:"content"`
+			ReasoningContent string `json:"reasoning_content"`
 		} `json:"delta"`
 	} `json:"choices"`
 }
@@ -177,12 +178,10 @@ func (k *KimiProvider) ParseReceiptStream(ctx context.Context, photo []byte) (<-
 
 		scanner := bufio.NewScanner(resp.Body)
 		lineCount := 0
+		contentChunks := 0
 		for scanner.Scan() {
 			line := scanner.Text()
 			lineCount++
-			if lineCount%20 == 0 {
-				log.Printf("KIMI_STREAM: read %d lines", lineCount)
-			}
 			if !strings.HasPrefix(line, "data: ") {
 				continue
 			}
@@ -195,10 +194,18 @@ func (k *KimiProvider) ParseReceiptStream(ctx context.Context, photo []byte) (<-
 			if err := json.Unmarshal([]byte(data), &delta); err != nil {
 				continue
 			}
-			if len(delta.Choices) > 0 && delta.Choices[0].Delta.Content != "" {
-				ch <- StreamChunk{Text: delta.Choices[0].Delta.Content}
+			if len(delta.Choices) > 0 {
+				if delta.Choices[0].Delta.Content != "" {
+					contentChunks++
+					if contentChunks%5 == 1 {
+						log.Printf("KIMI_STREAM: content chunk %d (line %d), len=%d", contentChunks, lineCount, len(delta.Choices[0].Delta.Content))
+					}
+					ch <- StreamChunk{Text: delta.Choices[0].Delta.Content}
+				}
+				// Skip reasoning_content — don't send thinking to client
 			}
 		}
+		log.Printf("KIMI_STREAM: done, %d lines, %d content chunks", lineCount, contentChunks)
 		if err := scanner.Err(); err != nil {
 			ch <- StreamChunk{Error: err}
 		}

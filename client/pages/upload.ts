@@ -81,6 +81,7 @@ const UploadPage = () => {
         throw new Error(data.error || "Upload failed")
       }
 
+      console.log("[SSE] Starting stream upload...")
       const reader = response.body!.getReader()
       const decoder = new TextDecoder()
       let buffer = ""
@@ -90,6 +91,7 @@ const UploadPage = () => {
         if (done) break
 
         buffer += decoder.decode(value, { stream: true })
+        console.log("[SSE] Received chunk, buffer length:", buffer.length)
 
         // Parse SSE events from buffer
         const parts = buffer.split("\n\n")
@@ -106,6 +108,8 @@ const UploadPage = () => {
             }
           }
           if (!eventType || !dataStr) continue
+
+          console.log("[SSE] Event:", eventType, dataStr.slice(0, 200))
 
           try {
             const event: ParseEvent = JSON.parse(dataStr)
