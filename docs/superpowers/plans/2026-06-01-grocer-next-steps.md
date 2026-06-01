@@ -1,85 +1,244 @@
-# Grocer — Next Steps Roadmap
+# Grocer — Next Steps Implementation Plan
 
-## Current State
+## Phase 1: GCloud Persistence
 
-Core functionality is implemented:
-- ✅ Domain types, memdb store, ID generation
-- ✅ LLM interface with Kimi/Qwen providers
-- ✅ Receipt parsing with fuzzy item matching
-- ✅ HTTP API with all endpoints
-- ✅ Telegram + Discord bots
-- ✅ VanJS frontend with Chart.js
-- ✅ Server entry point with CLI
+### 1.1 Snapshot Storage
 
-## Gaps to Close
+**Files:** `internal/store/snapshot.go` (new), `internal/store/gcloud.go` (new)
 
-### Phase 1: Persistence & Storage
+Create `Snapshot` proto message (reuse existing types):
+```protobuf
+message Snapshot {
+  repeated User users = 1;
+  repeated Category categories = 2;
+  repeated Merchant merchants = 3;
+  repeated Item items = 4;
+  repeated Receipt receipts = 5;
+  repeated Proposal proposals = 6;
+}
+```
 
-| Task | Priority | Effort |
-|------|----------|--------|
-| GCloud snapshot pull on startup | Critical | 1h |
-| GCloud snapshot push on every write | Critical | 1h |
-| Photo upload to GCloud | High | 2h |
-| Photo serving with local cache | Medium | 1h |
+**Snapshot flow:**
+- `Serialize()` — collect all memdb tables → proto → gzip → bytes
+- `Deserialize()` — bytes → gunzip → proto → insert into memdb
 
-**Why:** Without snapshot persistence, all data is lost on restart. Photos need to be stored for receipt reference.
+**GCloud client:**
+- `Pull(ctx)` → download `snapshots/latest.pb.gz`
+- `Push(ctx, data)` → upload (overwrite)
 
-### Phase 2: Bot Integration Polish
+**Store integration:**
+- `NewStore()` → if GCS_BUCKET set, pull snapshot, populate memdb
+- After every write operation → push snapshot (async, don't block)
 
-| Task | Priority | Effort |
-|------|----------|--------|
-| Bot user ID → internal user mapping | High | 2h |
-| Bot proposal notification with deep link | Medium | 1h |
-| Bot error handling and retry | Medium | 1h |
+**Config:** GCS_BUCKET, GCS_PREFIX (default "snapshots/"), GCS_CREDENTIALS_FILE
 
-**Why:** Bots need to know which family member sent the receipt. Currently falls back to first user.
+### 1.2 Photo Storage
 
-### Phase 3: Analysis Enhancements
+**Files:** `internal/photo/gcloud.go` (new), `internal/photo/cache.go` (new)
 
-| Task | Priority | Effort |
-|------|----------|--------|
-| Date range filters on analysis page | High | 1h |
-| Per-member spending breakdown | High | 1h |
-| Item price tracking over time | Medium | 2h |
-| Merchant comparison view | Low | 2h |
-| Similar item comparison | Low | 3h |
+**GCloud store:**
+- `Save(receiptID, data)` → upload to `photos/{receiptID}.jpg`
+- `Get(url)` → download bytes
 
-**Why:** Core analysis features (spending trends, category breakdown) work. Bonus features need more UI.
+**Local cache (LRU):**
+- Check `./cache/photos/{hash}.jpg` first
+- If miss → download from GCloud → cache → return
+- Evict oldest when cache > 500MB
 
-### Phase 4: UX Polish
+**Receipt upload flow:**
+1. POST /api/receipts/upload → get photo bytes
+2. Save to GCloud → get URL
+3. Store URL in Receipt.PhotoURL
+4. Parse with LLM → create proposal
 
-| Task | Priority | Effort |
-|------|----------|--------|
-| Receipt upload page | High | 2h |
-| Proposal approval with item details | High | 2h |
-| Category drag-and-drop reorder | Medium | 2h |
-| Item edit with alias management | Medium | 1h |
-| Mobile responsive layout | Medium | 2h |
+---
 
-**Why:** Core flows work but need polish for daily use.
+## Phase 2: Bot User Mapping
 
-### Phase 5: Production Readiness
+### 2.1 User Identity
 
-| Task | Priority | Effort |
-|------|----------|--------|
-| Docker Compose with env vars | High | 1h |
-| Health check endpoint | Medium | 30m |
-| Request logging | Medium | 1h |
-| Error rate monitoring | Low | 1h |
-| Backup/restore CLI commands | Low | 2h |
+**Files:** `internal/store/memdb.go` (add BotUser table), `internal/bot/telegram.go`, `internal/bot/discord.go`
 
-**Why:** Need to deploy and run reliably.
+Add to memdb schema:
+```go
+"bot_users": {
+    Name: "bot_users",
+    Indexes: map[string]*memdb.IndexSchema{
+        "id": {Name: "id", Unique: true, Indexer: &memdb.StringFieldIndex{Field: "ExternalID"}},
+    },
+},
+```
 
-## Recommended Order
+Type:
+```go
+type BotUser struct {
+    ExternalID string // "telegram:12345" or "discord:67890"
+    UserID     uint64 // internal user ID
+}
+```
 
-1. **Persistence** — Fix the critical gap (data loss on restart)
-2. **Bot user mapping** — Make bots usable for family
-3. **Receipt upload page** — Complete the web upload flow
-4. **Analysis date filters** — Make analysis useful
-5. **Production hardening** — Deploy and monitor
+**Flow:**
+1. User sends photo to bot
+2. Bot looks up BotUser by external ID
+3. If not found → reply "Unknown user. Register at web app first."
+4. If found → parse receipt with UserID
 
-## Decision Points
+### 2.2 Bot Registration
 
-- **GCloud vs local file for snapshots?** — GCloud for reliability, local for simplicity
-- **Photo storage strategy?** — GCloud primary, local cache for speed
-- **Bot user mapping approach?** — Config file vs database vs bot-specific registration
+Add CLI flag: `--link-bot --username dad --telegram 12345`
+
+Or web UI page: Settings → Link Telegram/Discord account
+
+---
+
+## Phase 3: Receipt Upload Page
+
+### 3.1 Upload UI
+
+**Files:** `client/pages/upload.ts` (new)
+
+Page with:
+- Drag-and-drop photo area
+- Camera capture button (mobile)
+- Preview before submit
+- Submit → POST /api/receipts/upload
+- Redirect to proposals page
+
+### 3.2 Proposal Approval Polish
+
+**Files:** `client/pages/proposals.ts` (update)
+
+Improve proposal view:
+- Show receipt photo alongside items
+- Highlight items needing review (yellow)
+- Show matched item name for "existing" choice
+- Batch approve (approve all confident, review rest)
+
+---
+
+## Phase 4: Analysis Enhancements
+
+### 4.1 Date Range Filters
+
+**Files:** `client/pages/analysis.ts` (update), `internal/api/analysis.go` (update)
+
+Add to analysis page:
+- Date range picker (from/to)
+- Quick selects: This week, This month, Last 3 months, This year
+- Pass ?from=&to= to all analysis endpoints
+
+### 4.2 Per-Member Breakdown
+
+**Files:** `client/pages/analysis.ts` (update)
+
+Add chart:
+- Bar chart showing spending per family member
+- Filter by date range
+- Click member → see their receipts
+
+### 4.3 Item Price Tracking
+
+**Files:** `client/pages/item-detail.ts` (new)
+
+Item detail page:
+- Price history line chart (from /api/analysis/items/{id})
+- List of receipts containing this item
+- Price trend (up/down/stable)
+
+### 4.4 Merchant Comparison
+
+**Files:** `client/pages/merchants.ts` (new), `internal/api/analysis.go` (update)
+
+New endpoint: GET /api/analysis/merchants?itemId=X
+- Returns: merchant name, last price, average price
+
+UI:
+- Select item → show prices across merchants
+- Highlight cheapest
+
+### 4.5 Similar Item Comparison
+
+**Files:** `internal/receipt/matcher.go` (update), `client/pages/items.ts` (update)
+
+Group items by normalized name:
+- Show all variants (2% Milk, Whole Milk 2%, etc.)
+- Price comparison across variants
+- Merge UI (combine variants into one item)
+
+---
+
+## Phase 5: Production Readiness
+
+### 5.1 Docker Compose
+
+**Files:** `deploy/docker-compose.yml` (update)
+
+```yaml
+services:
+  server:
+    build: .
+    ports: ["8080:8080"]
+    env_file: .env
+    volumes:
+      - ./cache:/app/cache
+```
+
+### 5.2 Health Check
+
+**Files:** `internal/api/router.go` (update)
+
+Add: GET /api/health → {"status": "ok", "version": "..."}
+
+### 5.3 Request Logging
+
+**Files:** `internal/api/middleware.go` (new)
+
+Middleware logging: method, path, status, duration
+
+### 5.4 Backup CLI
+
+**Files:** `cmd/backup/main.go` (new)
+
+Commands:
+- `backup export` → download snapshot, save locally
+- `backup import <file>` → upload local snapshot to GCloud
+
+---
+
+## Execution Order
+
+```
+1.1 Snapshot Storage ─────────────────┐
+                                       ├─→ 1.2 Photo Storage
+                                       │
+2.1 Bot User Mapping ─────────────────┤
+                                       │
+3.1 Upload Page ──────────────────────┤
+                                       │
+3.2 Proposal Polish ──────────────────┤
+                                       │
+4.1 Date Filters ─────────────────────┤
+                                       │
+4.2 Member Breakdown ─────────────────┤
+                                       │
+4.3 Price Tracking ───────────────────┤
+                                       │
+4.4 Merchant Comparison ──────────────┤
+                                       │
+4.5 Similar Items ────────────────────┤
+                                       │
+5.1 Docker Compose ───────────────────┘
+```
+
+Each task is independent after 1.1 (persistence). Can be done in any order.
+
+## Estimated Effort
+
+| Phase | Tasks | Hours |
+|-------|-------|-------|
+| 1. Persistence | 2 | 5 |
+| 2. Bot Mapping | 2 | 4 |
+| 3. Upload UI | 2 | 4 |
+| 4. Analysis | 5 | 10 |
+| 5. Production | 4 | 4 |
+| **Total** | **15** | **27** |
