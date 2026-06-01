@@ -1,6 +1,10 @@
 package api
 
 import (
+	"bytes"
+	"image"
+	"image/jpeg"
+	_ "image/png"
 	"io"
 	"log"
 	"net/http"
@@ -8,6 +12,7 @@ import (
 	"time"
 
 	"code.sirenko.ca/grocer/internal/domain"
+	"golang.org/x/image/draw"
 )
 
 func (r *Router) handleListReceipts(w http.ResponseWriter, req *http.Request) {
@@ -144,8 +149,11 @@ func (r *Router) handleUploadReceipt(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// Resize for LLM (faster parsing, smaller payload)
+	llmData := resizeImageForLLM(photoData)
+
 	// Parse receipt data without saving
-	proposal, err := r.parser.ParseReceiptData(req.Context(), photoData, userID)
+	proposal, err := r.parser.ParseReceiptData(req.Context(), llmData, userID)
 	if err != nil {
 		log.Printf("ERROR: receipt parse failed: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to parse receipt")
@@ -167,4 +175,40 @@ func (r *Router) handleUploadReceipt(w http.ResponseWriter, req *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, proposal)
+}
+
+const maxLLMImageDim = 2000
+
+// resizeImageForLLM resizes an image to max 1024px on the longest side
+// and re-encodes as JPEG at 80% quality. Returns original if smaller or on error.
+func resizeImageForLLM(data []byte) []byte {
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		log.Printf("WARNING: could not decode image for resize: %v", err)
+		return data
+	}
+
+	bounds := img.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+
+	if w <= maxLLMImageDim && h <= maxLLMImageDim {
+		return data
+	}
+
+	// Scale down preserving aspect ratio
+	ratio := float64(maxLLMImageDim) / float64(max(w, h))
+	newW := int(float64(w) * ratio)
+	newH := int(float64(h) * ratio)
+
+	dst := image.NewRGBA(image.Rect(0, 0, newW, newH))
+	draw.ApproxBiLinear.Scale(dst, dst.Bounds(), img, bounds, draw.Over, nil)
+
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: 80}); err != nil {
+		log.Printf("WARNING: could not encode resized image: %v", err)
+		return data
+	}
+
+	log.Printf("Resized image: %dx%d -> %dx%d (%d -> %d bytes)", w, h, newW, newH, len(data), buf.Len())
+	return buf.Bytes()
 }

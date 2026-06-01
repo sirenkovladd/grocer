@@ -22,7 +22,12 @@ func NewKimiProvider(apiKey, model string) *KimiProvider {
 
 type kimiChatRequest struct {
 	Model    string         `json:"model"`
+	Thinking kimiThinking  `json:"thinking"`
 	Messages []kimiMessage  `json:"messages"`
+}
+
+type kimiThinking struct {
+	Type string `json:"type"`
 }
 
 type kimiMessage struct {
@@ -58,7 +63,8 @@ func (k *KimiProvider) ParseReceipt(ctx context.Context, photo []byte) (*ParsedR
 	prompt := buildReceiptPrompt()
 
 	req := kimiChatRequest{
-		Model: k.model,
+		Model:    k.model,
+		Thinking: kimiThinking{Type: "disabled"},
 		Messages: []kimiMessage{
 			{
 				Role: "user",
