@@ -1,0 +1,61 @@
+[env]
+'_'.file = ".env"
+GIT_COMMIT = "{{exec(command='git rev-parse --short HEAD')}}"
+
+[settings]
+task_output = "interleave"
+
+[tasks.proto]
+sources = ["lib/database/grocer.proto"]
+outputs = ["lib/database/proto/*"]
+run = "protoc --go_out=lib/database/ lib/database/grocer.proto"
+
+[tasks.dump_schema]
+run = "pg_dump -s postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST:5432/$POSTGRES_DB > schema.sql"
+
+[tasks.build_client]
+run = [
+  "rm -rf dist",
+  "bun build --sourcemap=inline --outdir=dist ./client/index.html",
+]
+outputs = ["dist/*"]
+sources = ["client/*"]
+
+[tasks.build_client_prod]
+run = [
+  "rm -rf dist",
+  "bun build --outdir=dist --production ./client/index.html",
+]
+outputs = ["dist/*"]
+sources = ["client/*"]
+
+[tasks.start_server]
+env.KEY_FILE = "q.pem"
+env.CERT_FILE = "q.pem.pub"
+env.BUILD_TIME = "{{exec(command='date -u +%Y-%m-%dT%H:%M:%SZ')}}"
+env.FLAG = """
+-X 'main.GitCommit={{env.GIT_COMMIT}}' -X 'main.BuildTime={{env.BUILD_TIME}}'
+"""
+run = ["gow run -ldflags \"$FLAG\" ./cli/server"]
+sources = ["**/*.go"]
+
+[tasks.start_server_prod]
+env.BUILD_TIME = "{{exec(command='date -u +%Y-%m-%dT%H:%M:%SZ')}}"
+env.FLAG = """
+-X 'main.GitCommit={{env.GIT_COMMIT}}' -X 'main.BuildTime={{env.BUILD_TIME}}'
+"""
+run = ["go run -ldflags \"$FLAG\" -tags prod ./cli/server"]
+
+[tasks.build_server]
+env.GIT_COMMIT = "{{exec(command='git rev-parse --short HEAD')}}"
+env.BUILD_TIME = "{{exec(command='date -u +%Y-%m-%dT%H:%M:%SZ')}}"
+env.FLAG = """
+-s -w -X 'main.GitCommit={{env.GIT_COMMIT}}' -X 'main.BuildTime={{env.BUILD_TIME}}'
+"""
+run = ["go build -ldflags \"$FLAG\" -tags prod -o ./dist/server ./cli/server"]
+sources = ["**/*.go"]
+outputs = ["dist/server"]
+
+[tools]
+bun = "latest"
+go = "latest"
