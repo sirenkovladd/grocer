@@ -1,7 +1,7 @@
 import van from "vanjs-core"
 import { api, navigate } from "../main"
 
-const { div, h1, button, img, input, p, form, span, ul, li } = van.tags
+const { div, h1, button, img, input, p, span, ul, li } = van.tags
 
 interface ParsedItem {
   parsedName: string
@@ -142,7 +142,7 @@ const UploadPage = () => {
       h1("Upload Receipt"),
       button({ onclick: () => navigate("/receipts") }, "Back"),
     ),
-    form({ class: "upload-form", onsubmit: handleSubmit },
+    div({ class: "upload-form" },
       div({
         class: "dropzone",
         ondrop: handleDrop,
@@ -181,9 +181,10 @@ const UploadPage = () => {
         )
       },
       button({
-        type: "submit",
+        type: "button",
         disabled: uploading,
         class: "upload-btn",
+        onclick: handleSubmit,
       }, uploading.val ? "Parsing..." : "Upload & Parse"),
     ),
   )

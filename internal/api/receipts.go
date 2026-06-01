@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"code.sirenko.ca/grocer/internal/domain"
+	"code.sirenko.ca/grocer/internal/receipt"
 	"golang.org/x/image/draw"
 )
 
@@ -237,13 +238,11 @@ func (r *Router) handleUploadReceiptStream(w http.ResponseWriter, req *http.Requ
 		return
 	}
 
-	// Resize for LLM
-	llmData := resizeImageForLLM(photoData)
-
-	// Set SSE headers
+	// Set SSE headers BEFORE any writes
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Del("Content-Length")
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
@@ -256,9 +255,18 @@ func (r *Router) handleUploadReceiptStream(w http.ResponseWriter, req *http.Requ
 		flusher.Flush()
 	}
 
+	// Immediate feedback — don't wait for LLM
+	writeSSE("progress", receipt.ParseEvent{Type: "progress", Message: "Connecting to AI..."})
+
+	// Resize for LLM
+	llmData := resizeImageForLLM(photoData)
+
+	writeSSE("progress", receipt.ParseEvent{Type: "progress", Message: "Sending image to AI..."})
+
 	events, err := r.parser.ParseReceiptStream(req.Context(), llmData, userID)
 	if err != nil {
-		writeSSE("error", map[string]string{"message": err.Error()})
+		log.Printf("ERROR: stream parse init failed: %v", err)
+		writeSSE("error", receipt.ParseEvent{Type: "error", Message: err.Error()})
 		return
 	}
 
