@@ -6,22 +6,26 @@ import (
 	"net/http"
 	"strings"
 
+	"code.sirenko.ca/grocer/internal/photo"
 	"code.sirenko.ca/grocer/internal/receipt"
 	"code.sirenko.ca/grocer/internal/store"
 )
 
-
 type Router struct {
-	store  *store.Store
-	parser *receipt.Parser
-	mux    *http.ServeMux
+	store      *store.Store
+	parser     *receipt.Parser
+	photoStore photo.Store
+	photoCache *photo.LocalCache
+	mux        *http.ServeMux
 }
 
-func NewRouter(store *store.Store, parser *receipt.Parser) *Router {
+func NewRouter(store *store.Store, parser *receipt.Parser, photoStore photo.Store, photoCache *photo.LocalCache) *Router {
 	r := &Router{
-		store:  store,
-		parser: parser,
-		mux:    http.NewServeMux(),
+		store:      store,
+		parser:     parser,
+		photoStore: photoStore,
+		photoCache: photoCache,
+		mux:        http.NewServeMux(),
 	}
 
 	r.setupRoutes()
@@ -67,6 +71,9 @@ func (r *Router) setupRoutes() {
 	r.mux.HandleFunc("GET /api/analysis/categories", r.withAuth(r.handleAnalysisCategories))
 	r.mux.HandleFunc("GET /api/analysis/family", r.withAuth(r.handleAnalysisFamily))
 	r.mux.HandleFunc("GET /api/analysis/items/{id}", r.withAuth(r.handleAnalysisItem))
+
+	// Photos
+	r.mux.HandleFunc("GET /api/photos/{id}", r.withAuth(r.handleGetPhoto))
 }
 
 type contextKey string

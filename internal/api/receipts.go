@@ -114,16 +114,25 @@ func (r *Router) handleUploadReceipt(w http.ResponseWriter, req *http.Request) {
 	}
 	defer file.Close()
 
-	photo, err := io.ReadAll(file)
+	photoData, err := io.ReadAll(file)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to read file")
 		return
 	}
 
-	proposal, err := r.parser.ParseReceipt(req.Context(), photo, userID)
+	proposal, err := r.parser.ParseReceipt(req.Context(), photoData, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to parse receipt")
 		return
+	}
+
+	// Save photo if photo store is configured
+	if r.photoStore != nil {
+		photoURL, err := r.photoStore.Save(req.Context(), proposal.ProposalID, photoData)
+		if err == nil {
+			proposal.PhotoURL = photoURL
+			r.store.UpdateProposal(proposal)
+		}
 	}
 
 	writeJSON(w, http.StatusOK, proposal)

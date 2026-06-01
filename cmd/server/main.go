@@ -16,9 +16,12 @@ import (
 	"code.sirenko.ca/grocer/internal/bot"
 	"code.sirenko.ca/grocer/internal/domain"
 	"code.sirenko.ca/grocer/internal/llm"
+	"code.sirenko.ca/grocer/internal/photo"
 	"code.sirenko.ca/grocer/internal/receipt"
 	"code.sirenko.ca/grocer/internal/store"
+	"cloud.google.com/go/storage"
 	"golang.org/x/crypto/argon2"
+	"google.golang.org/api/option"
 )
 
 func main() {
@@ -153,8 +156,31 @@ func main() {
 	// Initialize receipt parser
 	parser := receipt.NewParser(s, provider)
 
+	// Initialize photo store
+	var photoStore photo.Store
+	var photoCache *photo.LocalCache
+
+	if gcsBucket != "" {
+		var opts []option.ClientOption
+		if gcsCredsFile != "" {
+			opts = append(opts, option.WithCredentialsFile(gcsCredsFile))
+		}
+		pClient, err := storage.NewClient(ctx, opts...)
+		if err != nil {
+			log.Printf("Warning: Failed to create photo storage client: %v", err)
+		} else {
+			photoStore = photo.NewGCloudStore(pClient, gcsBucket, "photos/")
+		}
+	}
+
+	photoCacheDir := os.Getenv("PHOTO_CACHE_DIR")
+	if photoCacheDir == "" {
+		photoCacheDir = "./cache/photos"
+	}
+	photoCache = photo.NewLocalCache(photoCacheDir, 500)
+
 	// Initialize router
-	router := api.NewRouter(s, parser)
+	router := api.NewRouter(s, parser, photoStore, photoCache)
 
 	// Initialize bots
 	telegramToken := os.Getenv("TELEGRAM_BOT_TOKEN")
