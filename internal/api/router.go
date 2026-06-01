@@ -38,6 +38,16 @@ func NewRouter(store *store.Store, parser *receipt.Parser, photoStore photo.Stor
 }
 
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	// Handle CORS preflight requests at the top level
+	if req.Method == "OPTIONS" && strings.HasPrefix(req.URL.Path, "/api/") {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Max-Age", "86400")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	
 	r.mux.ServeHTTP(w, req)
 }
 

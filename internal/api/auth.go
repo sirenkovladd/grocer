@@ -13,6 +13,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"code.sirenko.ca/grocer/internal/store"
 	"golang.org/x/crypto/argon2"
@@ -119,17 +120,25 @@ func verifyPassword(password, encodedHash string) (bool, error) {
 }
 
 // getSessionHMACKey returns the HMAC key for session tokens.
-// Uses environment variable or generates a random one on first use.
+// Uses environment variable or generates a stable random one on first use.
+var (
+	hmacKeyOnce sync.Once
+	hmacKey     []byte
+)
+
 func getSessionHMACKey() []byte {
-	key := os.Getenv("SESSION_HMAC_KEY")
-	if key != "" {
-		return []byte(key)
-	}
-	// Fallback: use a random key (will not persist across restarts)
-	// In production, you MUST set SESSION_HMAC_KEY
-	randomKey := make([]byte, 32)
-	rand.Read(randomKey)
-	return randomKey
+	hmacKeyOnce.Do(func() {
+		key := os.Getenv("SESSION_HMAC_KEY")
+		if key != "" {
+			hmacKey = []byte(key)
+			return
+		}
+		// Generate a stable random key (persists for the lifetime of the process)
+		// In production, you MUST set SESSION_HMAC_KEY
+		hmacKey = make([]byte, 32)
+		rand.Read(hmacKey)
+	})
+	return hmacKey
 }
 
 // hashSessionToken creates an HMAC-SHA256 hash of the session token.

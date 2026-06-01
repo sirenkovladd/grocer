@@ -2,13 +2,17 @@ package api
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"code.sirenko.ca/grocer/internal/domain"
 	"code.sirenko.ca/grocer/internal/store"
+	"golang.org/x/crypto/argon2"
 )
 
 func setupTestRouter(t *testing.T) (*Router, *store.Store) {
@@ -240,13 +244,21 @@ func TestAuthorizedAccess(t *testing.T) {
 // Helper functions
 
 func hashPasswordForTest(password string) string {
-	// Use HMAC for testing (simple and fast)
-	return hashSessionToken(password)
+	// Use argon2 for testing (same as production)
+	salt := []byte("testsalt12345678")
+	hash := argon2.IDKey([]byte(password), salt, 1, 64*1024, 4, 32)
+	
+	saltB64 := base64.RawStdEncoding.EncodeToString(salt)
+	hashB64 := base64.RawStdEncoding.EncodeToString(hash)
+	
+	return fmt.Sprintf("$argon2id$v=19$m=65536,t=1,p=4$%s$%s", saltB64, hashB64)
 }
 
 func createTestSession(t *testing.T, s *store.Store, userID uint64) string {
 	sessionID := s.SessionID.Gen()
-	tokenStr := "test-token-12345"
+	tokenBytes := make([]byte, 32)
+	rand.Read(tokenBytes)
+	tokenStr := base64.RawStdEncoding.EncodeToString(tokenBytes)
 	tokenHash := hashSessionToken(tokenStr)
 
 	session := &store.Session{
@@ -259,9 +271,5 @@ func createTestSession(t *testing.T, s *store.Store, userID uint64) string {
 		t.Fatalf("Failed to create session: %v", err)
 	}
 
-	return formatTokenString(sessionID, tokenStr)
-}
-
-func formatTokenString(sessionID uint64, token string) string {
-	return string(rune(sessionID)) + ":" + token
+	return fmt.Sprintf("%d:%s", sessionID, tokenStr)
 }

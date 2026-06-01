@@ -99,11 +99,6 @@ func NewStore() (*Store, error) {
 						Unique:  true,
 						Indexer: &memdb.UintFieldIndex{Field: "CategoryID"},
 					},
-					"parent_id": {
-						Name:    "parent_id",
-						Unique:  false,
-						Indexer: &memdb.UintFieldIndex{Field: "ParentID"},
-					},
 				},
 			},
 			"merchants": {
