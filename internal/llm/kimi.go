@@ -1,9 +1,14 @@
 package llm
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 
 	"code.sirenko.ca/grocer/internal/domain"
 )
@@ -21,9 +26,10 @@ func NewKimiProvider(apiKey, model string) *KimiProvider {
 }
 
 type kimiChatRequest struct {
-	Model    string         `json:"model"`
+	Model    string        `json:"model"`
+	Stream   bool          `json:"stream,omitempty"`
 	Thinking kimiThinking  `json:"thinking"`
-	Messages []kimiMessage  `json:"messages"`
+	Messages []kimiMessage `json:"messages"`
 }
 
 type kimiThinking struct {
@@ -54,6 +60,14 @@ type kimiChatResponse struct {
 		Message struct {
 			Content string `json:"content"`
 		} `json:"message"`
+	} `json:"choices"`
+}
+
+type kimiStreamDelta struct {
+	Choices []struct {
+		Delta struct {
+			Content string `json:"content"`
+		} `json:"delta"`
 	} `json:"choices"`
 }
 
@@ -98,7 +112,90 @@ func (k *KimiProvider) ParseReceipt(ctx context.Context, photo []byte) (*ParsedR
 		return nil, fmt.Errorf("no response from kimi")
 	}
 
-	return parseReceiptResponse(chatResp.Choices[0].Message.Content)
+	return ParseReceiptResponse(chatResp.Choices[0].Message.Content)
+}
+
+// ParseReceiptStream starts a streaming receipt parse and returns a channel of text chunks.
+func (k *KimiProvider) ParseReceiptStream(ctx context.Context, photo []byte) (<-chan StreamChunk, error) {
+	b64 := encodeImageToBase64(photo)
+	prompt := buildReceiptPrompt()
+
+	req := kimiChatRequest{
+		Model:  k.model,
+		Stream: true,
+		Thinking: kimiThinking{Type: "enabled"},
+		Messages: []kimiMessage{
+			{
+				Role: "user",
+				Content: []any{
+					kimiImageContent{
+						Type: "image_url",
+						ImageURL: kimiImageURL{
+							URL: "data:image/jpeg;base64," + b64,
+						},
+					},
+					kimiTextContent{
+						Type: "text",
+						Text: prompt,
+					},
+				},
+			},
+		},
+	}
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", k.baseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+k.apiKey)
+
+	resp, err := k.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("do request: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		errBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API error: %d %s", resp.StatusCode, string(errBody))
+	}
+
+	ch := make(chan StreamChunk, 64)
+	go func() {
+		defer resp.Body.Close()
+		defer close(ch)
+
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			data := strings.TrimPrefix(line, "data: ")
+			if data == "[DONE]" {
+				return
+			}
+
+			var delta kimiStreamDelta
+			if err := json.Unmarshal([]byte(data), &delta); err != nil {
+				continue
+			}
+			if len(delta.Choices) > 0 && delta.Choices[0].Delta.Content != "" {
+				ch <- StreamChunk{Text: delta.Choices[0].Delta.Content}
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			ch <- StreamChunk{Error: err}
+		}
+	}()
+
+	return ch, nil
 }
 
 // CategorizeItem categorizes an item using Kimi API

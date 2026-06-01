@@ -2,6 +2,8 @@ package api
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"image"
 	"image/jpeg"
 	_ "image/png"
@@ -211,4 +213,62 @@ func resizeImageForLLM(data []byte) []byte {
 
 	log.Printf("Resized image: %dx%d -> %dx%d (%d -> %d bytes)", w, h, newW, newH, len(data), buf.Len())
 	return buf.Bytes()
+}
+
+// handleUploadReceiptStream handles receipt upload with SSE streaming progress.
+func (r *Router) handleUploadReceiptStream(w http.ResponseWriter, req *http.Request) {
+	userID := r.getUserID(req)
+
+	if err := req.ParseMultipartForm(10 << 20); err != nil {
+		handleSSEError(w, "file too large")
+		return
+	}
+
+	file, _, err := req.FormFile("photo")
+	if err != nil {
+		handleSSEError(w, "missing photo")
+		return
+	}
+	defer file.Close()
+
+	photoData, err := io.ReadAll(file)
+	if err != nil {
+		handleSSEError(w, "failed to read file")
+		return
+	}
+
+	// Resize for LLM
+	llmData := resizeImageForLLM(photoData)
+
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	writeSSE := func(event string, data interface{}) {
+		jsonData, _ := json.Marshal(data)
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, jsonData)
+		flusher.Flush()
+	}
+
+	events, err := r.parser.ParseReceiptStream(req.Context(), llmData, userID)
+	if err != nil {
+		writeSSE("error", map[string]string{"message": err.Error()})
+		return
+	}
+
+	for event := range events {
+		writeSSE(event.Type, event)
+	}
+}
+
+func handleSSEError(w http.ResponseWriter, msg string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	fmt.Fprintf(w, "event: error\ndata: {\"message\":\"%s\"}\n\n", msg)
 }

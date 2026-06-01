@@ -105,7 +105,12 @@ func (q *QwenProvider) ParseReceipt(ctx context.Context, photo []byte) (*ParsedR
 		}
 	}
 
-	return parseReceiptResponse(text)
+	return ParseReceiptResponse(text)
+}
+
+// ParseReceiptStream is not implemented for Qwen; falls back to non-streaming.
+func (q *QwenProvider) ParseReceiptStream(ctx context.Context, photo []byte) (<-chan StreamChunk, error) {
+	return nil, fmt.Errorf("streaming not supported for qwen provider")
 }
 
 // CategorizeItem categorizes an item using Qwen API

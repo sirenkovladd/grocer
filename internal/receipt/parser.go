@@ -2,6 +2,7 @@ package receipt
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -82,6 +83,138 @@ func (p *Parser) ParseReceiptData(ctx context.Context, photo []byte, ownerID uin
 	}
 
 	return proposal, nil
+}
+
+// ParseEvent is sent during streaming parse.
+type ParseEvent struct {
+	Type     string             `json:"type"` // "progress", "item", "done", "error"
+	Message  string             `json:"message,omitempty"`
+	Item     *domain.ProposalItem `json:"item,omitempty"`
+	Index    int                `json:"index,omitempty"`
+	Proposal *domain.Proposal   `json:"proposal,omitempty"`
+}
+
+// ParseReceiptStream parses receipt from photo, emitting events as items are recognized.
+// Events are sent to the returned channel. Caller must consume all events.
+func (p *Parser) ParseReceiptStream(ctx context.Context, photo []byte, ownerID uint64) (<-chan ParseEvent, error) {
+	streamCh, err := p.llm.ParseReceiptStream(ctx, photo)
+	if err != nil {
+		return nil, fmt.Errorf("llm.ParseReceiptStream: %w", err)
+	}
+
+	events := make(chan ParseEvent, 32)
+
+	go func() {
+		defer close(events)
+
+		events <- ParseEvent{Type: "progress", Message: "Parsing receipt with AI..."}
+
+		var accumulated string
+		var lastItemCount int
+
+		for chunk := range streamCh {
+			if chunk.Error != nil {
+				events <- ParseEvent{Type: "error", Message: chunk.Error.Error()}
+				return
+			}
+			accumulated += chunk.Text
+
+			// Try to parse accumulated JSON to detect new items
+			var partial struct {
+				Merchant string `json:"merchant"`
+				Items    []struct {
+					Name       string  `json:"name"`
+					Quantity   uint32  `json:"quantity"`
+					UnitPrice  float64 `json:"unit_price"`
+					TotalPrice float64 `json:"total_price"`
+				} `json:"items"`
+			}
+			if err := json.Unmarshal([]byte(accumulated), &partial); err == nil && len(partial.Items) > lastItemCount {
+				for i := lastItemCount; i < len(partial.Items); i++ {
+					it := partial.Items[i]
+					events <- ParseEvent{
+						Type:  "item",
+						Index: i,
+						Item: &domain.ProposalItem{
+							ParsedName:     it.Name,
+							Quantity:       it.Quantity,
+							UnitPriceCents: dollarsToCents(it.UnitPrice),
+						},
+					}
+				}
+				lastItemCount = len(partial.Items)
+				events <- ParseEvent{Type: "progress", Message: fmt.Sprintf("Found %d items...", lastItemCount)}
+			}
+		}
+
+		// Final parse with full matching & categorization
+		parsed, err := llm.ParseReceiptResponse(accumulated)
+		if err != nil {
+			events <- ParseEvent{Type: "error", Message: fmt.Sprintf("parse response: %v", err)}
+			return
+		}
+
+		events <- ParseEvent{Type: "progress", Message: "Matching items to catalog..."}
+
+		merchant, err := p.findOrCreateMerchant(parsed.Merchant)
+		if err != nil {
+			events <- ParseEvent{Type: "error", Message: fmt.Sprintf("merchant: %v", err)}
+			return
+		}
+
+		proposalItems := make([]domain.ProposalItem, len(parsed.Items))
+		for i, item := range parsed.Items {
+			matched, confidence, err := p.matcher.FindMatch(item.Name)
+			if err != nil {
+				events <- ParseEvent{Type: "error", Message: fmt.Sprintf("match: %v", err)}
+				return
+			}
+
+			pi := domain.ProposalItem{
+				ParsedName:     item.Name,
+				Quantity:       item.Quantity,
+				UnitPriceCents: dollarsToCents(item.UnitPrice),
+				Confidence:     confidence,
+			}
+
+			if matched != nil && confidence >= 0.99 {
+				pi.MatchedItemID = matched.ItemID
+				pi.CategoryID = matched.CategoryID
+				pi.UserChoice = "existing"
+			} else if matched != nil && confidence > 0.80 {
+				pi.MatchedItemID = matched.ItemID
+				pi.CategoryID = matched.CategoryID
+			} else {
+				cat, err := p.categorizeItem(ctx, item.Name)
+				if err == nil {
+					pi.CategoryID = cat.CategoryID
+					pi.IsNewCategory = cat.IsNew
+				}
+			}
+
+			proposalItems[i] = pi
+		}
+
+		proposal := &domain.Proposal{
+			ProposalID: p.store.ProposalID.Gen(),
+			OwnerID:    ownerID,
+			MerchantID: merchant.MerchantID,
+			Merchant:   merchant.Name,
+			Date:       parsed.Date.Unix(),
+			Items:      proposalItems,
+			TotalCents: dollarsToCents(parsed.Total),
+			Status:     "pending",
+		}
+
+		if err := p.store.CreateProposal(proposal); err != nil {
+			events <- ParseEvent{Type: "error", Message: fmt.Sprintf("save proposal: %v", err)}
+			return
+		}
+
+		events <- ParseEvent{Type: "done", Proposal: proposal}
+	}()
+
+	return events, nil
 }
 
 func (p *Parser) ParseReceipt(ctx context.Context, photo []byte, ownerID uint64) (*domain.Proposal, error) {

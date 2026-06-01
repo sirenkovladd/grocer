@@ -9,7 +9,14 @@ import (
 
 type Provider interface {
 	ParseReceipt(ctx context.Context, photo []byte) (*ParsedReceipt, error)
+	ParseReceiptStream(ctx context.Context, photo []byte) (<-chan StreamChunk, error)
 	CategorizeItem(ctx context.Context, itemName string, existingCategories []domain.Category) (*Categorization, error)
+}
+
+// StreamChunk is a single chunk from a streaming LLM response.
+type StreamChunk struct {
+	Text  string
+	Error error
 }
 
 type ParsedReceipt struct {

@@ -71,8 +71,8 @@ func encodeImageToBase64(photo []byte) string {
 	return base64.StdEncoding.EncodeToString(photo)
 }
 
-// parseReceiptResponse parses a receipt response from JSON
-func parseReceiptResponse(content string) (*ParsedReceipt, error) {
+// ParseReceiptResponse parses a receipt response from JSON
+func ParseReceiptResponse(content string) (*ParsedReceipt, error) {
 	content = trimMarkdownCodeBlock(content)
 
 	var parsed struct {

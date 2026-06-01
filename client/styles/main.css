@@ -323,6 +323,61 @@ th {
   font-size: 1rem;
 }
 
+.upload-status {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  padding: 0.5rem 0;
+}
+
+.streaming-items {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.streaming-items ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.streaming-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  font-size: 0.9rem;
+  animation: fadeIn 0.2s ease-in;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.streaming-item .item-name {
+  flex: 1;
+  color: var(--text-primary);
+}
+
+.streaming-item .item-qty {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.streaming-item .item-price {
+  color: var(--accent);
+  font-weight: 500;
+}
+
 /* Proposal Detail Page */
 .proposal-detail-page {
   max-width: 1200px;

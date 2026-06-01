@@ -62,6 +62,7 @@ func (r *Router) setupRoutes() {
 	r.mux.HandleFunc("GET /api/receipts", r.withCORS(r.withAuth(r.withAuditLogging("list", "receipts", r.handleListReceipts))))
 	r.mux.HandleFunc("GET /api/receipts/{id}", r.withCORS(r.withAuth(r.withAuditLogging("read", "receipt", r.handleGetReceipt))))
 	r.mux.HandleFunc("POST /api/receipts/upload", r.withCORS(r.withAuth(r.withAuditLogging("upload", "receipt", r.handleUploadReceipt))))
+	r.mux.HandleFunc("POST /api/receipts/upload/stream", r.withCORS(r.withAuth(r.withAuditLogging("upload_stream", "receipt", r.handleUploadReceiptStream))))
 
 	// Proposals
 	r.mux.HandleFunc("GET /api/proposals", r.withCORS(r.withAuth(r.withAuditLogging("list", "proposals", r.handleListProposals))))
