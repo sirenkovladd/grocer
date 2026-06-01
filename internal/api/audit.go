@@ -90,6 +90,13 @@ func (w *auditResponseWriter) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 }
 
+// Flush implements http.Flusher so SSE streaming works through audit middleware.
+func (w *auditResponseWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // logAuditEvent logs a specific audit event (can be called from handlers)
 func logAuditEvent(userID uint64, action, resource, resourceID, ip string, success bool, message string) {
 	if !globalAuditLogger.enabled {
