@@ -28,7 +28,7 @@ func NewBaseProvider(apiKey, model, baseURL string) *BaseProvider {
 		model:   model,
 		baseURL: baseURL,
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 120 * time.Second,
 		},
 	}
 }

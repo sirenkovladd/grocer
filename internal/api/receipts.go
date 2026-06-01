@@ -2,6 +2,7 @@ package api
 
 import (
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -146,6 +147,7 @@ func (r *Router) handleUploadReceipt(w http.ResponseWriter, req *http.Request) {
 	// Parse receipt data without saving
 	proposal, err := r.parser.ParseReceiptData(req.Context(), photoData, userID)
 	if err != nil {
+		log.Printf("ERROR: receipt parse failed: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to parse receipt")
 		return
 	}
