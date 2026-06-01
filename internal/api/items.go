@@ -58,12 +58,20 @@ func (r *Router) handleUpdateItem(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if reqBody.Name != nil {
+		if err := validateItemName(*reqBody.Name); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		item.Name = *reqBody.Name
 	}
 	if reqBody.CategoryID != nil {
 		item.CategoryID = *reqBody.CategoryID
 	}
 	if reqBody.Aliases != nil {
+		if err := validateAliases(reqBody.Aliases); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		item.Aliases = reqBody.Aliases
 	}
 

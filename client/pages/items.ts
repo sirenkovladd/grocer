@@ -33,24 +33,28 @@ const ItemsPage = () => {
     div({ class: "page-header" },
       h1("Items"),
     ),
-    table(
-      tr(
-        th("Name"),
-        th("Category"),
-        th("Aliases"),
-        th("Actions"),
-      ),
-      ...items.val.map(item =>
-        tr(
-          td(item.name),
-          td(item.categoryId.toString()),
-          td(item.aliases.join(", ")),
-          td(
-            button({ onclick: () => navigate(`/items/${item.itemId}`) }, "View"),
+    () => loading.val
+      ? div("Loading...")
+      : items.val.length === 0
+        ? div("No items yet")
+        : table(
+          tr(
+            th("Name"),
+            th("Category"),
+            th("Aliases"),
+            th("Actions"),
           ),
-        )
-      ),
-    ),
+          ...items.val.map(item =>
+            tr(
+              td(item.name),
+              td(item.categoryId.toString()),
+              td(item.aliases.join(", ")),
+              td(
+                button({ onclick: () => navigate(`/items/${item.itemId}`) }, "View"),
+              ),
+            )
+          ),
+        ),
   )
 }
 

@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v7.35.0
-// source: grocer.proto
+// source: proto/grocer.proto
 
 package out_proto
 
@@ -33,7 +33,7 @@ type User struct {
 
 func (x *User) Reset() {
 	*x = User{}
-	mi := &file_grocer_proto_msgTypes[0]
+	mi := &file_proto_grocer_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -45,7 +45,7 @@ func (x *User) String() string {
 func (*User) ProtoMessage() {}
 
 func (x *User) ProtoReflect() protoreflect.Message {
-	mi := &file_grocer_proto_msgTypes[0]
+	mi := &file_proto_grocer_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -58,7 +58,7 @@ func (x *User) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use User.ProtoReflect.Descriptor instead.
 func (*User) Descriptor() ([]byte, []int) {
-	return file_grocer_proto_rawDescGZIP(), []int{0}
+	return file_proto_grocer_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *User) GetUserId() uint64 {
@@ -101,7 +101,7 @@ type Category struct {
 
 func (x *Category) Reset() {
 	*x = Category{}
-	mi := &file_grocer_proto_msgTypes[1]
+	mi := &file_proto_grocer_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -113,7 +113,7 @@ func (x *Category) String() string {
 func (*Category) ProtoMessage() {}
 
 func (x *Category) ProtoReflect() protoreflect.Message {
-	mi := &file_grocer_proto_msgTypes[1]
+	mi := &file_proto_grocer_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -126,7 +126,7 @@ func (x *Category) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Category.ProtoReflect.Descriptor instead.
 func (*Category) Descriptor() ([]byte, []int) {
-	return file_grocer_proto_rawDescGZIP(), []int{1}
+	return file_proto_grocer_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *Category) GetCategoryId() uint64 {
@@ -167,7 +167,7 @@ type Merchant struct {
 
 func (x *Merchant) Reset() {
 	*x = Merchant{}
-	mi := &file_grocer_proto_msgTypes[2]
+	mi := &file_proto_grocer_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -179,7 +179,7 @@ func (x *Merchant) String() string {
 func (*Merchant) ProtoMessage() {}
 
 func (x *Merchant) ProtoReflect() protoreflect.Message {
-	mi := &file_grocer_proto_msgTypes[2]
+	mi := &file_proto_grocer_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -192,7 +192,7 @@ func (x *Merchant) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Merchant.ProtoReflect.Descriptor instead.
 func (*Merchant) Descriptor() ([]byte, []int) {
-	return file_grocer_proto_rawDescGZIP(), []int{2}
+	return file_proto_grocer_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Merchant) GetMerchantId() uint64 {
@@ -223,7 +223,7 @@ type Item struct {
 
 func (x *Item) Reset() {
 	*x = Item{}
-	mi := &file_grocer_proto_msgTypes[3]
+	mi := &file_proto_grocer_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -235,7 +235,7 @@ func (x *Item) String() string {
 func (*Item) ProtoMessage() {}
 
 func (x *Item) ProtoReflect() protoreflect.Message {
-	mi := &file_grocer_proto_msgTypes[3]
+	mi := &file_proto_grocer_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -248,7 +248,7 @@ func (x *Item) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Item.ProtoReflect.Descriptor instead.
 func (*Item) Descriptor() ([]byte, []int) {
-	return file_grocer_proto_rawDescGZIP(), []int{3}
+	return file_proto_grocer_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Item) GetItemId() uint64 {
@@ -308,7 +308,7 @@ type Receipt struct {
 
 func (x *Receipt) Reset() {
 	*x = Receipt{}
-	mi := &file_grocer_proto_msgTypes[4]
+	mi := &file_proto_grocer_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -320,7 +320,7 @@ func (x *Receipt) String() string {
 func (*Receipt) ProtoMessage() {}
 
 func (x *Receipt) ProtoReflect() protoreflect.Message {
-	mi := &file_grocer_proto_msgTypes[4]
+	mi := &file_proto_grocer_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -333,7 +333,7 @@ func (x *Receipt) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Receipt.ProtoReflect.Descriptor instead.
 func (*Receipt) Descriptor() ([]byte, []int) {
-	return file_grocer_proto_rawDescGZIP(), []int{4}
+	return file_proto_grocer_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Receipt) GetReceiptId() uint64 {
@@ -396,7 +396,7 @@ type ReceiptItem struct {
 
 func (x *ReceiptItem) Reset() {
 	*x = ReceiptItem{}
-	mi := &file_grocer_proto_msgTypes[5]
+	mi := &file_proto_grocer_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -408,7 +408,7 @@ func (x *ReceiptItem) String() string {
 func (*ReceiptItem) ProtoMessage() {}
 
 func (x *ReceiptItem) ProtoReflect() protoreflect.Message {
-	mi := &file_grocer_proto_msgTypes[5]
+	mi := &file_proto_grocer_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -421,7 +421,7 @@ func (x *ReceiptItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReceiptItem.ProtoReflect.Descriptor instead.
 func (*ReceiptItem) Descriptor() ([]byte, []int) {
-	return file_grocer_proto_rawDescGZIP(), []int{5}
+	return file_proto_grocer_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ReceiptItem) GetItemId() uint64 {
@@ -461,7 +461,7 @@ type Proposal struct {
 
 func (x *Proposal) Reset() {
 	*x = Proposal{}
-	mi := &file_grocer_proto_msgTypes[6]
+	mi := &file_proto_grocer_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -473,7 +473,7 @@ func (x *Proposal) String() string {
 func (*Proposal) ProtoMessage() {}
 
 func (x *Proposal) ProtoReflect() protoreflect.Message {
-	mi := &file_grocer_proto_msgTypes[6]
+	mi := &file_proto_grocer_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -486,7 +486,7 @@ func (x *Proposal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Proposal.ProtoReflect.Descriptor instead.
 func (*Proposal) Descriptor() ([]byte, []int) {
-	return file_grocer_proto_rawDescGZIP(), []int{6}
+	return file_proto_grocer_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Proposal) GetProposalId() uint64 {
@@ -561,7 +561,7 @@ type ProposalItem struct {
 
 func (x *ProposalItem) Reset() {
 	*x = ProposalItem{}
-	mi := &file_grocer_proto_msgTypes[7]
+	mi := &file_proto_grocer_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -573,7 +573,7 @@ func (x *ProposalItem) String() string {
 func (*ProposalItem) ProtoMessage() {}
 
 func (x *ProposalItem) ProtoReflect() protoreflect.Message {
-	mi := &file_grocer_proto_msgTypes[7]
+	mi := &file_proto_grocer_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -586,7 +586,7 @@ func (x *ProposalItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProposalItem.ProtoReflect.Descriptor instead.
 func (*ProposalItem) Descriptor() ([]byte, []int) {
-	return file_grocer_proto_rawDescGZIP(), []int{7}
+	return file_proto_grocer_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ProposalItem) GetParsedName() string {
@@ -661,7 +661,7 @@ type Snapshot struct {
 
 func (x *Snapshot) Reset() {
 	*x = Snapshot{}
-	mi := &file_grocer_proto_msgTypes[8]
+	mi := &file_proto_grocer_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -673,7 +673,7 @@ func (x *Snapshot) String() string {
 func (*Snapshot) ProtoMessage() {}
 
 func (x *Snapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_grocer_proto_msgTypes[8]
+	mi := &file_proto_grocer_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -686,7 +686,7 @@ func (x *Snapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Snapshot.ProtoReflect.Descriptor instead.
 func (*Snapshot) Descriptor() ([]byte, []int) {
-	return file_grocer_proto_rawDescGZIP(), []int{8}
+	return file_proto_grocer_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *Snapshot) GetUsers() []*User {
@@ -756,7 +756,7 @@ type Session struct {
 
 func (x *Session) Reset() {
 	*x = Session{}
-	mi := &file_grocer_proto_msgTypes[9]
+	mi := &file_proto_grocer_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -768,7 +768,7 @@ func (x *Session) String() string {
 func (*Session) ProtoMessage() {}
 
 func (x *Session) ProtoReflect() protoreflect.Message {
-	mi := &file_grocer_proto_msgTypes[9]
+	mi := &file_proto_grocer_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -781,7 +781,7 @@ func (x *Session) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Session.ProtoReflect.Descriptor instead.
 func (*Session) Descriptor() ([]byte, []int) {
-	return file_grocer_proto_rawDescGZIP(), []int{9}
+	return file_proto_grocer_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Session) GetSessionId() uint64 {
@@ -815,7 +815,7 @@ type BotUser struct {
 
 func (x *BotUser) Reset() {
 	*x = BotUser{}
-	mi := &file_grocer_proto_msgTypes[10]
+	mi := &file_proto_grocer_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -827,7 +827,7 @@ func (x *BotUser) String() string {
 func (*BotUser) ProtoMessage() {}
 
 func (x *BotUser) ProtoReflect() protoreflect.Message {
-	mi := &file_grocer_proto_msgTypes[10]
+	mi := &file_proto_grocer_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -840,7 +840,7 @@ func (x *BotUser) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BotUser.ProtoReflect.Descriptor instead.
 func (*BotUser) Descriptor() ([]byte, []int) {
-	return file_grocer_proto_rawDescGZIP(), []int{10}
+	return file_proto_grocer_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *BotUser) GetExternalId() string {
@@ -857,11 +857,11 @@ func (x *BotUser) GetUserId() uint64 {
 	return 0
 }
 
-var File_grocer_proto protoreflect.FileDescriptor
+var File_proto_grocer_proto protoreflect.FileDescriptor
 
-const file_grocer_proto_rawDesc = "" +
+const file_proto_grocer_proto_rawDesc = "" +
 	"\n" +
-	"\fgrocer.proto\x12\x06grocer\"r\n" +
+	"\x12proto/grocer.proto\x12\x06grocer\"r\n" +
 	"\x04User\x12\x16\n" +
 	"\x06userId\x18\x01 \x01(\x06R\x06userId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1a\n" +
@@ -961,19 +961,19 @@ const file_grocer_proto_rawDesc = "" +
 	"\x06userId\x18\x02 \x01(\x06R\x06userIdB\rZ\v./out_protob\x06proto3"
 
 var (
-	file_grocer_proto_rawDescOnce sync.Once
-	file_grocer_proto_rawDescData []byte
+	file_proto_grocer_proto_rawDescOnce sync.Once
+	file_proto_grocer_proto_rawDescData []byte
 )
 
-func file_grocer_proto_rawDescGZIP() []byte {
-	file_grocer_proto_rawDescOnce.Do(func() {
-		file_grocer_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_grocer_proto_rawDesc), len(file_grocer_proto_rawDesc)))
+func file_proto_grocer_proto_rawDescGZIP() []byte {
+	file_proto_grocer_proto_rawDescOnce.Do(func() {
+		file_proto_grocer_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_grocer_proto_rawDesc), len(file_proto_grocer_proto_rawDesc)))
 	})
-	return file_grocer_proto_rawDescData
+	return file_proto_grocer_proto_rawDescData
 }
 
-var file_grocer_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
-var file_grocer_proto_goTypes = []any{
+var file_proto_grocer_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_proto_grocer_proto_goTypes = []any{
 	(*User)(nil),         // 0: grocer.User
 	(*Category)(nil),     // 1: grocer.Category
 	(*Merchant)(nil),     // 2: grocer.Merchant
@@ -986,7 +986,7 @@ var file_grocer_proto_goTypes = []any{
 	(*Session)(nil),      // 9: grocer.Session
 	(*BotUser)(nil),      // 10: grocer.BotUser
 }
-var file_grocer_proto_depIdxs = []int32{
+var file_proto_grocer_proto_depIdxs = []int32{
 	5,  // 0: grocer.Receipt.items:type_name -> grocer.ReceiptItem
 	7,  // 1: grocer.Proposal.items:type_name -> grocer.ProposalItem
 	0,  // 2: grocer.Snapshot.users:type_name -> grocer.User
@@ -1004,27 +1004,27 @@ var file_grocer_proto_depIdxs = []int32{
 	0,  // [0:10] is the sub-list for field type_name
 }
 
-func init() { file_grocer_proto_init() }
-func file_grocer_proto_init() {
-	if File_grocer_proto != nil {
+func init() { file_proto_grocer_proto_init() }
+func file_proto_grocer_proto_init() {
+	if File_proto_grocer_proto != nil {
 		return
 	}
-	file_grocer_proto_msgTypes[1].OneofWrappers = []any{}
+	file_proto_grocer_proto_msgTypes[1].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_grocer_proto_rawDesc), len(file_grocer_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_grocer_proto_rawDesc), len(file_proto_grocer_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_grocer_proto_goTypes,
-		DependencyIndexes: file_grocer_proto_depIdxs,
-		MessageInfos:      file_grocer_proto_msgTypes,
+		GoTypes:           file_proto_grocer_proto_goTypes,
+		DependencyIndexes: file_proto_grocer_proto_depIdxs,
+		MessageInfos:      file_proto_grocer_proto_msgTypes,
 	}.Build()
-	File_grocer_proto = out.File
-	file_grocer_proto_goTypes = nil
-	file_grocer_proto_depIdxs = nil
+	File_proto_grocer_proto = out.File
+	file_proto_grocer_proto_goTypes = nil
+	file_proto_grocer_proto_depIdxs = nil
 }

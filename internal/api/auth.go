@@ -1,12 +1,15 @@
 package api
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -44,7 +47,7 @@ func (r *Router) handleLogin(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Create session
+	// Create session token (32 random bytes)
 	token, err := generateRandomBytes(32)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -52,11 +55,8 @@ func (r *Router) handleLogin(w http.ResponseWriter, req *http.Request) {
 	}
 	tokenString := base64.RawStdEncoding.EncodeToString(token)
 
-	tokenHash, err := generateFromPasswordShort(tokenString)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
+	// Hash token with HMAC-SHA256 for storage (fast verification)
+	tokenHash := hashSessionToken(tokenString)
 
 	session := &store.Session{
 		SessionID: r.store.SessionID.Gen(),
@@ -112,24 +112,39 @@ func verifyPassword(password, encodedHash string) (bool, error) {
 	return subtle.ConstantTimeCompare(hash, otherHash) == 1, nil
 }
 
+// getSessionHMACKey returns the HMAC key for session tokens.
+// Uses environment variable or generates a random one on first use.
+func getSessionHMACKey() []byte {
+	key := os.Getenv("SESSION_HMAC_KEY")
+	if key != "" {
+		return []byte(key)
+	}
+	// Fallback: use a random key (will not persist across restarts)
+	// In production, you MUST set SESSION_HMAC_KEY
+	randomKey := make([]byte, 32)
+	rand.Read(randomKey)
+	return randomKey
+}
+
+// hashSessionToken creates an HMAC-SHA256 hash of the session token.
+// This is fast and secure for session verification.
+func hashSessionToken(token string) string {
+	key := getSessionHMACKey()
+	h := hmac.New(sha256.New, key)
+	h.Write([]byte(token))
+	return base64.RawStdEncoding.EncodeToString(h.Sum(nil))
+}
+
+// verifySessionToken verifies a session token against its HMAC hash.
+func verifySessionToken(token, hash string) bool {
+	expected := hashSessionToken(token)
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(hash)) == 1
+}
+
 func generateRandomBytes(n uint32) ([]byte, error) {
 	b := make([]byte, n)
 	_, err := rand.Read(b)
 	return b, err
-}
-
-func generateFromPasswordShort(password string) (string, error) {
-	salt, err := generateRandomBytes(16)
-	if err != nil {
-		return "", err
-	}
-
-	hash := argon2.IDKey([]byte(password), salt, 3, 64*1024, 2, 32)
-
-	b64Salt := base64.RawStdEncoding.EncodeToString(salt)
-	b64Hash := base64.RawStdEncoding.EncodeToString(hash)
-
-	return fmt.Sprintf("%s$%s", b64Salt, b64Hash), nil
 }
 
 // ParseTokenString moved here to avoid circular dependency

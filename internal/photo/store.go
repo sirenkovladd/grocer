@@ -7,7 +7,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
+	"time"
 
 	"cloud.google.com/go/storage"
 )
@@ -50,7 +53,17 @@ func (g *GCloudStore) Save(ctx context.Context, receiptID uint64, data []byte) (
 }
 
 func (g *GCloudStore) Get(ctx context.Context, url string) ([]byte, error) {
-	obj := g.client.Bucket(g.bucket).Object(url)
+	// Parse gs:// URL to extract object name
+	objectName := url
+	if strings.HasPrefix(url, "gs://") {
+		// Format: gs://bucket/path/to/object
+		parts := strings.SplitN(strings.TrimPrefix(url, "gs://"), "/", 2)
+		if len(parts) == 2 {
+			objectName = parts[1]
+		}
+	}
+
+	obj := g.client.Bucket(g.bucket).Object(objectName)
 
 	reader, err := obj.NewReader(ctx)
 	if err != nil {
@@ -67,17 +80,24 @@ func (g *GCloudStore) Get(ctx context.Context, url string) ([]byte, error) {
 }
 
 type LocalCache struct {
-	dir     string
-	maxSize int64
-	mu      sync.Mutex
-	files   map[string]int64
+	dir      string
+	maxSize  int64
+	mu       sync.Mutex
+	files    map[string]fileInfo
+	accessOrder []string
+}
+
+type fileInfo struct {
+	size      int64
+	lastAccess int64
 }
 
 func NewLocalCache(dir string, maxSizeMB int) *LocalCache {
 	return &LocalCache{
-		dir:     dir,
-		maxSize: int64(maxSizeMB) * 1024 * 1024,
-		files:   make(map[string]int64),
+		dir:      dir,
+		maxSize:  int64(maxSizeMB) * 1024 * 1024,
+		files:    make(map[string]fileInfo),
+		accessOrder: make([]string, 0),
 	}
 }
 
@@ -91,6 +111,12 @@ func (c *LocalCache) Get(ctx context.Context, url string) ([]byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
+	}
+
+	// Update access time for LRU tracking
+	if info, ok := c.files[filename]; ok {
+		info.lastAccess = time.Now().Unix()
+		c.files[filename] = info
 	}
 
 	return data, nil
@@ -109,7 +135,19 @@ func (c *LocalCache) Set(ctx context.Context, url string, data []byte) error {
 
 	c.evictIfNeeded(int64(len(data)))
 
-	return os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return err
+	}
+
+	// Track the file with proper metadata
+	now := time.Now().Unix()
+	c.files[filename] = fileInfo{
+		size:       int64(len(data)),
+		lastAccess: now,
+	}
+	c.accessOrder = append(c.accessOrder, filename)
+
+	return nil
 }
 
 func (c *LocalCache) filename(url string) string {
@@ -119,20 +157,39 @@ func (c *LocalCache) filename(url string) string {
 
 func (c *LocalCache) evictIfNeeded(newSize int64) {
 	var totalSize int64
-	for _, size := range c.files {
-		totalSize += size
+	for _, info := range c.files {
+		totalSize += info.size
 	}
 
-	if totalSize+newSize > c.maxSize {
-		for filename, size := range c.files {
-			os.Remove(filepath.Join(c.dir, filename))
-			delete(c.files, filename)
-			totalSize -= size
-			if totalSize+newSize <= c.maxSize {
-				break
-			}
+	if totalSize+newSize <= c.maxSize {
+		return
+	}
+
+	// Sort by last access time (LRU)
+	sort.Slice(c.accessOrder, func(i, j int) bool {
+		i1 := c.files[c.accessOrder[i]]
+		i2 := c.files[c.accessOrder[j]]
+		return i1.lastAccess < i2.lastAccess
+	})
+
+	// Evict least recently used files
+	for _, filename := range c.accessOrder {
+		if totalSize+newSize <= c.maxSize {
+			break
+		}
+
+		info := c.files[filename]
+		os.Remove(filepath.Join(c.dir, filename))
+		delete(c.files, filename)
+		totalSize -= info.size
+	}
+
+	// Clean up access order list
+	newOrder := make([]string, 0)
+	for _, filename := range c.accessOrder {
+		if _, ok := c.files[filename]; ok {
+			newOrder = append(newOrder, filename)
 		}
 	}
-
-	c.files[c.filename("")] = newSize
+	c.accessOrder = newOrder
 }

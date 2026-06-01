@@ -28,6 +28,12 @@ func (r *Router) handleCreateMerchant(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
+	// Input validation
+	if err := validateMerchantName(reqBody.Name); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	merchant := &domain.Merchant{
 		MerchantID: r.store.MerchantID.Gen(),
 		Name:       reqBody.Name,
@@ -65,6 +71,10 @@ func (r *Router) handleUpdateMerchant(w http.ResponseWriter, req *http.Request) 
 	}
 
 	if reqBody.Name != nil {
+		if err := validateMerchantName(*reqBody.Name); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		merchant.Name = *reqBody.Name
 	}
 

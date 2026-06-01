@@ -65,11 +65,13 @@ func (r *Router) handleListReceipts(w http.ResponseWriter, req *http.Request) {
 	if category != "" {
 		categoryID, err := strconv.ParseUint(category, 10, 64)
 		if err == nil {
+			// Batch load all items to avoid N+1 queries
+			itemMap := r.loadItemMap(filtered)
+			
 			var result []*domain.Receipt
 			for _, receipt := range filtered {
 				for _, item := range receipt.Items {
-					itemObj, err := r.store.GetItem(item.ItemID)
-					if err == nil && itemObj.CategoryID == categoryID {
+					if itemObj, ok := itemMap[item.ItemID]; ok && itemObj.CategoryID == categoryID {
 						result = append(result, receipt)
 						break
 					}
@@ -80,6 +82,27 @@ func (r *Router) handleListReceipts(w http.ResponseWriter, req *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, filtered)
+}
+
+// loadItemMap batch loads all items referenced by receipts into a map for O(1) lookups
+func (r *Router) loadItemMap(receipts []*domain.Receipt) map[uint64]*domain.Item {
+	// Collect unique item IDs
+	itemIDs := make(map[uint64]bool)
+	for _, receipt := range receipts {
+		for _, item := range receipt.Items {
+			itemIDs[item.ItemID] = true
+		}
+	}
+	
+	// Batch load all items
+	itemMap := make(map[uint64]*domain.Item)
+	for itemID := range itemIDs {
+		if itemObj, err := r.store.GetItem(itemID); err == nil {
+			itemMap[itemID] = itemObj
+		}
+	}
+	
+	return itemMap
 }
 
 func (r *Router) handleGetReceipt(w http.ResponseWriter, req *http.Request) {

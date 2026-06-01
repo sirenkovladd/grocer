@@ -36,3 +36,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 lib/database/out_protorecipes -3-001.zip
 server
+
+# credentials
+credentials.json
+*.key
+*.pem
+service-account.json

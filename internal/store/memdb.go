@@ -5,8 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"code.sirenko.ca/grocer/internal/domain"
 	"github.com/hashicorp/go-memdb"
@@ -28,6 +31,11 @@ type Store struct {
 	ReceiptID  *Generator
 	ProposalID *Generator
 	snapshot   *GCloudStorage
+	
+	// Snapshot debouncing
+	snapshotMu       sync.Mutex
+	snapshotTimer    *time.Timer
+	snapshotDebounce time.Duration
 }
 
 type Session struct {
@@ -42,6 +50,15 @@ type BotUser struct {
 }
 
 func NewStore() (*Store, error) {
+	// Parse snapshot debounce duration from environment (default 5 seconds)
+	debounceStr := os.Getenv("SNAPSHOT_DEBOUNCE_SECONDS")
+	debounceSeconds := 5
+	if debounceStr != "" {
+		if d, err := strconv.Atoi(debounceStr); err == nil && d > 0 {
+			debounceSeconds = d
+		}
+	}
+	
 	schema := &memdb.DBSchema{
 		Tables: map[string]*memdb.TableSchema{
 			"users": {
@@ -51,6 +68,11 @@ func NewStore() (*Store, error) {
 						Name:    "id",
 						Unique:  true,
 						Indexer: &memdb.StringFieldIndex{Field: "Username"},
+					},
+					"user_id": {
+						Name:    "user_id",
+						Unique:  true,
+						Indexer: &memdb.UintFieldIndex{Field: "UserID"},
 					},
 				},
 			},
@@ -62,6 +84,11 @@ func NewStore() (*Store, error) {
 						Unique:  true,
 						Indexer: &memdb.UintFieldIndex{Field: "SessionID"},
 					},
+					"user_id": {
+						Name:    "user_id",
+						Unique:  false,
+						Indexer: &memdb.UintFieldIndex{Field: "UserID"},
+					},
 				},
 			},
 			"categories": {
@@ -71,6 +98,11 @@ func NewStore() (*Store, error) {
 						Name:    "id",
 						Unique:  true,
 						Indexer: &memdb.UintFieldIndex{Field: "CategoryID"},
+					},
+					"parent_id": {
+						Name:    "parent_id",
+						Unique:  false,
+						Indexer: &memdb.UintFieldIndex{Field: "ParentID"},
 					},
 				},
 			},
@@ -97,6 +129,16 @@ func NewStore() (*Store, error) {
 						Unique:  false,
 						Indexer: &memdb.StringFieldIndex{Field: "Normalized"},
 					},
+					"category_id": {
+						Name:    "category_id",
+						Unique:  false,
+						Indexer: &memdb.UintFieldIndex{Field: "CategoryID"},
+					},
+					"merchant_id": {
+						Name:    "merchant_id",
+						Unique:  false,
+						Indexer: &memdb.UintFieldIndex{Field: "MerchantID"},
+					},
 				},
 			},
 			"receipts": {
@@ -106,6 +148,21 @@ func NewStore() (*Store, error) {
 						Name:    "id",
 						Unique:  true,
 						Indexer: &memdb.UintFieldIndex{Field: "ReceiptID"},
+					},
+					"owner_id": {
+						Name:    "owner_id",
+						Unique:  false,
+						Indexer: &memdb.UintFieldIndex{Field: "OwnerID"},
+					},
+					"merchant_id": {
+						Name:    "merchant_id",
+						Unique:  false,
+						Indexer: &memdb.UintFieldIndex{Field: "MerchantID"},
+					},
+					"date": {
+						Name:    "date",
+						Unique:  false,
+						Indexer: &memdb.IntFieldIndex{Field: "Date"},
 					},
 				},
 			},
@@ -117,6 +174,16 @@ func NewStore() (*Store, error) {
 						Unique:  true,
 						Indexer: &memdb.UintFieldIndex{Field: "ProposalID"},
 					},
+					"owner_id": {
+						Name:    "owner_id",
+						Unique:  false,
+						Indexer: &memdb.UintFieldIndex{Field: "OwnerID"},
+					},
+					"status": {
+						Name:    "status",
+						Unique:  false,
+						Indexer: &memdb.StringFieldIndex{Field: "Status"},
+					},
 				},
 			},
 			"bot_users": {
@@ -126,6 +193,11 @@ func NewStore() (*Store, error) {
 						Name:    "id",
 						Unique:  true,
 						Indexer: &memdb.StringFieldIndex{Field: "ExternalID"},
+					},
+					"user_id": {
+						Name:    "user_id",
+						Unique:  false,
+						Indexer: &memdb.UintFieldIndex{Field: "UserID"},
 					},
 				},
 			},
@@ -138,14 +210,15 @@ func NewStore() (*Store, error) {
 	}
 
 	return &Store{
-		db:         db,
-		UserID:     NewGenerator(),
-		SessionID:  NewGenerator(),
-		CategoryID: NewGenerator(),
-		MerchantID: NewGenerator(),
-		ItemID:     NewGenerator(),
-		ReceiptID:  NewGenerator(),
-		ProposalID: NewGenerator(),
+		db:               db,
+		UserID:           NewGenerator(),
+		SessionID:        NewGenerator(),
+		CategoryID:       NewGenerator(),
+		MerchantID:       NewGenerator(),
+		ItemID:           NewGenerator(),
+		ReceiptID:        NewGenerator(),
+		ProposalID:       NewGenerator(),
+		snapshotDebounce: time.Duration(debounceSeconds) * time.Second,
 	}, nil
 }
 
@@ -224,6 +297,21 @@ func (s *Store) ListUsers() ([]*domain.User, error) {
 	return users, nil
 }
 
+func (s *Store) DeleteUser(username string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	txn := s.db.Txn(true)
+	defer txn.Abort()
+
+	if err := txn.Delete("users", &domain.User{Username: username}); err != nil {
+		return err
+	}
+	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
+	return nil
+}
+
 // Session operations
 
 func (s *Store) CreateSession(sess *Session) error {
@@ -256,6 +344,40 @@ func (s *Store) GetSession(sessionID uint64) (*Session, error) {
 		return nil, ErrNotFound
 	}
 	return raw.(*Session), nil
+}
+
+func (s *Store) ListSessions() ([]*Session, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	txn := s.db.Txn(false)
+	defer txn.Abort()
+
+	iter, err := txn.Get("sessions", "id")
+	if err != nil {
+		return nil, err
+	}
+
+	var sessions []*Session
+	for raw := iter.Next(); raw != nil; raw = iter.Next() {
+		sessions = append(sessions, raw.(*Session))
+	}
+	return sessions, nil
+}
+
+func (s *Store) DeleteSession(sessionID uint64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	txn := s.db.Txn(true)
+	defer txn.Abort()
+
+	if err := txn.Delete("sessions", &Session{SessionID: sessionID}); err != nil {
+		return err
+	}
+	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
+	return nil
 }
 
 // Category operations
@@ -409,6 +531,21 @@ func (s *Store) UpdateMerchant(m *domain.Merchant) error {
 	return nil
 }
 
+func (s *Store) DeleteMerchant(id uint64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	txn := s.db.Txn(true)
+	defer txn.Abort()
+
+	if err := txn.Delete("merchants", &domain.Merchant{MerchantID: id}); err != nil {
+		return err
+	}
+	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
+	return nil
+}
+
 // Item operations
 
 func (s *Store) CreateItem(item *domain.Item) error {
@@ -496,6 +633,21 @@ func (s *Store) UpdateItem(item *domain.Item) error {
 	return nil
 }
 
+func (s *Store) DeleteItem(id uint64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	txn := s.db.Txn(true)
+	defer txn.Abort()
+
+	if err := txn.Delete("items", &domain.Item{ItemID: id}); err != nil {
+		return err
+	}
+	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
+	return nil
+}
+
 // Receipt operations
 
 func (s *Store) CreateReceipt(r *domain.Receipt) error {
@@ -547,6 +699,21 @@ func (s *Store) ListReceipts() ([]*domain.Receipt, error) {
 		receipts = append(receipts, raw.(*domain.Receipt))
 	}
 	return receipts, nil
+}
+
+func (s *Store) DeleteReceipt(id uint64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	txn := s.db.Txn(true)
+	defer txn.Abort()
+
+	if err := txn.Delete("receipts", &domain.Receipt{ReceiptID: id}); err != nil {
+		return err
+	}
+	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
+	return nil
 }
 
 // Proposal operations
@@ -610,6 +777,21 @@ func (s *Store) UpdateProposal(p *domain.Proposal) error {
 	defer txn.Abort()
 
 	if err := txn.Insert("proposals", p); err != nil {
+		return err
+	}
+	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
+	return nil
+}
+
+func (s *Store) DeleteProposal(id uint64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	txn := s.db.Txn(true)
+	defer txn.Abort()
+
+	if err := txn.Delete("proposals", &domain.Proposal{ProposalID: id}); err != nil {
 		return err
 	}
 	txn.Commit()
@@ -763,10 +945,21 @@ func (s *Store) LoadSnapshot(ctx context.Context) error {
 			return err
 		}
 	}
+	for _, bu := range snapshot.BotUsers {
+		if err := txn.Insert("bot_users", bu); err != nil {
+			return err
+		}
+	}
+	for _, sess := range snapshot.Sessions {
+		if err := txn.Insert("sessions", sess); err != nil {
+			return err
+		}
+	}
 
 	txn.Commit()
-	log.Printf("Loaded snapshot: %d users, %d items, %d receipts",
-		len(snapshot.Users), len(snapshot.Items), len(snapshot.Receipts))
+	log.Printf("Loaded snapshot: %d users, %d items, %d receipts, %d bot_users, %d sessions",
+		len(snapshot.Users), len(snapshot.Items), len(snapshot.Receipts),
+		len(snapshot.BotUsers), len(snapshot.Sessions))
 
 	return nil
 }
@@ -818,6 +1011,18 @@ func (s *Store) SaveSnapshot(ctx context.Context) error {
 		proposals = append(proposals, raw.(*domain.Proposal))
 	}
 
+	var botUsers []*BotUser
+	iter, _ = txn.Get("bot_users", "id")
+	for raw := iter.Next(); raw != nil; raw = iter.Next() {
+		botUsers = append(botUsers, raw.(*BotUser))
+	}
+
+	var sessions []*Session
+	iter, _ = txn.Get("sessions", "id")
+	for raw := iter.Next(); raw != nil; raw = iter.Next() {
+		sessions = append(sessions, raw.(*Session))
+	}
+
 	data, err := SerializeSnapshot(&SnapshotData{
 		Users:      users,
 		Categories: categories,
@@ -825,6 +1030,8 @@ func (s *Store) SaveSnapshot(ctx context.Context) error {
 		Items:      items,
 		Receipts:   receipts,
 		Proposals:  proposals,
+		BotUsers:   botUsers,
+		Sessions:   sessions,
 	})
 	if err != nil {
 		return fmt.Errorf("serialize snapshot: %w", err)
@@ -834,9 +1041,18 @@ func (s *Store) SaveSnapshot(ctx context.Context) error {
 }
 
 func (s *Store) SaveSnapshotAsync(ctx context.Context) {
-	go func() {
+	s.snapshotMu.Lock()
+	defer s.snapshotMu.Unlock()
+	
+	// Cancel existing timer
+	if s.snapshotTimer != nil {
+		s.snapshotTimer.Stop()
+	}
+	
+	// Create new debounced timer
+	s.snapshotTimer = time.AfterFunc(s.snapshotDebounce, func() {
 		if err := s.SaveSnapshot(ctx); err != nil {
 			log.Printf("Failed to save snapshot: %v", err)
 		}
-	}()
+	})
 }

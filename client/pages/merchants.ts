@@ -60,7 +60,7 @@ const MerchantsPage = () => {
     ),
     div({ class: "item-selector card" },
       h2("Select Item"),
-      select({
+      () => select({
         value: selectedItem,
         onchange: (e: Event) => {
           const value = (e.target as HTMLSelectElement).value

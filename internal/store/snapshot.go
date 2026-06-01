@@ -18,6 +18,7 @@ type SnapshotData struct {
 	Receipts   []*domain.Receipt
 	Proposals  []*domain.Proposal
 	BotUsers   []*BotUser
+	Sessions   []*Session
 }
 
 func SerializeSnapshot(data *SnapshotData) ([]byte, error) {
@@ -28,6 +29,8 @@ func SerializeSnapshot(data *SnapshotData) ([]byte, error) {
 		Items:      itemsToProto(data.Items),
 		Receipts:   receiptsToProto(data.Receipts),
 		Proposals:  proposalsToProto(data.Proposals),
+		BotUsers:   botUsersToProto(data.BotUsers),
+		Sessions:   sessionsToProto(data.Sessions),
 	}
 
 	raw, err := proto.Marshal(snapshot)
@@ -71,6 +74,8 @@ func DeserializeSnapshot(data []byte) (*SnapshotData, error) {
 		Items:      itemsFromProto(snapshot.Items),
 		Receipts:   receiptsFromProto(snapshot.Receipts),
 		Proposals:  proposalsFromProto(snapshot.Proposals),
+		BotUsers:   botUsersFromProto(snapshot.BotUsers),
+		Sessions:   sessionsFromProto(snapshot.Sessions),
 	}, nil
 }
 
@@ -192,9 +197,9 @@ func receiptsToProto(receipts []*domain.Receipt) []*pb.Receipt {
 		items := make([]*pb.ReceiptItem, len(r.Items))
 		for j, item := range r.Items {
 			items[j] = &pb.ReceiptItem{
-				ItemId:    item.ItemID,
-				Quantity:  item.Quantity,
-				UnitPrice: float32(item.UnitPrice),
+				ItemId:         item.ItemID,
+				Quantity:       item.Quantity,
+				UnitPriceCents: item.UnitPriceCents,
 			}
 		}
 		result[i] = &pb.Receipt{
@@ -204,7 +209,7 @@ func receiptsToProto(receipts []*domain.Receipt) []*pb.Receipt {
 			Date:       uint64(r.Date),
 			PhotoUrl:   r.PhotoURL,
 			Items:      items,
-			Total:      float32(r.Total),
+			TotalCents: r.TotalCents,
 		}
 	}
 	return result
@@ -216,9 +221,9 @@ func receiptsFromProto(receipts []*pb.Receipt) []*domain.Receipt {
 		items := make([]domain.ReceiptItem, len(r.Items))
 		for j, item := range r.Items {
 			items[j] = domain.ReceiptItem{
-				ItemID:    item.ItemId,
-				Quantity:  item.Quantity,
-				UnitPrice: float64(item.UnitPrice),
+				ItemID:         item.ItemId,
+				Quantity:       item.Quantity,
+				UnitPriceCents: item.UnitPriceCents,
 			}
 		}
 		result[i] = &domain.Receipt{
@@ -228,7 +233,7 @@ func receiptsFromProto(receipts []*pb.Receipt) []*domain.Receipt {
 			Date:       int64(r.Date),
 			PhotoURL:   r.PhotoUrl,
 			Items:      items,
-			Total:      float64(r.Total),
+			TotalCents: r.TotalCents,
 		}
 	}
 	return result
@@ -240,14 +245,14 @@ func proposalsToProto(proposals []*domain.Proposal) []*pb.Proposal {
 		items := make([]*pb.ProposalItem, len(p.Items))
 		for j, item := range p.Items {
 			items[j] = &pb.ProposalItem{
-				ParsedName:    item.ParsedName,
-				Quantity:      item.Quantity,
-				UnitPrice:     float32(item.UnitPrice),
-				MatchedItemId: item.MatchedItemID,
-				Confidence:    float32(item.Confidence),
-				CategoryId:    item.CategoryID,
-				IsNewCategory: item.IsNewCategory,
-				UserChoice:    item.UserChoice,
+				ParsedName:     item.ParsedName,
+				Quantity:       item.Quantity,
+				UnitPriceCents: item.UnitPriceCents,
+				MatchedItemId:  item.MatchedItemID,
+				Confidence:     float32(item.Confidence),
+				CategoryId:     item.CategoryID,
+				IsNewCategory:  item.IsNewCategory,
+				UserChoice:     item.UserChoice,
 			}
 		}
 		result[i] = &pb.Proposal{
@@ -257,7 +262,7 @@ func proposalsToProto(proposals []*domain.Proposal) []*pb.Proposal {
 			Date:       uint64(p.Date),
 			PhotoUrl:   p.PhotoURL,
 			Items:      items,
-			Total:      float32(p.Total),
+			TotalCents: p.TotalCents,
 			Status:     p.Status,
 		}
 	}
@@ -270,14 +275,14 @@ func proposalsFromProto(proposals []*pb.Proposal) []*domain.Proposal {
 		items := make([]domain.ProposalItem, len(p.Items))
 		for j, item := range p.Items {
 			items[j] = domain.ProposalItem{
-				ParsedName:    item.ParsedName,
-				Quantity:      item.Quantity,
-				UnitPrice:     float64(item.UnitPrice),
-				MatchedItemID: item.MatchedItemId,
-				Confidence:    float64(item.Confidence),
-				CategoryID:    item.CategoryId,
-				IsNewCategory: item.IsNewCategory,
-				UserChoice:    item.UserChoice,
+				ParsedName:     item.ParsedName,
+				Quantity:       item.Quantity,
+				UnitPriceCents: item.UnitPriceCents,
+				MatchedItemID:  item.MatchedItemId,
+				Confidence:     float64(item.Confidence),
+				CategoryID:     item.CategoryId,
+				IsNewCategory:  item.IsNewCategory,
+				UserChoice:     item.UserChoice,
 			}
 		}
 		result[i] = &domain.Proposal{
@@ -287,8 +292,54 @@ func proposalsFromProto(proposals []*pb.Proposal) []*domain.Proposal {
 			Date:       int64(p.Date),
 			PhotoURL:   p.PhotoUrl,
 			Items:      items,
-			Total:      float64(p.Total),
+			TotalCents: p.TotalCents,
 			Status:     p.Status,
+		}
+	}
+	return result
+}
+
+func botUsersToProto(botUsers []*BotUser) []*pb.BotUser {
+	result := make([]*pb.BotUser, len(botUsers))
+	for i, bu := range botUsers {
+		result[i] = &pb.BotUser{
+			ExternalId: bu.ExternalID,
+			UserId:     bu.UserID,
+		}
+	}
+	return result
+}
+
+func botUsersFromProto(botUsers []*pb.BotUser) []*BotUser {
+	result := make([]*BotUser, len(botUsers))
+	for i, bu := range botUsers {
+		result[i] = &BotUser{
+			ExternalID: bu.ExternalId,
+			UserID:     bu.UserId,
+		}
+	}
+	return result
+}
+
+func sessionsToProto(sessions []*Session) []*pb.Session {
+	result := make([]*pb.Session, len(sessions))
+	for i, s := range sessions {
+		result[i] = &pb.Session{
+			SessionId: s.SessionID,
+			TokenHash: s.TokenHash,
+			UserId:    s.UserID,
+		}
+	}
+	return result
+}
+
+func sessionsFromProto(sessions []*pb.Session) []*Session {
+	result := make([]*Session, len(sessions))
+	for i, s := range sessions {
+		result[i] = &Session{
+			SessionID: s.SessionId,
+			TokenHash: s.TokenHash,
+			UserID:    s.UserId,
 		}
 	}
 	return result

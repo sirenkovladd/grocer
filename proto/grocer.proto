@@ -38,13 +38,13 @@ message Receipt {
   fixed64 date = 4;
   string photoUrl = 5;
   repeated ReceiptItem items = 6;
-  float total = 7;
+  int64 totalCents = 7;
 }
 
 message ReceiptItem {
   fixed64 itemId = 1;
   uint32 quantity = 2;
-  float unitPrice = 3;
+  int64 unitPriceCents = 3;
 }
 
 message Proposal {
@@ -54,14 +54,14 @@ message Proposal {
   fixed64 date = 4;
   string photoUrl = 5;
   repeated ProposalItem items = 6;
-  float total = 7;
+  int64 totalCents = 7;
   string status = 8;
 }
 
 message ProposalItem {
   string parsedName = 1;
   uint32 quantity = 2;
-  float unitPrice = 3;
+  int64 unitPriceCents = 3;
   fixed64 matchedItemId = 4;
   float confidence = 5;
   fixed64 categoryId = 6;
@@ -76,6 +76,14 @@ message Snapshot {
   repeated Item items = 4;
   repeated Receipt receipts = 5;
   repeated Proposal proposals = 6;
+  repeated BotUser botUsers = 7;
+  repeated Session sessions = 8;
+}
+
+message Session {
+  fixed64 sessionId = 1;
+  string tokenHash = 2;
+  fixed64 userId = 3;
 }
 
 message BotUser {

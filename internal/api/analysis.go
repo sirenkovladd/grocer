@@ -61,7 +61,7 @@ func (r *Router) handleAnalysisSpending(w http.ResponseWriter, req *http.Request
 		case "month":
 			period = date.Format("2006-01")
 		}
-		periodMap[period] += receipt.Total
+		periodMap[period] += float64(receipt.TotalCents) / 100.0
 	}
 
 	var result []SpendingPeriod
@@ -122,7 +122,7 @@ func (r *Router) handleAnalysisCategories(w http.ResponseWriter, req *http.Reque
 			if err != nil {
 				continue
 			}
-			categoryMap[itemObj.CategoryID] += float64(item.Quantity) * item.UnitPrice
+			categoryMap[itemObj.CategoryID] += float64(item.Quantity) * float64(item.UnitPriceCents) / 100.0
 		}
 	}
 
@@ -177,7 +177,7 @@ func (r *Router) handleAnalysisFamily(w http.ResponseWriter, req *http.Request) 
 
 	memberMap := make(map[uint64]float64)
 	for _, receipt := range filtered {
-		memberMap[receipt.OwnerID] += receipt.Total
+		memberMap[receipt.OwnerID] += float64(receipt.TotalCents) / 100.0
 	}
 
 	var result []FamilyMember
@@ -220,7 +220,7 @@ func (r *Router) handleAnalysisItem(w http.ResponseWriter, req *http.Request) {
 				date := time.Unix(receipt.Date, 0)
 				history = append(history, PricePoint{
 					Date:  date.Format("2006-01-02"),
-					Price: item.UnitPrice,
+					Price: float64(item.UnitPriceCents) / 100.0,
 				})
 			}
 		}

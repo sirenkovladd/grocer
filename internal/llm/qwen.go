@@ -1,33 +1,22 @@
 package llm
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"time"
 
 	"code.sirenko.ca/grocer/internal/domain"
 )
 
+// QwenProvider implements the LLM Provider interface using Qwen API
 type QwenProvider struct {
-	apiKey  string
-	model   string
-	baseURL string
-	client  *http.Client
+	*BaseProvider
 }
 
+// NewQwenProvider creates a new Qwen provider
 func NewQwenProvider(apiKey, model string) *QwenProvider {
 	return &QwenProvider{
-		apiKey:  apiKey,
-		model:   model,
-		baseURL: "https://opencode.ai/zen/go/v1",
-		client: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		BaseProvider: NewBaseProvider(apiKey, model, "https://opencode.ai/zen/go/v1"),
 	}
 }
 
@@ -65,25 +54,10 @@ type qwenResponse struct {
 	} `json:"content"`
 }
 
+// ParseReceipt parses a receipt image using Qwen API
 func (q *QwenProvider) ParseReceipt(ctx context.Context, photo []byte) (*ParsedReceipt, error) {
-	b64 := base64.StdEncoding.EncodeToString(photo)
-
-	prompt := `Analyze this grocery receipt photo and extract the following information in JSON format:
-{
-  "merchant": "store name",
-  "date": "YYYY-MM-DD",
-  "items": [
-    {
-      "name": "item name as shown on receipt",
-      "quantity": 1,
-      "unit_price": 2.99,
-      "total_price": 2.99
-    }
-  ],
-  "total": 25.99
-}
-
-Return ONLY the JSON, no other text.`
+	b64 := encodeImageToBase64(photo)
+	prompt := buildReceiptPrompt()
 
 	req := qwenRequest{
 		Model:     q.model,
@@ -109,36 +83,14 @@ Return ONLY the JSON, no other text.`
 		},
 	}
 
-	body, err := json.Marshal(req)
+	respBody, err := q.doRequest(ctx, "/messages", req)
 	if err != nil {
-		return nil, err
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", q.baseURL+"/messages", bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+q.apiKey)
-
-	resp, err := q.client.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("qwen API error: %d %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("qwen request: %w", err)
 	}
 
 	var qwenResp qwenResponse
 	if err := json.Unmarshal(respBody, &qwenResp); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshal response: %w", err)
 	}
 
 	if len(qwenResp.Content) == 0 {
@@ -153,25 +105,12 @@ Return ONLY the JSON, no other text.`
 		}
 	}
 
-	return parseReceiptJSON(text)
+	return parseReceiptResponse(text)
 }
 
+// CategorizeItem categorizes an item using Qwen API
 func (q *QwenProvider) CategorizeItem(ctx context.Context, itemName string, existingCategories []domain.Category) (*Categorization, error) {
-	categoriesJSON, _ := json.Marshal(existingCategories)
-
-	prompt := fmt.Sprintf(`Given the item "%s" and these existing categories: %s
-
-Determine the best category. If no existing category fits, suggest a new one.
-
-Return JSON:
-{
-  "category_id": 123,
-  "is_new": false,
-  "suggested_name": ""
-}
-
-If creating a new category, set category_id to 0 and is_new to true.
-Return ONLY the JSON.`, itemName, string(categoriesJSON))
+	prompt := buildCategorizationPrompt(itemName, existingCategories)
 
 	req := qwenRequest{
 		Model:     q.model,
@@ -181,36 +120,14 @@ Return ONLY the JSON.`, itemName, string(categoriesJSON))
 		},
 	}
 
-	body, err := json.Marshal(req)
+	respBody, err := q.doRequest(ctx, "/messages", req)
 	if err != nil {
-		return nil, err
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", q.baseURL+"/messages", bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+q.apiKey)
-
-	resp, err := q.client.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("qwen API error: %d %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("qwen request: %w", err)
 	}
 
 	var qwenResp qwenResponse
 	if err := json.Unmarshal(respBody, &qwenResp); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshal response: %w", err)
 	}
 
 	if len(qwenResp.Content) == 0 {
@@ -225,5 +142,5 @@ Return ONLY the JSON.`, itemName, string(categoriesJSON))
 		}
 	}
 
-	return parseCategorizationJSON(text)
+	return parseCategorizationResponse(text)
 }

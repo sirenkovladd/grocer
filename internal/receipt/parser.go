@@ -3,6 +3,7 @@ package receipt
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"code.sirenko.ca/grocer/internal/domain"
@@ -43,10 +44,10 @@ func (p *Parser) ParseReceipt(ctx context.Context, photo []byte, ownerID uint64)
 		}
 
 		pi := domain.ProposalItem{
-			ParsedName: item.Name,
-			Quantity:   item.Quantity,
-			UnitPrice:  item.UnitPrice,
-			Confidence: confidence,
+			ParsedName:     item.Name,
+			Quantity:       item.Quantity,
+			UnitPriceCents: dollarsToCents(item.UnitPrice),
+			Confidence:     confidence,
 		}
 
 		if matched != nil && confidence >= 0.99 {
@@ -72,10 +73,11 @@ func (p *Parser) ParseReceipt(ctx context.Context, photo []byte, ownerID uint64)
 	proposal := &domain.Proposal{
 		ProposalID: p.store.ProposalID.Gen(),
 		OwnerID:    ownerID,
+		MerchantID: merchant.MerchantID,
 		Merchant:   merchant.Name,
 		Date:       parsed.Date.Unix(),
 		Items:      proposalItems,
-		Total:      parsed.Total,
+		TotalCents: dollarsToCents(parsed.Total),
 		Status:     "pending",
 	}
 
@@ -125,14 +127,16 @@ func (p *Parser) categorizeItem(ctx context.Context, itemName string) (*llm.Cate
 }
 
 func (p *Parser) HandlePhoto(ctx context.Context, photo []byte, senderID string) (uint64, error) {
-	// For now, use a default user ID (first user)
-	// TODO: Implement proper bot user mapping
-	users, err := p.store.ListUsers()
-	if err != nil || len(users) == 0 {
-		return 0, fmt.Errorf("no users found")
+	// Parse senderID to get the owner ID
+	if senderID == "" {
+		return 0, fmt.Errorf("senderID is required")
 	}
 
-	ownerID := users[0].UserID
+	// Try to parse senderID as uint64
+	ownerID, err := strconv.ParseUint(senderID, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid senderID format: %w", err)
+	}
 
 	proposal, err := p.ParseReceipt(ctx, photo, ownerID)
 	if err != nil {
@@ -181,19 +185,20 @@ func (p *Parser) ApproveProposal(ctx context.Context, proposalID uint64, choices
 		}
 
 		receiptItems[i] = domain.ReceiptItem{
-			ItemID:    itemID,
-			Quantity:  pi.Quantity,
-			UnitPrice: pi.UnitPrice,
+			ItemID:         itemID,
+			Quantity:       pi.Quantity,
+			UnitPriceCents: pi.UnitPriceCents,
 		}
 	}
 
 	receipt := &domain.Receipt{
-		ReceiptID: p.store.ReceiptID.Gen(),
-		OwnerID:   proposal.OwnerID,
-		Date:      proposal.Date,
-		PhotoURL:  proposal.PhotoURL,
-		Items:     receiptItems,
-		Total:     proposal.Total,
+		ReceiptID:  p.store.ReceiptID.Gen(),
+		MerchantID: proposal.MerchantID,
+		OwnerID:    proposal.OwnerID,
+		Date:       proposal.Date,
+		PhotoURL:   proposal.PhotoURL,
+		Items:      receiptItems,
+		TotalCents: proposal.TotalCents,
 	}
 
 	if err := p.store.CreateReceipt(receipt); err != nil {
@@ -206,4 +211,9 @@ func (p *Parser) ApproveProposal(ctx context.Context, proposalID uint64, choices
 	}
 
 	return receipt, nil
+}
+
+// dollarsToCents converts a dollar amount (float64) to cents (int64)
+func dollarsToCents(dollars float64) int64 {
+	return int64(dollars * 100)
 }

@@ -29,6 +29,12 @@ func (r *Router) handleCreateCategory(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
+	// Input validation
+	if err := validateCategoryName(reqBody.Name); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	category := &domain.Category{
 		CategoryID: r.store.CategoryID.Gen(),
 		Name:       reqBody.Name,
@@ -69,6 +75,10 @@ func (r *Router) handleUpdateCategory(w http.ResponseWriter, req *http.Request) 
 	}
 
 	if reqBody.Name != nil {
+		if err := validateCategoryName(*reqBody.Name); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		category.Name = *reqBody.Name
 	}
 	if reqBody.ParentID != nil {

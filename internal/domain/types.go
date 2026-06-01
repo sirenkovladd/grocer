@@ -29,39 +29,40 @@ type Item struct {
 }
 
 type Receipt struct {
-	ReceiptID  uint64        `json:"receiptId" protobuf:"fixed64,1,opt,name=receiptId"`
-	MerchantID uint64        `json:"merchantId" protobuf:"fixed64,2,opt,name=merchantId"`
-	OwnerID    uint64        `json:"ownerId" protobuf:"fixed64,3,opt,name=ownerId"`
-	Date       int64         `json:"date" protobuf:"fixed64,4,opt,name=date"`
-	PhotoURL   string        `json:"photoUrl,omitempty" protobuf:"bytes,5,opt,name=photoUrl"`
-	Items      []ReceiptItem `json:"items" protobuf:"bytes,6,rep,name=items"`
-	Total      float64       `json:"total" protobuf:"fixed64,7,opt,name=total"`
+	ReceiptID    uint64        `json:"receiptId" protobuf:"fixed64,1,opt,name=receiptId"`
+	MerchantID   uint64        `json:"merchantId" protobuf:"fixed64,2,opt,name=merchantId"`
+	OwnerID      uint64        `json:"ownerId" protobuf:"fixed64,3,opt,name=ownerId"`
+	Date         int64         `json:"date" protobuf:"fixed64,4,opt,name=date"`
+	PhotoURL     string        `json:"photoUrl,omitempty" protobuf:"bytes,5,opt,name=photoUrl"`
+	Items        []ReceiptItem `json:"items" protobuf:"bytes,6,rep,name=items"`
+	TotalCents   int64         `json:"totalCents" protobuf:"fixed64,7,opt,name=totalCents"`
 }
 
 type ReceiptItem struct {
-	ItemID    uint64  `json:"itemId" protobuf:"fixed64,1,opt,name=itemId"`
-	Quantity  uint32  `json:"quantity" protobuf:"varint,2,opt,name=quantity"`
-	UnitPrice float64 `json:"unitPrice" protobuf:"fixed64,3,opt,name=unitPrice"`
+	ItemID         uint64 `json:"itemId" protobuf:"fixed64,1,opt,name=itemId"`
+	Quantity       uint32 `json:"quantity" protobuf:"varint,2,opt,name=quantity"`
+	UnitPriceCents int64  `json:"unitPriceCents" protobuf:"fixed64,3,opt,name=unitPriceCents"`
 }
 
 type Proposal struct {
-	ProposalID uint64         `json:"proposalId" protobuf:"fixed64,1,opt,name=proposalId"`
-	OwnerID    uint64         `json:"ownerId" protobuf:"fixed64,2,opt,name=ownerId"`
-	Merchant   string         `json:"merchant" protobuf:"bytes,3,opt,name=merchant"`
-	Date       int64          `json:"date" protobuf:"fixed64,4,opt,name=date"`
-	PhotoURL   string         `json:"photoUrl,omitempty" protobuf:"bytes,5,opt,name=photoUrl"`
-	Items      []ProposalItem `json:"items" protobuf:"bytes,6,rep,name=items"`
-	Total      float64        `json:"total" protobuf:"fixed64,7,opt,name=total"`
-	Status     string         `json:"status" protobuf:"bytes,8,opt,name=status"`
+	ProposalID   uint64         `json:"proposalId" protobuf:"fixed64,1,opt,name=proposalId"`
+	OwnerID      uint64         `json:"ownerId" protobuf:"fixed64,2,opt,name=ownerId"`
+	MerchantID   uint64         `json:"merchantId" protobuf:"fixed64,3,opt,name=merchantId"`
+	Merchant     string         `json:"merchant" protobuf:"bytes,4,opt,name=merchant"`
+	Date         int64          `json:"date" protobuf:"fixed64,5,opt,name=date"`
+	PhotoURL     string         `json:"photoUrl,omitempty" protobuf:"bytes,6,opt,name=photoUrl"`
+	Items        []ProposalItem `json:"items" protobuf:"bytes,7,rep,name=items"`
+	TotalCents   int64          `json:"totalCents" protobuf:"fixed64,8,opt,name=totalCents"`
+	Status       string         `json:"status" protobuf:"bytes,9,opt,name=status"`
 }
 
 type ProposalItem struct {
-	ParsedName    string  `json:"parsedName" protobuf:"bytes,1,opt,name=parsedName"`
-	Quantity      uint32  `json:"quantity" protobuf:"varint,2,opt,name=quantity"`
-	UnitPrice     float64 `json:"unitPrice" protobuf:"fixed64,3,opt,name=unitPrice"`
-	MatchedItemID uint64  `json:"matchedItemId,omitempty" protobuf:"fixed64,4,opt,name=matchedItemId"`
-	Confidence    float64 `json:"confidence" protobuf:"fixed64,5,opt,name=confidence"`
-	CategoryID    uint64  `json:"categoryId,omitempty" protobuf:"fixed64,6,opt,name=categoryId"`
-	IsNewCategory bool    `json:"isNewCategory,omitempty" protobuf:"varint,7,opt,name=isNewCategory"`
-	UserChoice    string  `json:"userChoice,omitempty" protobuf:"bytes,8,opt,name=userChoice"`
+	ParsedName       string  `json:"parsedName" protobuf:"bytes,1,opt,name=parsedName"`
+	Quantity         uint32  `json:"quantity" protobuf:"varint,2,opt,name=quantity"`
+	UnitPriceCents   int64   `json:"unitPriceCents" protobuf:"fixed64,3,opt,name=unitPriceCents"`
+	MatchedItemID    uint64  `json:"matchedItemId,omitempty" protobuf:"fixed64,4,opt,name=matchedItemId"`
+	Confidence       float64 `json:"confidence" protobuf:"fixed64,5,opt,name=confidence"`
+	CategoryID       uint64  `json:"categoryId,omitempty" protobuf:"fixed64,6,opt,name=categoryId"`
+	IsNewCategory    bool    `json:"isNewCategory,omitempty" protobuf:"varint,7,opt,name=isNewCategory"`
+	UserChoice       string  `json:"userChoice,omitempty" protobuf:"bytes,8,opt,name=userChoice"`
 }
