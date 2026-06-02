@@ -8,7 +8,6 @@ interface ProposalItem {
   quantity: number
   unitPriceCents: number
   matchedItemId: number
-  confidence: number
   categoryId: number
   isNewCategory: boolean
   userChoice: string

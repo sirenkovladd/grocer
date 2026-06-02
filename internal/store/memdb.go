@@ -1125,8 +1125,8 @@ func (s *Store) DeleteSessionsByUserID(userID uint64) error {
 	return nil
 }
 
-// UpdateProposalStatus changes a proposal's status.
-func (s *Store) UpdateProposalStatus(id uint64, status string) error {
+// UpdateProposalStatus changes a proposal's status and optionally sets an error message.
+func (s *Store) UpdateProposalStatus(id uint64, status string, errorMsg ...string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -1143,6 +1143,9 @@ func (s *Store) UpdateProposalStatus(id uint64, status string) error {
 
 	p := raw.(*domain.Proposal)
 	p.Status = status
+	if len(errorMsg) > 0 {
+		p.Error = errorMsg[0]
+	}
 
 	txn2 := s.db.Txn(true)
 	defer txn2.Abort()

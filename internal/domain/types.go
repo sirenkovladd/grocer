@@ -39,8 +39,8 @@ type Receipt struct {
 }
 
 type ReceiptItem struct {
-	ItemID         uint64 `json:"itemId,string" protobuf:"fixed64,1,opt,name=itemId"`
-	Quantity       uint32 `json:"quantity" protobuf:"varint,2,opt,name=quantity"`
+	ItemID         uint64  `json:"itemId,string" protobuf:"fixed64,1,opt,name=itemId"`
+	Quantity       float64 `json:"quantity" protobuf:"fixed64,2,opt,name=quantity"`
 	UnitPriceCents int64  `json:"unitPriceCents" protobuf:"fixed64,3,opt,name=unitPriceCents"`
 }
 
@@ -54,15 +54,15 @@ type Proposal struct {
 	Items        []ProposalItem `json:"items" protobuf:"bytes,7,rep,name=items"`
 	TotalCents   int64          `json:"totalCents" protobuf:"fixed64,8,opt,name=totalCents"`
 	Status       string         `json:"status" protobuf:"bytes,9,opt,name=status"`
+	Error        string         `json:"error,omitempty" protobuf:"bytes,10,opt,name=error"`
 }
 
 type ProposalItem struct {
 	ParsedName       string  `json:"parsedName" protobuf:"bytes,1,opt,name=parsedName"`
-	Quantity         uint32  `json:"quantity" protobuf:"varint,2,opt,name=quantity"`
+	Quantity         float64 `json:"quantity" protobuf:"fixed64,2,opt,name=quantity"`
 	UnitPriceCents   int64   `json:"unitPriceCents" protobuf:"fixed64,3,opt,name=unitPriceCents"`
 	MatchedItemID    uint64  `json:"matchedItemId,omitempty,string" protobuf:"fixed64,4,opt,name=matchedItemId"`
-	Confidence       float64 `json:"confidence" protobuf:"fixed64,5,opt,name=confidence"`
-	CategoryID       uint64  `json:"categoryId,omitempty,string" protobuf:"fixed64,6,opt,name=categoryId"`
-	IsNewCategory    bool    `json:"isNewCategory,omitempty" protobuf:"varint,7,opt,name=isNewCategory"`
-	UserChoice       string  `json:"userChoice,omitempty" protobuf:"bytes,8,opt,name=userChoice"`
+	CategoryID       uint64  `json:"categoryId,omitempty,string" protobuf:"fixed64,5,opt,name=categoryId"`
+	IsNewCategory    bool    `json:"isNewCategory,omitempty" protobuf:"varint,6,opt,name=isNewCategory"`
+	UserChoice       string  `json:"userChoice,omitempty" protobuf:"bytes,7,opt,name=userChoice"`
 }

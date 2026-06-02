@@ -43,7 +43,7 @@ message Receipt {
 
 message ReceiptItem {
   fixed64 itemId = 1;
-  uint32 quantity = 2;
+  double quantity = 2;
   int64 unitPriceCents = 3;
 }
 
@@ -61,13 +61,12 @@ message Proposal {
 
 message ProposalItem {
   string parsedName = 1;
-  uint32 quantity = 2;
+  double quantity = 2;
   int64 unitPriceCents = 3;
   fixed64 matchedItemId = 4;
-  double confidence = 5;
-  fixed64 categoryId = 6;
-  bool isNewCategory = 7;
-  string userChoice = 8;
+  fixed64 categoryId = 5;
+  bool isNewCategory = 6;
+  string userChoice = 7;
 }
 
 message Snapshot {

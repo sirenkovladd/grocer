@@ -133,9 +133,9 @@ func formatItems(items []*domain.Item) []itemView {
 }
 
 type receiptItemView struct {
-	ItemID       uint64 `json:"itemId"`
-	ItemName     string `json:"itemName,omitempty"`
-	Quantity     uint32 `json:"quantity"`
+	ItemID       uint64  `json:"itemId"`
+	ItemName     string  `json:"itemName,omitempty"`
+	Quantity     float64 `json:"quantity"`
 	UnitPrice    string `json:"unitPrice"`
 	TotalPrice   string `json:"totalPrice"`
 }
@@ -187,10 +187,9 @@ func formatReceipts(receipts []*domain.Receipt, snap *store.SnapshotData) []rece
 
 type proposalItemView struct {
 	ParsedName string  `json:"parsedName"`
-	Quantity   uint32  `json:"quantity"`
+	Quantity   float64 `json:"quantity"`
 	UnitPrice  string  `json:"unitPrice"`
 	TotalPrice string  `json:"totalPrice"`
-	Confidence float64 `json:"confidence"`
 	Matched    string  `json:"matched,omitempty"`
 	MatchedID  uint64  `json:"matchedItemId,omitempty"`
 }
@@ -221,7 +220,6 @@ func formatProposals(proposals []*domain.Proposal, snap *store.SnapshotData) []p
 				Quantity:   it.Quantity,
 				UnitPrice:  formatCents(it.UnitPriceCents),
 				TotalPrice: formatCents(int64(it.Quantity) * it.UnitPriceCents),
-				Confidence: it.Confidence,
 				MatchedID:  it.MatchedItemID,
 			}
 			if it.MatchedItemID != 0 {

@@ -126,7 +126,7 @@ func (k *KimiProvider) ParseReceiptStream(ctx context.Context, photo []byte) (<-
 	req := kimiChatRequest{
 		Model:  k.model,
 		Stream: true,
-		Thinking: kimiThinking{Type: "enabled"},
+		Thinking: kimiThinking{Type: "disabled"},
 		Messages: []kimiMessage{
 			{
 				Role: "user",

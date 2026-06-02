@@ -196,8 +196,8 @@ func (r *Router) handleDeleteProposal(w http.ResponseWriter, req *http.Request) 
 }
 
 type updateProposalItemRequest struct {
-	ParsedName     string `json:"parsedName"`
-	Quantity       uint32 `json:"quantity"`
+	ParsedName     string  `json:"parsedName"`
+	Quantity       float64 `json:"quantity"`
 	UnitPriceCents int64  `json:"unitPriceCents"`
 }
 

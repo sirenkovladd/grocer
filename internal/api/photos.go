@@ -7,7 +7,7 @@ import (
 )
 
 func (r *Router) handleGetPhoto(w http.ResponseWriter, req *http.Request) {
-	// GET /api/photos/{receiptId}
+	// GET /api/photos/{id} - works for both receipts and proposals
 	idStr := req.PathValue("id")
 	if idStr == "" {
 		// Try to extract from URL path
@@ -17,33 +17,38 @@ func (r *Router) handleGetPhoto(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	receiptID, err := strconv.ParseUint(idStr, 10, 64)
+	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid receipt ID")
+		writeError(w, http.StatusBadRequest, "invalid ID")
 		return
 	}
 
-	// Get receipt to find photo URL
-	receipt, err := r.store.GetReceipt(receiptID)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "receipt not found")
-		return
+	// Try receipt first, then proposal
+	var photoURL string
+	receipt, err := r.store.GetReceipt(id)
+	if err == nil {
+		photoURL = receipt.PhotoURL
+	} else {
+		proposal, err := r.store.GetProposal(id)
+		if err == nil {
+			photoURL = proposal.PhotoURL
+		}
 	}
 
-	if receipt.PhotoURL == "" {
-		writeError(w, http.StatusNotFound, "no photo for this receipt")
+	if photoURL == "" {
+		writeError(w, http.StatusNotFound, "no photo found")
 		return
 	}
 
 	// Try local cache first
 	var data []byte
 	if r.photoCache != nil {
-		data, err = r.photoCache.Get(req.Context(), receipt.PhotoURL)
+		data, err = r.photoCache.Get(req.Context(), photoURL)
 	}
 
 	// If cache miss, get from GCloud
 	if data == nil && r.photoStore != nil {
-		data, err = r.photoStore.Get(req.Context(), receipt.PhotoURL)
+		data, err = r.photoStore.Get(req.Context(), photoURL)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to get photo")
 			return
@@ -51,7 +56,7 @@ func (r *Router) handleGetPhoto(w http.ResponseWriter, req *http.Request) {
 
 		// Cache locally
 		if r.photoCache != nil {
-			r.photoCache.Set(req.Context(), receipt.PhotoURL, data)
+			r.photoCache.Set(req.Context(), photoURL, data)
 		}
 	}
 

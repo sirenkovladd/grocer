@@ -1,14 +1,114 @@
 import van from "vanjs-core"
 import { api, navigate } from "../main"
 
-const { div, h1, h2, h3, table, tr, td, th, button, select, option, img, p, span, input } = van.tags
+const { div, h1, h2, h3, table, tr, td, th, button, select, option, img, p, span, input, a } = van.tags
+
+// Zoomable image component with pinch/scroll support
+const ZoomableImage = (src: () => string, alt: string) => {
+  const container = van.tags.div({ class: "zoom-container" })
+  const imgEl = van.tags.img({ src: src(), alt, class: "zoom-image" })
+  let scale = 1
+  let panX = 0
+  let panY = 0
+  let lastPanX = 0
+  let lastPanY = 0
+  let isDragging = false
+  let lastPinchDist = 0
+
+  const apply = () => {
+    imgEl.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`
+    container.style.cursor = scale > 1 ? (isDragging ? "grabbing" : "grab") : "zoom-in"
+  }
+
+  container.addEventListener("wheel", (e: WheelEvent) => {
+    e.preventDefault()
+    const rect = container.getBoundingClientRect()
+    const mouseX = e.clientX - rect.left
+    const mouseY = e.clientY - rect.top
+    const oldScale = scale
+    const zoom = e.deltaY < 0 ? 1.15 : 0.87
+    scale = Math.min(Math.max(1, scale * zoom), 6)
+    if (scale > 1) {
+      panX = mouseX - (mouseX - panX) * (scale / oldScale)
+      panY = mouseY - (mouseY - panY) * (scale / oldScale)
+    } else {
+      panX = 0; panY = 0
+    }
+    apply()
+  }, { passive: false })
+
+  container.addEventListener("touchstart", (e: TouchEvent) => {
+    if (e.touches.length === 2) {
+      e.preventDefault()
+      lastPinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY)
+    } else if (e.touches.length === 1 && scale > 1) {
+      isDragging = true
+      lastPanX = e.touches[0].clientX - panX
+      lastPanY = e.touches[0].clientY - panY
+    }
+  }, { passive: false })
+
+  container.addEventListener("touchmove", (e: TouchEvent) => {
+    if (e.touches.length === 2) {
+      e.preventDefault()
+      const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY)
+      scale = Math.min(Math.max(1, scale * (dist / lastPinchDist)), 6)
+      lastPinchDist = dist
+      if (scale <= 1) { panX = 0; panY = 0 }
+      apply()
+    } else if (e.touches.length === 1 && isDragging) {
+      e.preventDefault()
+      panX = e.touches[0].clientX - lastPanX
+      panY = e.touches[0].clientY - lastPanY
+      apply()
+    }
+  }, { passive: false })
+
+  container.addEventListener("touchend", () => { isDragging = false; apply() })
+
+  container.addEventListener("mousedown", (e: MouseEvent) => {
+    if (scale > 1) {
+      isDragging = true
+      lastPanX = e.clientX - panX
+      lastPanY = e.clientY - panY
+      apply()
+    }
+  })
+  container.addEventListener("mousemove", (e: MouseEvent) => {
+    if (isDragging) {
+      panX = e.clientX - lastPanX
+      panY = e.clientY - lastPanY
+      apply()
+    }
+  })
+  const stopDrag = () => { isDragging = false; apply() }
+  container.addEventListener("mouseup", stopDrag)
+  container.addEventListener("mouseleave", stopDrag)
+
+  container.addEventListener("dblclick", () => {
+    scale = 1; panX = 0; panY = 0; apply()
+  })
+
+  van.add(container, imgEl)
+  return container
+}
+
+// Fetch photo with auth header and return blob URL
+const fetchPhotoUrl = async (receiptId: number): Promise<string> => {
+  const token = localStorage.getItem("token")
+  const response = await fetch(`/api/photos/${receiptId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  const blob = await response.blob()
+  return URL.createObjectURL(blob)
+}
 
 interface ProposalItem {
   parsedName: string
   quantity: number
   unitPriceCents: number
   matchedItemId: number
-  confidence: number
   categoryId: number
   isNewCategory: boolean
   userChoice: string
@@ -37,6 +137,7 @@ const ProposalDetailPage = () => {
   const editName = van.state("")
   const editQty = van.state("")
   const editPrice = van.state("")
+  const photoSrc = van.state("")
   let abortController: AbortController | null = null
 
   const id = window.location.hash.split("/").pop()
@@ -96,6 +197,9 @@ const ProposalDetailPage = () => {
               status.val = data.status
               if (data.items) {
                 streamingItems.val = data.items
+              }
+              if (data.status === "failed") {
+                error.val = data.error || "Parse failed"
               }
               if (data.status !== "parsing") {
                 return
@@ -261,7 +365,6 @@ const ProposalDetailPage = () => {
           min: "0",
           step: "0.01",
         })),
-        td(`${(item.confidence * 100).toFixed(0)}%`),
         td({ class: "edit-actions" },
           button({ onclick: saveEdit, class: "btn-sm btn-primary" }, "Save"),
           button({ onclick: cancelEdit, class: "btn-sm btn-secondary" }, "Cancel"),
@@ -274,41 +377,46 @@ const ProposalDetailPage = () => {
       td(item.parsedName),
       td(String(item.quantity)),
       td(`$${(item.unitPriceCents / 100).toFixed(2)}`),
-      td(`${(item.confidence * 100).toFixed(0)}%`),
       td(
         button({ onclick: () => startEdit(index), class: "btn-sm btn-secondary" }, "Edit"),
-        item.confidence >= 0.99
-          ? span({ class: "match-badge" }, "Auto")
-          : item.confidence > 0.80
-            ? select(
-                { onchange: (e: Event) => handleChoice(index, (e.target as HTMLSelectElement).value) },
-                option({ value: "" }, "Choose..."),
-                option({ value: "existing" }, "Use existing"),
-                option({ value: "new" }, "Create new"),
-              )
-            : ""
       ),
     )
   }
 
+  const loadPhoto = async (receiptId: number) => {
+    try {
+      photoSrc.val = await fetchPhotoUrl(receiptId)
+    } catch {
+      photoSrc.val = ""
+    }
+  }
+
   const renderPending = () => {
     const pr = proposal.val!
+    if (pr.photoUrl && !photoSrc.val) loadPhoto(pr.proposalId)
     return div({ class: "proposal-detail-page" },
       div({ class: "page-header" },
         h1(`${pr.merchant || "Receipt"}`),
         button({ onclick: () => navigate("/") }, "Back"),
       ),
       div({ class: "proposal-layout" },
-        div({ class: "proposal-photo" },
-          pr.photoUrl
-            ? img({ src: `/api/photos/${pr.proposalId}`, alt: "Receipt" })
-            : p("No photo available"),
+        div({ class: "proposal-photo-wrapper" },
+          div({ class: "proposal-photo" },
+            () => photoSrc.val
+              ? ZoomableImage(() => photoSrc.val, "Receipt")
+              : p("No photo available"),
+          ),
+          () => photoSrc.val
+            ? div({ class: "photo-actions" },
+                a({ href: photoSrc.val, target: "_blank", rel: "noopener" }, "Open in new tab")
+              )
+            : "",
         ),
         div({ class: "proposal-items" },
           h2("Items"),
           div({ class: "items-table-wrapper" },
             table(
-              tr(th("Item"), th("Qty"), th("Price"), th("Confidence"), th("Action")),
+              tr(th("Item"), th("Qty"), th("Price"), th("Action")),
               ...streamingItems.val.map((item, index) => renderItemRow(item, index)),
             ),
           ),
@@ -327,18 +435,25 @@ const ProposalDetailPage = () => {
     )
   }
 
-  const renderFailed = () => div({ class: "proposal-failed" },
-    div({ class: "page-header" },
-      h1("Parse Failed"),
-      button({ onclick: () => navigate("/") }, "Back"),
-    ),
-    div({ class: "failed-content" },
-      p({ class: "error" }, error.val || "An error occurred while parsing the receipt"),
-      proposal.val?.photoUrl
-        ? div({ class: "proposal-photo" },
-            img({ src: `/api/photos/${proposal.val.proposalId}`, alt: "Receipt" }),
-          )
-        : "",
+  const renderFailed = () => {
+    if (proposal.val?.photoUrl && !photoSrc.val) loadPhoto(proposal.val.proposalId)
+    return div({ class: "proposal-failed" },
+      div({ class: "page-header" },
+        h1("Parse Failed"),
+        button({ onclick: () => navigate("/") }, "Back"),
+      ),
+      div({ class: "failed-content" },
+        p({ class: "error" }, error.val || "An error occurred while parsing the receipt"),
+        proposal.val?.photoUrl && photoSrc.val
+          ? div({ class: "proposal-photo-wrapper" },
+              div({ class: "proposal-photo" },
+                ZoomableImage(() => photoSrc.val, "Receipt"),
+              ),
+              div({ class: "photo-actions" },
+                a({ href: photoSrc.val, target: "_blank", rel: "noopener" }, "Open in new tab"),
+              ),
+            )
+          : "",
       div({ class: "card-actions" },
         button({ onclick: handleRetry, class: "btn-primary" }, "Retry Parsing"),
         button({ onclick: () => {
@@ -349,6 +464,7 @@ const ProposalDetailPage = () => {
       ),
     ),
   )
+}
 
   return div({ class: "proposal-detail-wrapper" },
     () => {

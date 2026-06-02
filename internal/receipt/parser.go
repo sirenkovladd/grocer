@@ -58,7 +58,6 @@ func (p *Parser) ParseReceiptData(ctx context.Context, photo []byte, ownerID uin
 			ParsedName:     item.Name,
 			Quantity:       item.Quantity,
 			UnitPriceCents: dollarsToCents(item.UnitPrice),
-			Confidence:     confidence,
 		}
 
 		if matched != nil && confidence >= 0.99 {
@@ -143,7 +142,7 @@ func (p *Parser) ParseReceiptStream(ctx context.Context, photo []byte, ownerID u
 				Merchant string `json:"merchant"`
 				Items    []struct {
 					Name       string  `json:"name"`
-					Quantity   uint32  `json:"quantity"`
+					Quantity   float64 `json:"quantity"`
 					UnitPrice  float64 `json:"unit_price"`
 					TotalPrice float64 `json:"total_price"`
 				} `json:"items"`
@@ -193,7 +192,6 @@ func (p *Parser) ParseReceiptStream(ctx context.Context, photo []byte, ownerID u
 				ParsedName:     item.Name,
 				Quantity:       item.Quantity,
 				UnitPriceCents: dollarsToCents(item.UnitPrice),
-				Confidence:     confidence,
 			}
 
 			if matched != nil && confidence >= 0.99 {
@@ -249,7 +247,7 @@ func (p *Parser) ParseReceiptAsync(ctx context.Context, proposalID uint64, photo
 
 	fail := func(msg string) {
 		log.Printf("PARSE_ASYNC: failed proposal %d: %s", proposalID, msg)
-		_ = p.store.UpdateProposalStatus(proposalID, "failed")
+		_ = p.store.UpdateProposalStatus(proposalID, "failed", msg)
 		publish(ParseEvent{Type: "error", Message: msg})
 	}
 
@@ -278,7 +276,7 @@ func (p *Parser) ParseReceiptAsync(ctx context.Context, proposalID uint64, photo
 		var partial struct {
 			Items []struct {
 				Name       string  `json:"name"`
-				Quantity   uint32  `json:"quantity"`
+				Quantity   float64 `json:"quantity"`
 				UnitPrice  float64 `json:"unit_price"`
 				TotalPrice float64 `json:"total_price"`
 			} `json:"items"`
@@ -327,7 +325,6 @@ func (p *Parser) ParseReceiptAsync(ctx context.Context, proposalID uint64, photo
 			ParsedName:     item.Name,
 			Quantity:       item.Quantity,
 			UnitPriceCents: dollarsToCents(item.UnitPrice),
-			Confidence:     confidence,
 		}
 
 		if matched != nil && confidence >= 0.99 {

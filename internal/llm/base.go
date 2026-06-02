@@ -75,12 +75,13 @@ func encodeImageToBase64(photo []byte) string {
 func ParseReceiptResponse(content string) (*ParsedReceipt, error) {
 	content = trimMarkdownCodeBlock(content)
 
+	// Use flexible struct that accepts both int and float for quantity
 	var parsed struct {
 		Merchant string `json:"merchant"`
 		Date     string `json:"date"`
 		Items    []struct {
 			Name       string  `json:"name"`
-			Quantity   uint32  `json:"quantity"`
+			Quantity   float64 `json:"quantity"`
 			UnitPrice  float64 `json:"unit_price"`
 			TotalPrice float64 `json:"total_price"`
 		} `json:"items"`
@@ -171,6 +172,7 @@ func buildReceiptPrompt() string {
   "total": 25.99
 }
 
+Note: quantity can be a decimal for weighted items (e.g. 0.445 for 445g, 1.5 for 1.5kg).
 Return ONLY the JSON, no other text.`
 }
 

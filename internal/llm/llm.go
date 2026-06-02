@@ -28,7 +28,7 @@ type ParsedReceipt struct {
 
 type ParsedItem struct {
 	Name       string
-	Quantity   uint32
+	Quantity   float64
 	UnitPrice  float64
 	TotalPrice float64
 }
