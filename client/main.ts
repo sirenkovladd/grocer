@@ -89,8 +89,8 @@ export const api = {
 // Layout
 const Layout = (content: any) => div({ class: "layout" },
   nav({ class: "sidebar" },
+    a({ href: "#/", onclick: () => navigate("/") }, "Home"),
     a({ href: "#/receipts", onclick: () => navigate("/receipts") }, "Receipts"),
-    a({ href: "#/proposals", onclick: () => navigate("/proposals") }, "Proposals"),
     a({ href: "#/items", onclick: () => navigate("/items") }, "Items"),
     a({ href: "#/merchants", onclick: () => navigate("/merchants") }, "Merchants"),
     a({ href: "#/categories", onclick: () => navigate("/categories") }, "Categories"),
@@ -101,10 +101,10 @@ const Layout = (content: any) => div({ class: "layout" },
 
 // Import pages
 import Login from "./pages/login"
+import HomePage from "./pages/home"
 import ReceiptsPage from "./pages/receipts"
 import ReceiptDetailPage from "./pages/receipt"
 import UploadPage from "./pages/upload"
-import ProposalsPage from "./pages/proposals"
 import ProposalDetailPage from "./pages/proposal"
 import ItemsPage from "./pages/items"
 import ItemDetailPage from "./pages/item-detail"
@@ -126,8 +126,7 @@ const App = () => {
       }
 
       if (path === "/") {
-        navigate("/receipts")
-        return div()
+        return Layout(HomePage())
       }
 
       return Layout(
@@ -141,7 +140,6 @@ const PageContent = (path: string) => {
   if (path === "/receipts") return ReceiptsPage()
   if (path === "/receipts/upload") return UploadPage()
   if (path.startsWith("/receipts/")) return ReceiptDetailPage()
-  if (path === "/proposals") return ProposalsPage()
   if (path.startsWith("/proposals/")) return ProposalDetailPage()
   if (path === "/items") return ItemsPage()
   if (path.startsWith("/items/")) return ItemDetailPage()
