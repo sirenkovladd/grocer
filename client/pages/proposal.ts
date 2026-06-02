@@ -1,7 +1,7 @@
 import van from "vanjs-core"
 import { api, navigate } from "../main"
 
-const { div, h1, h2, table, tr, td, th, button, select, option, img, p, span } = van.tags
+const { div, h1, h2, h3, table, tr, td, th, button, select, option, img, p, span, input } = van.tags
 
 interface ProposalItem {
   parsedName: string
@@ -33,6 +33,10 @@ const ProposalDetailPage = () => {
   const choices = van.state<Record<number, string>>({})
   const approving = van.state(false)
   const error = van.state("")
+  const editingIndex = van.state<number>(-1)
+  const editName = van.state("")
+  const editQty = van.state("")
+  const editPrice = van.state("")
   let abortController: AbortController | null = null
 
   const id = window.location.hash.split("/").pop()
@@ -124,6 +128,40 @@ const ProposalDetailPage = () => {
     choices.val = { ...choices.val, [index]: choice }
   }
 
+  const startEdit = (index: number) => {
+    const item = streamingItems.val[index]
+    if (!item) return
+    editingIndex.val = index
+    editName.val = item.parsedName
+    editQty.val = String(item.quantity)
+    editPrice.val = (item.unitPriceCents / 100).toFixed(2)
+  }
+
+  const cancelEdit = () => {
+    editingIndex.val = -1
+  }
+
+  const saveEdit = async () => {
+    const index = editingIndex.val
+    if (index < 0 || !id) return
+
+    try {
+      const updated = await api.patch(`/proposals/${id}/items/${index}`, {
+        parsedName: editName.val,
+        quantity: parseInt(editQty.val) || 1,
+        unitPriceCents: Math.round(parseFloat(editPrice.val) * 100) || 0,
+      })
+
+      // Update local state
+      const items = [...streamingItems.val]
+      items[index] = updated
+      streamingItems.val = items
+      editingIndex.val = -1
+    } catch (err) {
+      error.val = err instanceof Error ? err.message : "Failed to save"
+    }
+  }
+
   const handleApprove = async () => {
     if (!proposal.val) return
 
@@ -179,7 +217,7 @@ const ProposalDetailPage = () => {
               ...streamingItems.val.map((it) =>
                 tr(
                   td(it.parsedName),
-                  td(it.quantity.toString()),
+                  td(String(it.quantity)),
                   td(`$${(it.unitPriceCents / 100).toFixed(2)}`),
                 )
               ),
@@ -192,11 +230,66 @@ const ProposalDetailPage = () => {
     ),
   )
 
+  const renderItemRow = (item: ProposalItem, index: number) => {
+    // If this row is being edited
+    if (editingIndex.val === index) {
+      return tr({ class: "editing-row" },
+        td(input({
+          type: "text",
+          value: editName.val,
+          oninput: (e: Event) => { editName.val = (e.target as HTMLInputElement).value },
+          class: "edit-input",
+        })),
+        td(input({
+          type: "number",
+          value: editQty.val,
+          oninput: (e: Event) => { editQty.val = (e.target as HTMLInputElement).value },
+          class: "edit-input edit-qty",
+          min: "1",
+        })),
+        td(input({
+          type: "number",
+          value: editPrice.val,
+          oninput: (e: Event) => { editPrice.val = (e.target as HTMLInputElement).value },
+          class: "edit-input edit-price",
+          min: "0",
+          step: "0.01",
+        })),
+        td(`${(item.confidence * 100).toFixed(0)}%`),
+        td({ class: "edit-actions" },
+          button({ onclick: saveEdit, class: "btn-sm btn-primary" }, "Save"),
+          button({ onclick: cancelEdit, class: "btn-sm btn-secondary" }, "Cancel"),
+        ),
+      )
+    }
+
+    // Normal display row
+    return tr(
+      td(item.parsedName),
+      td(String(item.quantity)),
+      td(`$${(item.unitPriceCents / 100).toFixed(2)}`),
+      td(`${(item.confidence * 100).toFixed(0)}%`),
+      td(
+        button({ onclick: () => startEdit(index), class: "btn-sm btn-secondary" }, "Edit"),
+        item.confidence >= 0.99
+          ? span({ class: "match-badge" }, "Auto")
+          : item.confidence > 0.80
+            ? select(
+                { onchange: (e: Event) => handleChoice(index, (e.target as HTMLSelectElement).value) },
+                option({ value: "" }, "Choose..."),
+                option({ value: "existing" }, "Use existing"),
+                option({ value: "new" }, "Create new"),
+              )
+            : ""
+      ),
+    )
+  }
+
   const renderPending = () => {
     const pr = proposal.val!
     return div({ class: "proposal-detail-page" },
       div({ class: "page-header" },
-        h1(`Proposal from ${pr.merchant}`),
+        h1(`${pr.merchant || "Receipt"}`),
         button({ onclick: () => navigate("/proposals") }, "Back"),
       ),
       div({ class: "proposal-layout" },
@@ -207,39 +300,22 @@ const ProposalDetailPage = () => {
         ),
         div({ class: "proposal-items" },
           h2("Items"),
-          table(
-            tr(th("Item"), th("Qty"), th("Price"), th("Confidence"), th("Action")),
-            ...streamingItems.val.map((item, index) =>
-              tr(
-                td(item.parsedName),
-                td(item.quantity.toString()),
-                td(`$${(item.unitPriceCents / 100).toFixed(2)}`),
-                td(`${(item.confidence * 100).toFixed(0)}%`),
-                td(
-                  item.confidence >= 0.99
-                    ? "Auto-matched"
-                    : item.confidence > 0.80
-                      ? select(
-                          { onchange: (e: Event) => handleChoice(index, (e.target as HTMLSelectElement).value) },
-                          option({ value: "" }, "Choose..."),
-                          option({ value: "existing" }, "Use existing"),
-                          option({ value: "new" }, "Create new"),
-                        )
-                      : "New item"
-                ),
-              )
+          div({ class: "items-table-wrapper" },
+            table(
+              tr(th("Item"), th("Qty"), th("Price"), th("Confidence"), th("Action")),
+              ...streamingItems.val.map((item, index) => renderItemRow(item, index)),
             ),
           ),
           div({ class: "proposal-summary" },
             p(`Total: $${(pr.totalCents / 100).toFixed(2)}`),
-            p(`Date: ${new Date(pr.date * 1000).toLocaleDateString()}`),
+            p(`Date: ${pr.date ? new Date(pr.date * 1000).toLocaleDateString() : "Unknown"}`),
           ),
           () => error.val ? p({ class: "error" }, error.val) : "",
           button({
             onclick: handleApprove,
             disabled: approving,
-            class: "approve-btn",
-          }, approving.val ? "Approving..." : "Approve Receipt"),
+            class: "approve-btn btn-primary",
+          }, () => approving.val ? "Approving..." : "Approve Receipt"),
         ),
       ),
     )
@@ -257,10 +333,9 @@ const ProposalDetailPage = () => {
             img({ src: `/api/photos/${proposal.val.proposalId}`, alt: "Receipt" }),
           )
         : "",
-      button({
-        onclick: handleRetry,
-        class: "retry-btn",
-      }, "Retry Parsing"),
+      div({ class: "card-actions" },
+        button({ onclick: handleRetry, class: "btn-primary" }, "Retry Parsing"),
+      ),
     ),
   )
 

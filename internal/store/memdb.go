@@ -1251,6 +1251,35 @@ func (s *Store) UpdateProposalParseResult(id uint64, merchantID uint64, merchant
 	return nil
 }
 
+// UpdateProposalItems replaces all items on a proposal.
+func (s *Store) UpdateProposalItems(id uint64, items []domain.ProposalItem) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	txn := s.db.Txn(false)
+	defer txn.Abort()
+
+	raw, err := txn.First("proposals", "id", id)
+	if err != nil {
+		return err
+	}
+	if raw == nil {
+		return ErrNotFound
+	}
+
+	p := raw.(*domain.Proposal)
+	p.Items = items
+
+	txn2 := s.db.Txn(true)
+	defer txn2.Abort()
+	if err := txn2.Insert("proposals", p); err != nil {
+		return err
+	}
+	txn2.Commit()
+	s.SaveSnapshotAsync(context.Background())
+	return nil
+}
+
 func (s *Store) SaveSnapshotAsync(ctx context.Context) {
 	s.snapshotMu.Lock()
 	defer s.snapshotMu.Unlock()

@@ -72,6 +72,8 @@ func (r *Router) setupRoutes() {
 	r.mux.HandleFunc("GET /api/proposals/{id}/stream", r.withCORS(r.withAuth(r.handleProposalStream)))
 	r.mux.HandleFunc("POST /api/proposals/{id}/approve", r.withCORS(r.withAuth(r.withAuditLogging("approve", "proposal", r.handleApproveProposal))))
 	r.mux.HandleFunc("POST /api/proposals/{id}/reparse", r.withCORS(r.withAuth(r.withAuditLogging("reparse", "proposal", r.handleReparseProposal))))
+	r.mux.HandleFunc("DELETE /api/proposals/{id}", r.withCORS(r.withAuth(r.withAuditLogging("delete", "proposal", r.handleDeleteProposal))))
+	r.mux.HandleFunc("PATCH /api/proposals/{id}/items/{index}", r.withCORS(r.withAuth(r.withAuditLogging("update", "proposal_item", r.handleUpdateProposalItem))))
 
 	// Items
 	r.mux.HandleFunc("GET /api/items", r.withCORS(r.withAuth(r.withAuditLogging("list", "items", r.handleListItems))))

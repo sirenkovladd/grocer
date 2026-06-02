@@ -175,3 +175,69 @@ func (r *Router) handleReparseProposal(w http.ResponseWriter, req *http.Request)
 
 	writeJSON(w, http.StatusOK, map[string]string{"id": fmt.Sprintf("%d", id)})
 }
+
+func (r *Router) handleDeleteProposal(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid proposal ID")
+		return
+	}
+
+	if err := r.store.DeleteProposal(id); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete proposal")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+type updateProposalItemRequest struct {
+	ParsedName     string `json:"parsedName"`
+	Quantity       uint32 `json:"quantity"`
+	UnitPriceCents int64  `json:"unitPriceCents"`
+}
+
+func (r *Router) handleUpdateProposalItem(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid proposal ID")
+		return
+	}
+
+	indexStr := req.PathValue("index")
+	index, err := strconv.Atoi(indexStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid item index")
+		return
+	}
+
+	proposal, err := r.store.GetProposal(id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "proposal not found")
+		return
+	}
+
+	if index < 0 || index >= len(proposal.Items) {
+		writeError(w, http.StatusBadRequest, "item index out of range")
+		return
+	}
+
+	var reqBody updateProposalItemRequest
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	proposal.Items[index].ParsedName = reqBody.ParsedName
+	proposal.Items[index].Quantity = reqBody.Quantity
+	proposal.Items[index].UnitPriceCents = reqBody.UnitPriceCents
+
+	if err := r.store.UpdateProposalItems(id, proposal.Items); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update item")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, proposal.Items[index])
+}

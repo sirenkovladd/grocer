@@ -716,3 +716,154 @@ th {
   color: #666;
   font-size: 0.85rem;
 }
+
+/* Buttons */
+.btn-primary {
+  background: #1565c0;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.btn-primary:hover {
+  background: #0d47a1;
+}
+
+.btn-secondary {
+  background: #e0e0e0;
+  color: #333;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.btn-secondary:hover {
+  background: #bdbdbd;
+}
+
+.btn-danger {
+  background: #c62828;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.btn-danger:hover {
+  background: #b71c1c;
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  border-radius: 3px;
+  cursor: pointer;
+  border: none;
+}
+
+.btn-sm.btn-primary {
+  background: #1565c0;
+  color: white;
+}
+
+.btn-sm.btn-secondary {
+  background: #e0e0e0;
+  color: #333;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Card actions */
+.card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.card-meta {
+  display: flex;
+  gap: 16px;
+  color: #666;
+  font-size: 0.9rem;
+  margin: 8px 0;
+}
+
+/* Edit row */
+.editing-row {
+  background: #f5f5f5;
+}
+
+.edit-input {
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  font-size: 0.9rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.edit-input:focus {
+  outline: none;
+  border-color: #1565c0;
+}
+
+.edit-qty {
+  width: 60px;
+}
+
+.edit-price {
+  width: 80px;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.match-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  margin-left: 4px;
+}
+
+/* Items table wrapper */
+.items-table-wrapper {
+  overflow-x: auto;
+}
+
+.items-table-wrapper table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.items-table-wrapper th,
+.items-table-wrapper td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+.items-table-wrapper th {
+  font-weight: 600;
+  color: #666;
+  font-size: 0.85rem;
+  position: sticky;
+  top: 0;
+  background: white;
+}
