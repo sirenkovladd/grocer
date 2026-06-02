@@ -112,6 +112,9 @@ func (r *Router) handleProposalStream(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
+	// Clear replay buffer — snapshot already includes all persisted items
+	r.eventHub.ClearReplay(id)
+
 	// Subscribe to live events
 	ch := r.eventHub.Subscribe(id)
 	defer r.eventHub.Unsubscribe(id, ch)
