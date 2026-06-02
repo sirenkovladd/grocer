@@ -66,6 +66,12 @@ const ProposalCard = (proposal: Proposal, onAction: () => void) => {
     }
   }
 
+  const handleWatch = () => {
+    navigate(`/proposals/${proposal.proposalId}`)
+  }
+
+  const items = proposal.items || []
+
   if (proposal.status === "parsing") {
     return div({ class: "proposal-form card" },
       div({ class: "card-header" },
@@ -74,9 +80,9 @@ const ProposalCard = (proposal: Proposal, onAction: () => void) => {
       ),
       div({ class: "parsing-indicator" },
         div({ class: "spinner" }),
-        span(`${proposal.items?.length || 0} items found so far`),
+        span(`${items.length} items found so far`),
       ),
-      button({ onclick: () => navigate(`/proposals/${proposal.proposalId}`) }, "Watch Progress"),
+      button({ onclick: handleWatch }, "Watch Progress"),
     )
   }
 
@@ -91,17 +97,18 @@ const ProposalCard = (proposal: Proposal, onAction: () => void) => {
     )
   }
 
+  // Default: pending
   return div({ class: "proposal-form card" },
     div({ class: "card-header" },
       h2(`Proposal from ${proposal.merchant || "Unknown"}`),
       statusBadge("pending"),
     ),
-    table(
+    items.length > 0 ? table(
       tr(th("Item"), th("Qty"), th("Price"), th("Confidence"), th("Action")),
-      ...proposal.items.map((item, index) =>
+      ...items.map((item, index) =>
         tr(
           td(item.parsedName),
-          td(item.quantity.toString()),
+          td(String(item.quantity)),
           td(`$${(item.unitPriceCents / 100).toFixed(2)}`),
           td(`${(item.confidence * 100).toFixed(0)}%`),
           td(
@@ -118,7 +125,7 @@ const ProposalCard = (proposal: Proposal, onAction: () => void) => {
           ),
         )
       ),
-    ),
+    ) : p("No items"),
     div({ class: "proposal-summary" },
       p(`Total: $${(proposal.totalCents / 100).toFixed(2)}`),
       p(`Date: ${new Date(proposal.date * 1000).toLocaleDateString()}`),
@@ -127,7 +134,7 @@ const ProposalCard = (proposal: Proposal, onAction: () => void) => {
       onclick: handleApprove,
       disabled: approving,
       class: "approve-btn",
-    }, approving.val ? "Approving..." : "Approve Receipt"),
+    }, () => approving.val ? "Approving..." : "Approve Receipt"),
   )
 }
 
@@ -139,9 +146,10 @@ const ProposalsPage = () => {
     loading.val = true
     try {
       const data = await api.get("/proposals")
-      proposals.val = data || []
+      proposals.val = Array.isArray(data) ? data : []
     } catch (err) {
       console.error("Failed to load proposals:", err)
+      proposals.val = []
     }
     loading.val = false
   }
@@ -152,13 +160,17 @@ const ProposalsPage = () => {
     loadProposals()
   }
 
+  const renderContent = () => {
+    if (loading.val) return div("Loading...")
+    if (proposals.val.length === 0) return div("No active proposals")
+    return div(
+      ...proposals.val.map(p => ProposalCard(p, handleAction))
+    )
+  }
+
   return div({ class: "proposals-page" },
     h1("Proposals"),
-    () => loading.val
-      ? div("Loading...")
-      : proposals.val.length === 0
-        ? div("No active proposals")
-        : proposals.val.map(p => ProposalCard(p, handleAction)),
+    renderContent,
   )
 }
 
