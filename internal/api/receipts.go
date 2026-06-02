@@ -2,6 +2,8 @@ package api
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"image"
 	"image/jpeg"
 	_ "image/png"
@@ -172,10 +174,10 @@ func (r *Router) handleUploadReceipt(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Spawn background parse goroutine
-	go r.parser.ParseReceiptAsync(req.Context(), proposal.ProposalID, llmData, userID)
+	// Spawn background parse goroutine with detached context
+	go r.parser.ParseReceiptAsync(context.Background(), proposal.ProposalID, llmData, userID)
 
-	writeJSON(w, http.StatusOK, map[string]uint64{"id": proposal.ProposalID})
+	writeJSON(w, http.StatusOK, map[string]string{"id": fmt.Sprintf("%d", proposal.ProposalID)})
 }
 
 const maxLLMImageDim = 2000

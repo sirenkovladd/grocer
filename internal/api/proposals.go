@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -170,7 +171,7 @@ func (r *Router) handleReparseProposal(w http.ResponseWriter, req *http.Request)
 	}
 
 	llmData := resizeImageForLLM(photoData)
-	go r.parser.ParseReceiptAsync(req.Context(), id, llmData, proposal.OwnerID)
+	go r.parser.ParseReceiptAsync(context.Background(), id, llmData, proposal.OwnerID)
 
-	writeJSON(w, http.StatusOK, map[string]uint64{"id": id})
+	writeJSON(w, http.StatusOK, map[string]string{"id": fmt.Sprintf("%d", id)})
 }
