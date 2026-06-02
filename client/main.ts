@@ -13,6 +13,24 @@ export const navigate = (path: string) => {
   window.location.hash = path
 }
 
+export const isAuthenticated = () => !!localStorage.getItem("token")
+
+// Routes that don't require authentication
+const publicRoutes = new Set(["/login"])
+
+// Auth guard: returns true if navigation should proceed
+const guardAuth = (path: string): boolean => {
+  if (!isAuthenticated() && !publicRoutes.has(path)) {
+    navigate("/login")
+    return false
+  }
+  if (isAuthenticated() && publicRoutes.has(path)) {
+    navigate("/")
+    return false
+  }
+  return true
+}
+
 // API helper
 export const api = {
   async fetch(path: string, options: RequestInit = {}) {
@@ -25,6 +43,7 @@ export const api = {
     }
     const response = await fetch(`/api${path}`, { ...options, headers })
     if (response.status === 401) {
+      localStorage.removeItem("token")
       navigate("/login")
       throw new Error("Unauthorized")
     }
@@ -55,6 +74,7 @@ export const api = {
       body: formData,
     })
     if (response.status === 401) {
+      localStorage.removeItem("token")
       navigate("/login")
       throw new Error("Unauthorized")
     }
@@ -97,16 +117,19 @@ const App = () => {
   return div({ id: "app" },
     () => {
       const path = currentPath.val
-      
+
+      // Auth guards — redirect before rendering
+      if (!guardAuth(path)) return div()
+
       if (path === "/login") {
         return Login()
       }
-      
+
       if (path === "/") {
         navigate("/receipts")
         return div()
       }
-      
+
       return Layout(
         () => PageContent(currentPath.val)
       )

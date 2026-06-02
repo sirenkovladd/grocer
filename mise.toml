@@ -27,11 +27,13 @@ outputs = ["dist/*"]
 sources = ["client/*"]
 
 [tasks.start_server]
+depends = ["proto", "build_client"]
 env.BUILD_TIME = "{{exec(command='date -u +%Y-%m-%dT%H:%M:%SZ')}}"
 run = "go run ./cmd/server"
 sources = ["**/*.go"]
 
 [tasks.build_server]
+depends = ["proto", "build_client_prod"]
 env.GIT_COMMIT = "{{exec(command='git rev-parse --short HEAD')}}"
 env.BUILD_TIME = "{{exec(command='date -u +%Y-%m-%dT%H:%M:%SZ')}}"
 env.FLAG = "-s -w -X 'main.GitCommit={{env.GIT_COMMIT}}' -X 'main.BuildTime={{env.BUILD_TIME}}'"

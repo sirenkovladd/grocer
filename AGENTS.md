@@ -8,15 +8,41 @@ Grocer is a family-shared grocery receipt tracker. Users photograph receipts (vi
 
 **Modular monolith** — single Go binary, clean internal package boundaries.
 
-- `cmd/server/` — entry point, wiring
-- `internal/domain/` — core types (User, Receipt, Item, Merchant, Category), no dependencies
-- `internal/store/` — memdb wrapper, GCloud snapshot pull/push
-- `internal/llm/` — provider interface + implementations (Kimi, Qwen)
-- `internal/receipt/` — parsing orchestration (photo → LLM → proposal → approval)
-- `internal/bot/` — Telegram + Discord bot handlers
-- `internal/api/` — HTTP handlers, routing
-- `internal/photo/` — GCloud storage + local LRU cache
-- `client/` — VanJS frontend + Chart.js
+### Backend (`cmd/`, `internal/`)
+
+| Package | Responsibility |
+|---------|---------------|
+| `cmd/server/` | Entry point, CLI flags, dependency wiring |
+| `internal/domain/` | Core types (User, Receipt, Item, Merchant, Category), no dependencies |
+| `internal/store/` | memdb wrapper, GCloud snapshot pull/push, ID generation |
+| `internal/llm/` | Provider interface + implementations (Kimi, Qwen) |
+| `internal/receipt/` | Parsing orchestration (photo → LLM → proposal → approval) |
+| `internal/bot/` | Telegram + Discord bot handlers |
+| `internal/api/` | HTTP handlers, routing, middleware |
+| `internal/photo/` | GCloud storage + local LRU cache |
+
+### Frontend (`client/`)
+
+| Path | Responsibility |
+|------|---------------|
+| `client/main.ts` | App entry, SPA router, auth guards, API client, layout shell |
+| `client/pages/` | Page components (one per route) |
+| `client/components/` | Shared UI components |
+| `client/static/` | CSS assets |
+
+#### Client Architecture Patterns
+
+- **Hash-based SPA routing** — `currentPath` VanJS state synced with `window.location.hash`. Routes defined in `PageContent()` switch.
+- **Auth flow** — JWT token stored in `localStorage.token`. Login page sets token; `isAuthenticated()` checks presence. `guardAuth()` runs on every navigation:
+  - Unauthenticated + protected route → redirect to `/login`
+  - Authenticated + public route (`/login`) → redirect to `/`
+- **API client** — `api.fetch()` in `main.ts` auto-attaches Bearer token. On 401 response: clears token, navigates to `/login`, throws. All HTTP methods (GET, POST, PATCH, DELETE) plus `postFormData` for uploads.
+- **Reactive rendering** — VanJS `state` drives DOM updates. Route changes trigger full page re-render via `currentPath.val` dependency.
+- **Public routes** — Only `/login` is public. All other routes require authentication.
+
+#### Protected Routes
+
+All routes except `/login` require a valid JWT. The auth guard in `main.ts` enforces this at the router level — individual pages do not need to check auth themselves.
 
 ## Data Model
 
@@ -70,13 +96,16 @@ go run cmd/server/main.go --create-user --name "Dad" --username dad --password s
 - Argon2id for password hashing
 - Timestamp-based UIDs (`internal/store/id-gen.go`)
 - Errors returned, not panicked (except startup snapshot failure → crash)
+- Middleware chain: `LoggingMiddleware` → `RecoveryMiddleware` → `AuthMiddleware` → handler
 
 ### Frontend
 
 - VanJS for reactive UI — see `vanjs_skill.md` for patterns
 - Chart.js for analysis charts
 - CSS in separate files per component
-- API calls via `client/api.ts` wrapper with auth token
+- API calls via `api` from `client/main.ts` — never use raw `fetch()` directly
+- Pages import `{ api, navigate }` from `../main`; do not duplicate auth logic
+- All navigation via `navigate()` (not `window.location` directly) to preserve auth guard
 
 ### LLM Integration
 
