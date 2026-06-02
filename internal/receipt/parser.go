@@ -12,10 +12,15 @@ import (
 	"code.sirenko.ca/grocer/internal/store"
 )
 
+type EventPublisher interface {
+	Publish(proposalID uint64, event ParseEvent)
+}
+
 type Parser struct {
-	store   *store.Store
-	llm     llm.Provider
-	matcher *Matcher
+	store    *store.Store
+	llm      llm.Provider
+	matcher  *Matcher
+	eventHub EventPublisher
 }
 
 func NewParser(store *store.Store, llmProvider llm.Provider) *Parser {
@@ -24,6 +29,10 @@ func NewParser(store *store.Store, llmProvider llm.Provider) *Parser {
 		llm:     llmProvider,
 		matcher: NewMatcher(store),
 	}
+}
+
+func (p *Parser) SetEventHub(hub EventPublisher) {
+	p.eventHub = hub
 }
 
 // ParseReceiptData parses receipt from photo without saving (caller handles persistence)
@@ -225,6 +234,140 @@ func (p *Parser) ParseReceiptStream(ctx context.Context, photo []byte, ownerID u
 	}()
 
 	return events, nil
+}
+
+// ParseReceiptAsync runs the full parse pipeline in the background,
+// updating the proposal in the store and broadcasting events via the hub.
+func (p *Parser) ParseReceiptAsync(ctx context.Context, proposalID uint64, photo []byte, ownerID uint64) {
+	log.Printf("PARSE_ASYNC: starting for proposal %d", proposalID)
+
+	publish := func(event ParseEvent) {
+		if p.eventHub != nil {
+			p.eventHub.Publish(proposalID, event)
+		}
+	}
+
+	fail := func(msg string) {
+		log.Printf("PARSE_ASYNC: failed proposal %d: %s", proposalID, msg)
+		_ = p.store.UpdateProposalStatus(proposalID, "failed")
+		publish(ParseEvent{Type: "error", Message: msg})
+	}
+
+	// Stream from LLM
+	streamCh, err := p.llm.ParseReceiptStream(ctx, photo)
+	if err != nil {
+		fail(fmt.Sprintf("LLM error: %v", err))
+		return
+	}
+
+	publish(ParseEvent{Type: "progress", Message: "Parsing receipt with AI..."})
+
+	var accumulated string
+	var lastItemCount int
+	chunkCount := 0
+
+	for chunk := range streamCh {
+		if chunk.Error != nil {
+			fail(fmt.Sprintf("LLM stream error: %v", chunk.Error))
+			return
+		}
+		chunkCount++
+		accumulated += chunk.Text
+
+		// Try partial parse for progressive items
+		var partial struct {
+			Items []struct {
+				Name       string  `json:"name"`
+				Quantity   uint32  `json:"quantity"`
+				UnitPrice  float64 `json:"unit_price"`
+				TotalPrice float64 `json:"total_price"`
+			} `json:"items"`
+		}
+		if err := json.Unmarshal([]byte(accumulated), &partial); err == nil && len(partial.Items) > lastItemCount {
+			for i := lastItemCount; i < len(partial.Items); i++ {
+				it := partial.Items[i]
+				pi := domain.ProposalItem{
+					ParsedName:     it.Name,
+					Quantity:       it.Quantity,
+					UnitPriceCents: dollarsToCents(it.UnitPrice),
+				}
+				_ = p.store.AppendProposalItem(proposalID, pi)
+				publish(ParseEvent{Type: "item", Index: i, Item: &pi})
+			}
+			lastItemCount = len(partial.Items)
+			publish(ParseEvent{Type: "progress", Message: fmt.Sprintf("Found %d items...", lastItemCount)})
+		}
+	}
+
+	// Final parse
+	parsed, err := llm.ParseReceiptResponse(accumulated)
+	if err != nil {
+		fail(fmt.Sprintf("parse response: %v", err))
+		return
+	}
+
+	publish(ParseEvent{Type: "progress", Message: "Matching items to catalog..."})
+
+	merchant, err := p.findOrCreateMerchant(parsed.Merchant)
+	if err != nil {
+		fail(fmt.Sprintf("merchant: %v", err))
+		return
+	}
+
+	// Build final items with matching
+	proposalItems := make([]domain.ProposalItem, len(parsed.Items))
+	for i, item := range parsed.Items {
+		matched, confidence, err := p.matcher.FindMatch(item.Name)
+		if err != nil {
+			fail(fmt.Sprintf("match: %v", err))
+			return
+		}
+
+		pi := domain.ProposalItem{
+			ParsedName:     item.Name,
+			Quantity:       item.Quantity,
+			UnitPriceCents: dollarsToCents(item.UnitPrice),
+			Confidence:     confidence,
+		}
+
+		if matched != nil && confidence >= 0.99 {
+			pi.MatchedItemID = matched.ItemID
+			pi.CategoryID = matched.CategoryID
+			pi.UserChoice = "existing"
+		} else if matched != nil && confidence > 0.80 {
+			pi.MatchedItemID = matched.ItemID
+			pi.CategoryID = matched.CategoryID
+		} else {
+			cat, err := p.categorizeItem(ctx, item.Name)
+			if err == nil {
+				pi.CategoryID = cat.CategoryID
+				pi.IsNewCategory = cat.IsNew
+			}
+		}
+
+		proposalItems[i] = pi
+	}
+
+	// Update proposal with final data
+	if err := p.store.UpdateProposalParseResult(proposalID, merchant.MerchantID, merchant.Name, parsed.Date.Unix(), dollarsToCents(parsed.Total), proposalItems); err != nil {
+		fail(fmt.Sprintf("save result: %v", err))
+		return
+	}
+
+	// Build full proposal for the done event
+	proposal := &domain.Proposal{
+		ProposalID: proposalID,
+		OwnerID:    ownerID,
+		MerchantID: merchant.MerchantID,
+		Merchant:   merchant.Name,
+		Date:       parsed.Date.Unix(),
+		Items:      proposalItems,
+		TotalCents: dollarsToCents(parsed.Total),
+		Status:     "pending",
+	}
+
+	publish(ParseEvent{Type: "done", Proposal: proposal})
+	log.Printf("PARSE_ASYNC: completed proposal %d", proposalID)
 }
 
 func (p *Parser) ParseReceipt(ctx context.Context, photo []byte, ownerID uint64) (*domain.Proposal, error) {

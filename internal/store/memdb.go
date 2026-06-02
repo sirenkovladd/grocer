@@ -1125,6 +1125,132 @@ func (s *Store) DeleteSessionsByUserID(userID uint64) error {
 	return nil
 }
 
+// UpdateProposalStatus changes a proposal's status.
+func (s *Store) UpdateProposalStatus(id uint64, status string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	txn := s.db.Txn(false)
+	defer txn.Abort()
+
+	raw, err := txn.First("proposals", "id", id)
+	if err != nil {
+		return err
+	}
+	if raw == nil {
+		return ErrNotFound
+	}
+
+	p := raw.(*domain.Proposal)
+	p.Status = status
+
+	txn2 := s.db.Txn(true)
+	defer txn2.Abort()
+	if err := txn2.Insert("proposals", p); err != nil {
+		return err
+	}
+	txn2.Commit()
+	s.SaveSnapshotAsync(context.Background())
+	return nil
+}
+
+// AppendProposalItem adds an item to a proposal during streaming parse.
+func (s *Store) AppendProposalItem(id uint64, item domain.ProposalItem) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	txn := s.db.Txn(false)
+	defer txn.Abort()
+
+	raw, err := txn.First("proposals", "id", id)
+	if err != nil {
+		return err
+	}
+	if raw == nil {
+		return ErrNotFound
+	}
+
+	p := raw.(*domain.Proposal)
+	p.Items = append(p.Items, item)
+
+	txn2 := s.db.Txn(true)
+	defer txn2.Abort()
+	if err := txn2.Insert("proposals", p); err != nil {
+		return err
+	}
+	txn2.Commit()
+	s.SaveSnapshotAsync(context.Background())
+	return nil
+}
+
+// ResetProposalForReparse clears items and resets status to "parsing" for retry.
+func (s *Store) ResetProposalForReparse(id uint64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	txn := s.db.Txn(false)
+	defer txn.Abort()
+
+	raw, err := txn.First("proposals", "id", id)
+	if err != nil {
+		return err
+	}
+	if raw == nil {
+		return ErrNotFound
+	}
+
+	p := raw.(*domain.Proposal)
+	p.Status = "parsing"
+	p.Items = nil
+	p.TotalCents = 0
+	p.MerchantID = 0
+	p.Merchant = ""
+	p.Date = 0
+
+	txn2 := s.db.Txn(true)
+	defer txn2.Abort()
+	if err := txn2.Insert("proposals", p); err != nil {
+		return err
+	}
+	txn2.Commit()
+	s.SaveSnapshotAsync(context.Background())
+	return nil
+}
+
+// UpdateProposalParseResult sets merchant, date, total, and final items after parse completes.
+func (s *Store) UpdateProposalParseResult(id uint64, merchantID uint64, merchant string, date int64, totalCents int64, items []domain.ProposalItem) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	txn := s.db.Txn(false)
+	defer txn.Abort()
+
+	raw, err := txn.First("proposals", "id", id)
+	if err != nil {
+		return err
+	}
+	if raw == nil {
+		return ErrNotFound
+	}
+
+	p := raw.(*domain.Proposal)
+	p.MerchantID = merchantID
+	p.Merchant = merchant
+	p.Date = date
+	p.TotalCents = totalCents
+	p.Items = items
+	p.Status = "pending"
+
+	txn2 := s.db.Txn(true)
+	defer txn2.Abort()
+	if err := txn2.Insert("proposals", p); err != nil {
+		return err
+	}
+	txn2.Commit()
+	s.SaveSnapshotAsync(context.Background())
+	return nil
+}
+
 func (s *Store) SaveSnapshotAsync(ctx context.Context) {
 	s.snapshotMu.Lock()
 	defer s.snapshotMu.Unlock()
