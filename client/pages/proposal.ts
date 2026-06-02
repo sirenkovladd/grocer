@@ -55,7 +55,13 @@ const ProposalDetailPage = () => {
       })
 
       if (!response.ok) {
-        throw new Error("Failed to connect")
+        const body = await response.text()
+        let msg = `HTTP ${response.status}`
+        try {
+          const parsed = JSON.parse(body)
+          if (parsed.error) msg = parsed.error
+        } catch {}
+        throw new Error(msg)
       }
 
       const reader = response.body!.getReader()
@@ -335,6 +341,11 @@ const ProposalDetailPage = () => {
         : "",
       div({ class: "card-actions" },
         button({ onclick: handleRetry, class: "btn-primary" }, "Retry Parsing"),
+        button({ onclick: () => {
+          if (confirm("Delete this proposal?")) {
+            api.delete(`/proposals/${id}`).then(() => navigate("/proposals"))
+          }
+        }, class: "btn-danger" }, "Delete"),
       ),
     ),
   )
