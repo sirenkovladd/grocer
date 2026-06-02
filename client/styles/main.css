@@ -572,3 +572,147 @@ th {
   padding: 2rem;
   color: var(--text-secondary);
 }
+
+/* Status badges */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.badge-parsing {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.badge-pending {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.badge-failed {
+  background: #fce4ec;
+  color: #c62828;
+}
+
+.badge-approved {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+/* Spinner */
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #e0e0e0;
+  border-top: 2px solid #1565c0;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Parsing indicator */
+.parsing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Skeleton loading */
+.skeleton-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.skeleton-line {
+  height: 20px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+.skeleton-merchant { width: 60%; }
+.skeleton-date { width: 40%; }
+.skeleton-total { width: 30%; }
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Progress message */
+.progress-msg {
+  color: #666;
+  font-style: italic;
+  margin-bottom: 12px;
+}
+
+/* Parsing placeholder */
+.parsing-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 0;
+}
+
+/* Failed state */
+.failed-content {
+  text-align: center;
+  padding: 32px 0;
+}
+
+.retry-btn {
+  background: #1565c0;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 12px;
+}
+
+.retry-btn:hover {
+  background: #0d47a1;
+}
+
+/* Streaming items */
+.streaming-items {
+  margin-top: 16px;
+}
+
+.streaming-items table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.streaming-items th,
+.streaming-items td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+.streaming-items th {
+  font-weight: 600;
+  color: #666;
+  font-size: 0.85rem;
+}

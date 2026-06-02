@@ -1,7 +1,7 @@
 import van from "vanjs-core"
 import { api, navigate } from "../main"
 
-const { div, h1, h2, table, tr, td, th, button, select, option } = van.tags
+const { div, h1, h2, table, tr, td, th, button, select, option, span, p } = van.tags
 
 interface ProposalItem {
   parsedName: string
@@ -25,34 +25,79 @@ interface Proposal {
   status: string
 }
 
-const ProposalForm = (proposal: Proposal, onApproved: () => void) => {
+const statusBadge = (status: string) => {
+  const classes: Record<string, string> = {
+    parsing: "badge-parsing",
+    pending: "badge-pending",
+    failed: "badge-failed",
+    approved: "badge-approved",
+  }
+  return span({ class: `badge ${classes[status] || ""}` }, status)
+}
+
+const ProposalCard = (proposal: Proposal, onAction: () => void) => {
   const choices = van.state<Record<number, string>>({})
+  const approving = van.state(false)
 
   const handleChoice = (index: number, choice: string) => {
     choices.val = { ...choices.val, [index]: choice }
   }
 
   const handleApprove = async () => {
+    approving.val = true
     try {
       await api.post(`/proposals/${proposal.proposalId}/approve`, {
         choices: choices.val,
       })
-      onApproved()
+      onAction()
     } catch (err) {
       console.error("Failed to approve proposal:", err)
+    } finally {
+      approving.val = false
     }
   }
 
-  return div({ class: "proposal-form card" },
-    h2(`Proposal from ${proposal.merchant}`),
-    table(
-      tr(
-        th("Item"),
-        th("Qty"),
-        th("Price"),
-        th("Confidence"),
-        th("Action"),
+  const handleRetry = async () => {
+    try {
+      await api.post(`/proposals/${proposal.proposalId}/reparse`, {})
+      onAction()
+    } catch (err) {
+      console.error("Failed to retry proposal:", err)
+    }
+  }
+
+  if (proposal.status === "parsing") {
+    return div({ class: "proposal-form card" },
+      div({ class: "card-header" },
+        h2("Parsing receipt..."),
+        statusBadge("parsing"),
       ),
+      div({ class: "parsing-indicator" },
+        div({ class: "spinner" }),
+        span(`${proposal.items?.length || 0} items found so far`),
+      ),
+      button({ onclick: () => navigate(`/proposals/${proposal.proposalId}`) }, "Watch Progress"),
+    )
+  }
+
+  if (proposal.status === "failed") {
+    return div({ class: "proposal-form card" },
+      div({ class: "card-header" },
+        h2("Parse Failed"),
+        statusBadge("failed"),
+      ),
+      p("An error occurred while parsing this receipt"),
+      button({ onclick: handleRetry, class: "retry-btn" }, "Retry"),
+    )
+  }
+
+  return div({ class: "proposal-form card" },
+    div({ class: "card-header" },
+      h2(`Proposal from ${proposal.merchant || "Unknown"}`),
+      statusBadge("pending"),
+    ),
+    table(
+      tr(th("Item"), th("Qty"), th("Price"), th("Confidence"), th("Action")),
       ...proposal.items.map((item, index) =>
         tr(
           td(item.parsedName),
@@ -74,7 +119,15 @@ const ProposalForm = (proposal: Proposal, onApproved: () => void) => {
         )
       ),
     ),
-    button({ onclick: handleApprove }, "Approve Receipt"),
+    div({ class: "proposal-summary" },
+      p(`Total: $${(proposal.totalCents / 100).toFixed(2)}`),
+      p(`Date: ${new Date(proposal.date * 1000).toLocaleDateString()}`),
+    ),
+    button({
+      onclick: handleApprove,
+      disabled: approving,
+      class: "approve-btn",
+    }, approving.val ? "Approving..." : "Approve Receipt"),
   )
 }
 
@@ -95,18 +148,17 @@ const ProposalsPage = () => {
 
   loadProposals()
 
-  const handleApproved = () => {
+  const handleAction = () => {
     loadProposals()
-    navigate("/receipts")
   }
 
   return div({ class: "proposals-page" },
-    h1("Pending Proposals"),
+    h1("Proposals"),
     () => loading.val
       ? div("Loading...")
       : proposals.val.length === 0
-        ? div("No pending proposals")
-        : proposals.val.map(p => ProposalForm(p, handleApproved)),
+        ? div("No active proposals")
+        : proposals.val.map(p => ProposalCard(p, handleAction)),
   )
 }
 

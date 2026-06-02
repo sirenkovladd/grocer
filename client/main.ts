@@ -43,6 +43,27 @@ export const api = {
     body: JSON.stringify(body),
   }),
   delete: (path: string) => api.fetch(path, { method: "DELETE" }),
+  postFormData: async (path: string, formData: FormData) => {
+    const token = localStorage.getItem("token")
+    const headers: Record<string, string> = {}
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`
+    }
+    const response = await fetch(`/api${path}`, {
+      method: "POST",
+      headers,
+      body: formData,
+    })
+    if (response.status === 401) {
+      navigate("/login")
+      throw new Error("Unauthorized")
+    }
+    if (!response.ok) {
+      const data = await response.json()
+      throw new Error(data.error || "Request failed")
+    }
+    return response.json()
+  },
 }
 
 // Layout
