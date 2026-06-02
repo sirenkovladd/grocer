@@ -39,14 +39,14 @@ type Store struct {
 }
 
 type Session struct {
-	SessionID uint64
-	TokenHash string
-	UserID    uint64
+	SessionID uint64 `json:"sessionId,string"`
+	TokenHash string `json:"tokenHash"`
+	UserID    uint64 `json:"userId,string"`
 }
 
 type BotUser struct {
-	ExternalID string
-	UserID     uint64
+	ExternalID string `json:"externalId"`
+	UserID     uint64 `json:"userId,string"`
 }
 
 func NewStore() (*Store, error) {
