@@ -15,6 +15,7 @@ import (
 	"code.sirenko.ca/grocer/internal/api"
 	"code.sirenko.ca/grocer/internal/bot"
 	"code.sirenko.ca/grocer/internal/domain"
+	"code.sirenko.ca/grocer/internal/events"
 	"code.sirenko.ca/grocer/internal/llm"
 	"code.sirenko.ca/grocer/internal/photo"
 	"code.sirenko.ca/grocer/internal/receipt"
@@ -156,6 +157,10 @@ func main() {
 	// Initialize receipt parser
 	parser := receipt.NewParser(s, provider)
 
+	// Initialize event hub and wire into parser
+	eventHub := events.NewHub()
+	parser.SetEventHub(eventHub)
+
 	// Initialize photo store
 	var photoStore photo.Store
 	var photoCache *photo.LocalCache
@@ -180,7 +185,7 @@ func main() {
 	photoCache = photo.NewLocalCache(photoCacheDir, 500)
 
 	// Initialize router
-	router := api.NewRouter(s, parser, photoStore, photoCache)
+	router := api.NewRouter(s, parser, photoStore, photoCache, eventHub)
 
 	// Initialize bots
 	telegramToken := os.Getenv("TELEGRAM_BOT_TOKEN")

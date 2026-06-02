@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"code.sirenko.ca/grocer/internal/events"
 	"code.sirenko.ca/grocer/internal/photo"
 	"code.sirenko.ca/grocer/internal/receipt"
 	"code.sirenko.ca/grocer/internal/store"
@@ -22,15 +23,17 @@ type Router struct {
 	photoStore photo.Store
 	photoCache *photo.LocalCache
 	mux        *http.ServeMux
+	eventHub   *events.Hub
 }
 
-func NewRouter(store *store.Store, parser *receipt.Parser, photoStore photo.Store, photoCache *photo.LocalCache) *Router {
+func NewRouter(store *store.Store, parser *receipt.Parser, photoStore photo.Store, photoCache *photo.LocalCache, eventHub *events.Hub) *Router {
 	r := &Router{
 		store:      store,
 		parser:     parser,
 		photoStore: photoStore,
 		photoCache: photoCache,
 		mux:        http.NewServeMux(),
+		eventHub:   eventHub,
 	}
 
 	r.setupRoutes()
@@ -62,12 +65,13 @@ func (r *Router) setupRoutes() {
 	r.mux.HandleFunc("GET /api/receipts", r.withCORS(r.withAuth(r.withAuditLogging("list", "receipts", r.handleListReceipts))))
 	r.mux.HandleFunc("GET /api/receipts/{id}", r.withCORS(r.withAuth(r.withAuditLogging("read", "receipt", r.handleGetReceipt))))
 	r.mux.HandleFunc("POST /api/receipts/upload", r.withCORS(r.withAuth(r.withAuditLogging("upload", "receipt", r.handleUploadReceipt))))
-	r.mux.HandleFunc("POST /api/receipts/upload/stream", r.withCORS(r.withAuth(r.withAuditLogging("upload_stream", "receipt", r.handleUploadReceiptStream))))
 
 	// Proposals
 	r.mux.HandleFunc("GET /api/proposals", r.withCORS(r.withAuth(r.withAuditLogging("list", "proposals", r.handleListProposals))))
 	r.mux.HandleFunc("GET /api/proposals/{id}", r.withCORS(r.withAuth(r.withAuditLogging("read", "proposal", r.handleGetProposal))))
+	r.mux.HandleFunc("GET /api/proposals/{id}/stream", r.withCORS(r.withAuth(r.handleProposalStream)))
 	r.mux.HandleFunc("POST /api/proposals/{id}/approve", r.withCORS(r.withAuth(r.withAuditLogging("approve", "proposal", r.handleApproveProposal))))
+	r.mux.HandleFunc("POST /api/proposals/{id}/reparse", r.withCORS(r.withAuth(r.withAuditLogging("reparse", "proposal", r.handleReparseProposal))))
 
 	// Items
 	r.mux.HandleFunc("GET /api/items", r.withCORS(r.withAuth(r.withAuditLogging("list", "items", r.handleListItems))))
