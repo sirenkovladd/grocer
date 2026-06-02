@@ -206,7 +206,7 @@ const ProposalDetailPage = () => {
   const renderParsing = () => div({ class: "proposal-parsing" },
     div({ class: "page-header" },
       h1("Parsing Receipt..."),
-      button({ onclick: () => navigate("/proposals") }, "Back"),
+      button({ onclick: () => navigate("/") }, "Back"),
     ),
     div({ class: "parsing-progress" },
       div({ class: "skeleton-header" },
@@ -296,7 +296,7 @@ const ProposalDetailPage = () => {
     return div({ class: "proposal-detail-page" },
       div({ class: "page-header" },
         h1(`${pr.merchant || "Receipt"}`),
-        button({ onclick: () => navigate("/proposals") }, "Back"),
+        button({ onclick: () => navigate("/") }, "Back"),
       ),
       div({ class: "proposal-layout" },
         div({ class: "proposal-photo" },
@@ -330,7 +330,7 @@ const ProposalDetailPage = () => {
   const renderFailed = () => div({ class: "proposal-failed" },
     div({ class: "page-header" },
       h1("Parse Failed"),
-      button({ onclick: () => navigate("/proposals") }, "Back"),
+      button({ onclick: () => navigate("/") }, "Back"),
     ),
     div({ class: "failed-content" },
       p({ class: "error" }, error.val || "An error occurred while parsing the receipt"),
@@ -343,7 +343,7 @@ const ProposalDetailPage = () => {
         button({ onclick: handleRetry, class: "btn-primary" }, "Retry Parsing"),
         button({ onclick: () => {
           if (confirm("Delete this proposal?")) {
-            api.delete(`/proposals/${id}`).then(() => navigate("/proposals"))
+            api.delete(`/proposals/${id}`).then(() => navigate("/"))
           }
         }, class: "btn-danger" }, "Delete"),
       ),
