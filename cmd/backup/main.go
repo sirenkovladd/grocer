@@ -6,10 +6,12 @@ import (
 	"log"
 	"os"
 
+	"code.sirenko.ca/grocer/internal/env"
 	"code.sirenko.ca/grocer/internal/store"
 )
 
 func main() {
+	env.LoadDotEnv(".env")
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)

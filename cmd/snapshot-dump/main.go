@@ -9,25 +9,25 @@ import (
 	"time"
 
 	"code.sirenko.ca/grocer/internal/domain"
+	"code.sirenko.ca/grocer/internal/env"
 	"code.sirenko.ca/grocer/internal/store"
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, "Usage: snapshot-dump <gcs-bucket> [prefix]\n")
-		fmt.Fprintf(os.Stderr, "  Requires GCS_CREDENTIALS_FILE env var\n")
-		os.Exit(1)
-	}
+	env.LoadDotEnv(".env")
 
-	bucket := os.Args[1]
-	prefix := "snapshots/"
-	if len(os.Args) >= 3 {
-		prefix = os.Args[2]
+	bucket := os.Getenv("GCS_BUCKET")
+	prefix := os.Getenv("GCS_PREFIX")
+	if prefix == "" {
+		prefix = "snapshots/"
 	}
-
 	credsFile := os.Getenv("GCS_CREDENTIALS_FILE")
+
+	if bucket == "" || credsFile == "" {
+		log.Fatal("GCS_BUCKET and GCS_CREDENTIALS_FILE required in .env or environment")
+	}
 	if credsFile == "" {
-		log.Fatal("GCS_CREDENTIALS_FILE env var required")
+		log.Fatal("GCS_CREDENTIALS_FILE env var required (set in .env or environment)")
 	}
 
 	ctx := context.Background()
