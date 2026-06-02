@@ -9,11 +9,12 @@ interface CropRect {
 
 interface CropperOptions {
   imageUrl: string
-  onCrop: (blob: Blob) => void
+  imageHash: string
+  onCrop: (blob: Blob, originalHash: string) => void
   onCancel: () => void
 }
 
-export const ImageCropper = ({ imageUrl, onCrop, onCancel }: CropperOptions) => {
+export const ImageCropper = ({ imageUrl, imageHash, onCrop, onCancel }: CropperOptions) => {
   const container = document.createElement("div")
   container.className = "cropper-container"
 
@@ -361,7 +362,7 @@ export const ImageCropper = ({ imageUrl, onCrop, onCancel }: CropperOptions) => 
 
     try {
       const blob = await exportCroppedImage()
-      onCrop(blob)
+      onCrop(blob, imageHash)
     } catch (err) {
       console.error("Export failed:", err)
       alert("Failed to process image")

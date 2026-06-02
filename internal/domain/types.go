@@ -45,16 +45,17 @@ type ReceiptItem struct {
 }
 
 type Proposal struct {
-	ProposalID   uint64         `json:"proposalId,string" protobuf:"fixed64,1,opt,name=proposalId"`
-	OwnerID      uint64         `json:"ownerId,string" protobuf:"fixed64,2,opt,name=ownerId"`
-	MerchantID   uint64         `json:"merchantId,string" protobuf:"fixed64,3,opt,name=merchantId"`
-	Merchant     string         `json:"merchant" protobuf:"bytes,4,opt,name=merchant"`
-	Date         int64          `json:"date" protobuf:"fixed64,5,opt,name=date"`
-	PhotoURL     string         `json:"photoUrl,omitempty" protobuf:"bytes,6,opt,name=photoUrl"`
-	Items        []ProposalItem `json:"items" protobuf:"bytes,7,rep,name=items"`
-	TotalCents   int64          `json:"totalCents" protobuf:"fixed64,8,opt,name=totalCents"`
-	Status       string         `json:"status" protobuf:"bytes,9,opt,name=status"`
-	Error        string         `json:"error,omitempty" protobuf:"bytes,10,opt,name=error"`
+	ProposalID    uint64         `json:"proposalId,string" protobuf:"fixed64,1,opt,name=proposalId"`
+	OwnerID       uint64         `json:"ownerId,string" protobuf:"fixed64,2,opt,name=ownerId"`
+	MerchantID    uint64         `json:"merchantId,string" protobuf:"fixed64,3,opt,name=merchantId"`
+	Merchant      string         `json:"merchant" protobuf:"bytes,4,opt,name=merchant"`
+	Date          int64          `json:"date" protobuf:"fixed64,5,opt,name=date"`
+	PhotoURL      string         `json:"photoUrl,omitempty" protobuf:"bytes,6,opt,name=photoUrl"`
+	Items         []ProposalItem `json:"items" protobuf:"bytes,7,rep,name=items"`
+	TotalCents    int64          `json:"totalCents" protobuf:"fixed64,8,opt,name=totalCents"`
+	Status        string         `json:"status" protobuf:"bytes,9,opt,name=status"`
+	Error         string         `json:"error,omitempty" protobuf:"bytes,10,opt,name=error"`
+	OriginalHash  string         `json:"originalHash,omitempty" protobuf:"bytes,11,opt,name=originalHash"`
 }
 
 type ProposalItem struct {

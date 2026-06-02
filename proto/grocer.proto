@@ -57,6 +57,7 @@ message Proposal {
   int64 totalCents = 7;
   string status = 8;
   fixed64 merchantId = 9;
+  string originalHash = 10;
 }
 
 message ProposalItem {

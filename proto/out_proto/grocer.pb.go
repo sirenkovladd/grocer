@@ -456,6 +456,7 @@ type Proposal struct {
 	TotalCents    int64                  `protobuf:"varint,7,opt,name=totalCents,proto3" json:"totalCents,omitempty"`
 	Status        string                 `protobuf:"bytes,8,opt,name=status,proto3" json:"status,omitempty"`
 	MerchantId    uint64                 `protobuf:"fixed64,9,opt,name=merchantId,proto3" json:"merchantId,omitempty"`
+	OriginalHash  string                 `protobuf:"bytes,10,opt,name=originalHash,proto3" json:"originalHash,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -551,6 +552,13 @@ func (x *Proposal) GetMerchantId() uint64 {
 		return x.MerchantId
 	}
 	return 0
+}
+
+func (x *Proposal) GetOriginalHash() string {
+	if x != nil {
+		return x.OriginalHash
+	}
+	return ""
 }
 
 type ProposalItem struct {
@@ -908,7 +916,7 @@ const file_proto_grocer_proto_rawDesc = "" +
 	"\vReceiptItem\x12\x16\n" +
 	"\x06itemId\x18\x01 \x01(\x06R\x06itemId\x12\x1a\n" +
 	"\bquantity\x18\x02 \x01(\x01R\bquantity\x12&\n" +
-	"\x0eunitPriceCents\x18\x03 \x01(\x03R\x0eunitPriceCents\"\x94\x02\n" +
+	"\x0eunitPriceCents\x18\x03 \x01(\x03R\x0eunitPriceCents\"\xb8\x02\n" +
 	"\bProposal\x12\x1e\n" +
 	"\n" +
 	"proposalId\x18\x01 \x01(\x06R\n" +
@@ -924,7 +932,9 @@ const file_proto_grocer_proto_rawDesc = "" +
 	"\x06status\x18\b \x01(\tR\x06status\x12\x1e\n" +
 	"\n" +
 	"merchantId\x18\t \x01(\x06R\n" +
-	"merchantId\"\xfe\x01\n" +
+	"merchantId\x12\"\n" +
+	"\foriginalHash\x18\n" +
+	" \x01(\tR\foriginalHash\"\xfe\x01\n" +
 	"\fProposalItem\x12\x1e\n" +
 	"\n" +
 	"parsedName\x18\x01 \x01(\tR\n" +

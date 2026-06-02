@@ -783,6 +783,33 @@ func (s *Store) ListProposals() ([]*domain.Proposal, error) {
 	return proposals, nil
 }
 
+// FindProposalByHash finds a proposal by its original image hash.
+func (s *Store) FindProposalByHash(hash string) (*domain.Proposal, error) {
+	if hash == "" {
+		return nil, ErrNotFound
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	txn := s.db.Txn(false)
+	defer txn.Abort()
+
+	iter, err := txn.Get("proposals", "id")
+	if err != nil {
+		return nil, err
+	}
+
+	for raw := iter.Next(); raw != nil; raw = iter.Next() {
+		p := raw.(*domain.Proposal)
+		if p.OriginalHash == hash {
+			return p, nil
+		}
+	}
+
+	return nil, ErrNotFound
+}
+
 func (s *Store) UpdateProposal(p *domain.Proposal) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

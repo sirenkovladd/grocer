@@ -255,15 +255,16 @@ func proposalsToProto(proposals []*domain.Proposal) []*pb.Proposal {
 			}
 		}
 		result[i] = &pb.Proposal{
-			ProposalId: p.ProposalID,
-			OwnerId:    p.OwnerID,
-			MerchantId: p.MerchantID,
-			Merchant:   p.Merchant,
-			Date:       uint64(p.Date),
-			PhotoUrl:   p.PhotoURL,
-			Items:      items,
-			TotalCents: p.TotalCents,
-			Status:     p.Status,
+			ProposalId:   p.ProposalID,
+			OwnerId:      p.OwnerID,
+			MerchantId:   p.MerchantID,
+			Merchant:     p.Merchant,
+			Date:         uint64(p.Date),
+			PhotoUrl:     p.PhotoURL,
+			Items:        items,
+			TotalCents:   p.TotalCents,
+			Status:       p.Status,
+			OriginalHash: p.OriginalHash,
 		}
 	}
 	return result
@@ -285,15 +286,16 @@ func proposalsFromProto(proposals []*pb.Proposal) []*domain.Proposal {
 			}
 		}
 		result[i] = &domain.Proposal{
-			ProposalID: p.ProposalId,
-			OwnerID:    p.OwnerId,
-			MerchantID: p.MerchantId,
-			Merchant:   p.Merchant,
-			Date:       int64(p.Date),
-			PhotoURL:   p.PhotoUrl,
-			Items:      items,
-			TotalCents: p.TotalCents,
-			Status:     p.Status,
+			ProposalID:   p.ProposalId,
+			OwnerID:      p.OwnerId,
+			MerchantID:   p.MerchantId,
+			Merchant:     p.Merchant,
+			Date:         int64(p.Date),
+			PhotoURL:     p.PhotoUrl,
+			Items:        items,
+			TotalCents:   p.TotalCents,
+			Status:       p.Status,
+			OriginalHash: p.OriginalHash,
 		}
 	}
 	return result

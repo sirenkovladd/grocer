@@ -80,7 +80,7 @@ export const api = {
     }
     if (!response.ok) {
       const data = await response.json()
-      throw new Error(data.error || "Request failed")
+      throw new Error(data.message || data.error || "Request failed")
     }
     return response.json()
   },

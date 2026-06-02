@@ -151,14 +151,29 @@ func (r *Router) handleUploadReceipt(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// Get original image hash for duplicate detection
+	originalHash := req.FormValue("originalHash")
+	if originalHash != "" {
+		existing, err := r.store.FindProposalByHash(originalHash)
+		if err == nil && existing != nil {
+			writeJSON(w, http.StatusConflict, map[string]interface{}{
+				"error":      "duplicate_image",
+				"message":    "This image was already uploaded",
+				"existingId": fmt.Sprintf("%d", existing.ProposalID),
+			})
+			return
+		}
+	}
+
 	// Resize for LLM
 	llmData := resizeImageForLLM(photoData)
 
 	// Create proposal immediately with "parsing" status
 	proposal := &domain.Proposal{
-		ProposalID: r.store.ProposalID.Gen(),
-		OwnerID:    userID,
-		Status:     "parsing",
+		ProposalID:   r.store.ProposalID.Gen(),
+		OwnerID:      userID,
+		Status:       "parsing",
+		OriginalHash: originalHash,
 	}
 
 	// Save photo if photo store is configured

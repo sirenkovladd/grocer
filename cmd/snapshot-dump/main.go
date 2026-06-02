@@ -195,14 +195,15 @@ type proposalItemView struct {
 }
 
 type proposalView struct {
-	ID       uint64             `json:"id"`
-	Merchant string             `json:"merchant"`
-	OwnerID  uint64             `json:"ownerId"`
-	Date     string             `json:"date"`
-	PhotoURL string             `json:"photoUrl,omitempty"`
-	Items    []proposalItemView `json:"items"`
-	Total    string             `json:"total"`
-	Status   string             `json:"status"`
+	ID           uint64             `json:"id"`
+	Merchant     string             `json:"merchant"`
+	OwnerID      uint64             `json:"ownerId"`
+	Date         string             `json:"date"`
+	PhotoURL     string             `json:"photoUrl,omitempty"`
+	Items        []proposalItemView `json:"items"`
+	Total        string             `json:"total"`
+	Status       string             `json:"status"`
+	OriginalHash string             `json:"originalHash,omitempty"`
 }
 
 func formatProposals(proposals []*domain.Proposal, snap *store.SnapshotData) []proposalView {
@@ -228,14 +229,15 @@ func formatProposals(proposals []*domain.Proposal, snap *store.SnapshotData) []p
 			items[j] = piv
 		}
 		result[i] = proposalView{
-			ID:       p.ProposalID,
-			Merchant: p.Merchant,
-			OwnerID:  p.OwnerID,
-			Date:     formatDate(p.Date),
-			PhotoURL: p.PhotoURL,
-			Items:    items,
-			Total:    formatCents(p.TotalCents),
-			Status:   p.Status,
+			ID:           p.ProposalID,
+			Merchant:     p.Merchant,
+			OwnerID:      p.OwnerID,
+			Date:         formatDate(p.Date),
+			PhotoURL:     p.PhotoURL,
+			Items:        items,
+			Total:        formatCents(p.TotalCents),
+			Status:       p.Status,
+			OriginalHash: p.OriginalHash,
 		}
 	}
 	return result
