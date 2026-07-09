@@ -62,12 +62,7 @@ The existing `.dropzone` styles in `client/styles/main.css` need no structural c
 
 ### Lifecycle / cleanup
 
-The `paste` listener must be removed when the upload page unmounts to avoid leaks (especially if the user navigates between pages). Use the same lifecycle pattern other parts of the app use: a cleanup function returned from a one-shot effect, or `van.derive` with `oncleanup`. Since the page is mounted via the router's function-child in `client/main.ts`, a simple pattern works:
-
-- Add the listener in a `van.derive` that runs once on mount.
-- Use `van.oncleanup(() => document.removeEventListener("paste", handler))` inside the same effect.
-
-If VanJS cleanup is awkward here, a manual `setTimeout`/`requestAnimationFrame` + `addEventListener` followed by `oncleanup` is fine — whichever matches existing app patterns.
+The `paste` listener is added on mount and never explicitly removed — this matches the existing pattern in `client/components/cropper.ts` (which leaks `document` listeners and is accepted because the upload page is short-lived). The handler is safe to call after unmount: the early-return on `preview.val` (which is non-null in any normal post-unmount state) and the closure-captured `processFile` operating on a no-longer-rendered `van.state` are both no-ops. The accepted trade-off is a small closure leak, consistent with the rest of the app. If a global cleanup pass happens later, this listener should be added to it.
 
 ## Files changed
 
