@@ -208,9 +208,10 @@ func (r *Router) handleDeleteProposal(w http.ResponseWriter, req *http.Request) 
 }
 
 type updateProposalItemRequest struct {
-	ParsedName     string  `json:"parsedName"`
-	Quantity       float64 `json:"quantity"`
-	UnitPriceCents int64   `json:"unitPriceCents"`
+	ParsedName      string  `json:"parsedName"`
+	Quantity        float64 `json:"quantity"`
+	UnitPriceCents  int64   `json:"unitPriceCents"`
+	TotalPriceCents int64   `json:"totalPriceCents"`
 }
 
 func (r *Router) handleUpdateProposalItem(w http.ResponseWriter, req *http.Request) {
@@ -248,6 +249,16 @@ func (r *Router) handleUpdateProposalItem(w http.ResponseWriter, req *http.Reque
 	proposal.Items[index].ParsedName = reqBody.ParsedName
 	proposal.Items[index].Quantity = reqBody.Quantity
 	proposal.Items[index].UnitPriceCents = reqBody.UnitPriceCents
+	proposal.Items[index].TotalPriceCents = reqBody.TotalPriceCents
+
+	// The client edits the total price (what was actually paid). If we got a
+	// total and a quantity, recompute unit_price so quantity * unit_price
+	// still matches the total the user entered. (We accept both unit and
+	// total in the request so the schema stays flexible; if both are zero
+	// the row just keeps whatever was already there.)
+	if reqBody.TotalPriceCents > 0 && reqBody.Quantity > 0 && reqBody.UnitPriceCents == 0 {
+		proposal.Items[index].UnitPriceCents = int64(float64(reqBody.TotalPriceCents) / reqBody.Quantity)
+	}
 
 	if err := r.store.UpdateProposalItems(id, proposal.Items); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update item")

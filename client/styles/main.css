@@ -499,6 +499,14 @@ th {
   gap: 1rem;
 }
 
+/* Per-unit price shown under the item name for weighted items, e.g.
+   "@ $1.96/kg" under BANANAS. Renders as a small grey subtitle. */
+.item-unit-price {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 2px;
+}
+
 .proposal-summary {
   margin-top: 1rem;
   padding-top: 1rem;

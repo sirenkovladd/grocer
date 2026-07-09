@@ -106,6 +106,14 @@ func ParseReceiptResponse(content string) (*ParsedReceipt, error) {
 			UnitPrice:  item.UnitPrice,
 			TotalPrice: item.TotalPrice,
 		}
+		// Some LLM responses omit total_price or set it equal to unit_price.
+		// For non-weighted items they're identical; for weighted items the
+		// LLM should always provide total_price (= quantity * unit_price
+		// as printed on the receipt). Fall back to total = unit * qty when
+		// total is missing so the UI always has a value to display.
+		if items[i].TotalPrice == 0 && items[i].UnitPrice != 0 {
+			items[i].TotalPrice = items[i].UnitPrice * items[i].Quantity
+		}
 	}
 
 	return &ParsedReceipt{
@@ -161,15 +169,31 @@ func trimMarkdownCodeBlock(content string) string {
 // two paths produce consistent output. Keep rules specific and verifiable —
 // the LLM has to read these against ambiguous OCR text.
 const receiptParsingRules = `Critical parsing rules:
-- A line like "0.875 kg @ $1.96/kg" or "$1.96/lb" is unit-price info for the immediately preceding item, NOT a separate item.
-- A line like "Card $X.XX Save -Y" or "Save -$Y" or "Coupon -$Y" or "More Rewards -$Y" is a discount on the immediately preceding item. Reduce that item's total_price (or unit_price) by Y. Do NOT output it as a separate item.
-- A line starting with "*" (e.g. "*DEPOSIT", "*RECYCLE FEE", "*ENV FEE", "*BOTTLE DEPOSIT") is a price adder on the immediately preceding item. Add to that item's total_price. Do NOT output it as a separate item.
-- Lines that say "Sub Total", "Subtotal", "Tax", "GST", "PST", "HST", "Total", "Balance Due", "Credit", "Cash", "Change", "Payment", "VISA", "MASTERCARD", "DEBIT" are footer / payment info, NOT items.
-- Card numbers (e.g. "XXXXX6431"), transaction IDs, dates/times of the transaction, "TRANSACTION RECORD", "TYPE: Purchase", "ACCT:", "REF#", "AUTHOR#", "AID:", "APPROVED", "NO SIGNATURE" are all transaction metadata, NOT items.
-- Loyalty / rewards lines ("Your Savings Today", "Points Earned", "Opening Balance", "More Rewards Card") are NOT items.
-- Weighted items: quantity is the weight (e.g. 0.875), unit_price is the per-kg/lb price, total_price is quantity * unit_price.
-- "Card $X.XX" appearing alone (without "Save" / "Coupon") is the amount actually paid for the previous item after the discount — it confirms the discounted total. Do NOT output it as a separate item.
-- quantity can be a decimal for weighted items.
+
+PRICE EXTRACTION (most important):
+- For non-weighted items (quantity 1), copy the printed price EXACTLY as it appears on the receipt into BOTH unit_price and total_price. Do not perform any arithmetic. If the receipt says $8.45, output $8.45 (not $8.44, not $8.4, not $8.5).
+- For weighted items, the printed line total (the number on the same line as the item name) is total_price. Copy it exactly. The per-kg/lb number from the next line is unit_price. Example: "BANANAS 1.72" then "0.875 kg @ $1.96/kg" → quantity 0.875, unit_price 1.96, total_price 1.72.
+- Round total_price to the nearest cent as printed. Never invent a different number.
+
+ATTACHED LINES (consume into the preceding item, do NOT output as separate items):
+- "Card $X.XX Save -Y" / "Save -$Y" / "Coupon -$Y" / "More Rewards -$Y" → discount on preceding item. Reduce that item's total_price by Y. Example: "ASTRO YOGURT 5.69" then "Card $3.69 Save -2.00" → single item ASTRO YOGURT, total_price 3.69.
+- "*DEPOSIT", "*RECYCLE FEE", "*ENV FEE", "*BOTTLE DEPOSIT" → price adder on preceding item. ADD to total_price. Example:
+    Dld 2% Fltrd Milk 6.89
+    *DEPOSIT 0.10
+    *RECYCLE FEE 0.02
+  → single item Dld 2% Fltrd Milk, total_price 7.01 (6.89 + 0.10 + 0.02).
+- "0.875 kg @ $1.96/kg" or "$1.96/lb" → unit-price info for preceding item, NOT a separate item.
+- "Card $X.XX" alone (no "Save"/"Coupon") → confirms the discounted total of the preceding item, NOT a separate item.
+
+EXCLUDE entirely (these are not items, not prices, do not emit them):
+- "Sub Total", "Subtotal", "Tax", "GST", "PST", "HST", "Total", "Balance Due", "Credit", "Cash", "Change", "Payment", "VISA", "MASTERCARD", "DEBIT".
+- Card numbers (e.g. "XXXXX6431"), transaction IDs, "TRANSACTION RECORD", "TYPE: Purchase", "ACCT:", "REF#", "AUTHOR#", "AID:", "APPROVED", "NO SIGNATURE", "FF/DT".
+- Loyalty / rewards: "Your Savings Today", "Points Earned", "Opening Balance", "More Rewards Card", "Card $$ pts".
+- "FALSE CREEK", "B.C. OWNED AND OPERATED", "Visit www....", "G.S.T #R...", "IMPORTANT:", "retain this copy", "CUSTOMER COPY", store numbers, addresses, phone numbers.
+
+GENERAL:
+- quantity can be a decimal for weighted items (e.g. 0.875 for 875g).
+- If unsure about a line, skip it rather than guess.
 - Return ONLY the JSON, no other text.`
 
 // buildReceiptPrompt builds the prompt for receipt parsing

@@ -254,6 +254,7 @@ func proposalsToProto(proposals []*domain.Proposal) []*pb.Proposal {
 				UserChoice:      item.UserChoice,
 				OcrConfidence:   item.OcrConfidence,
 				SourceBlockType: item.SourceBlockType,
+				TotalPriceCents: item.TotalPriceCents,
 			}
 		}
 		result[i] = &pb.Proposal{
@@ -289,6 +290,7 @@ func proposalsFromProto(proposals []*pb.Proposal) []*domain.Proposal {
 				UserChoice:      item.UserChoice,
 				OcrConfidence:   item.OcrConfidence,
 				SourceBlockType: item.SourceBlockType,
+				TotalPriceCents: item.TotalPriceCents,
 			}
 		}
 		result[i] = &domain.Proposal{

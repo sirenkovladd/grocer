@@ -108,6 +108,7 @@ interface ProposalItem {
   parsedName: string
   quantity: number
   unitPriceCents: number
+  totalPriceCents?: number
   matchedItemId: number
   categoryId: number
   isNewCategory: boolean
@@ -256,7 +257,12 @@ const ProposalDetailPage = () => {
     editingIndex.val = index
     editName.val = item.parsedName
     editQty.val = String(item.quantity)
-    editPrice.val = (item.unitPriceCents / 100).toFixed(2)
+    // The user edits the total price (what they actually paid), not the
+    // per-unit price. The server recomputes unitPriceCents from total / qty.
+    const totalCents = item.totalPriceCents && item.totalPriceCents > 0
+      ? item.totalPriceCents
+      : item.unitPriceCents
+    editPrice.val = (totalCents / 100).toFixed(2)
   }
 
   const cancelEdit = () => {
@@ -271,7 +277,7 @@ const ProposalDetailPage = () => {
       const updated = await api.patch(`/proposals/${id}/items/${index}`, {
         parsedName: editName.val,
         quantity: parseInt(editQty.val) || 1,
-        unitPriceCents: Math.round(parseFloat(editPrice.val) * 100) || 0,
+        totalPriceCents: Math.round(parseFloat(editPrice.val) * 100) || 0,
       })
 
       // Update local state
@@ -385,10 +391,22 @@ const ProposalDetailPage = () => {
     }
 
     // Normal display row
+    // For weighted items, unit_price (e.g. per-kg) differs from total_price
+    // (the line total as printed on the receipt). Show the total as the main
+    // price and the unit price as a small subtitle.
+    const totalCents = item.totalPriceCents && item.totalPriceCents > 0
+      ? item.totalPriceCents
+      : item.unitPriceCents
+    const isWeighted = item.unitPriceCents !== totalCents && item.quantity !== 1
     return tr(
-      td(item.parsedName),
+      td({ class: "item-name-cell" },
+        item.parsedName,
+        () => isWeighted
+          ? div({ class: "item-unit-price" }, `@ $${(item.unitPriceCents / 100).toFixed(2)}/unit`)
+          : "",
+      ),
       td(String(item.quantity)),
-      td(`$${(item.unitPriceCents / 100).toFixed(2)}`),
+      td(`$${(totalCents / 100).toFixed(2)}`),
       td(
         button({ onclick: () => startEdit(index), class: "btn-sm btn-secondary" }, "Edit"),
       ),

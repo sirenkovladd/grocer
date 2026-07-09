@@ -588,6 +588,7 @@ type ProposalItem struct {
 	UserChoice      string                 `protobuf:"bytes,7,opt,name=userChoice,proto3" json:"userChoice,omitempty"`
 	OcrConfidence   float32                `protobuf:"fixed32,8,opt,name=ocrConfidence,proto3" json:"ocrConfidence,omitempty"`
 	SourceBlockType string                 `protobuf:"bytes,9,opt,name=sourceBlockType,proto3" json:"sourceBlockType,omitempty"`
+	TotalPriceCents int64                  `protobuf:"varint,10,opt,name=totalPriceCents,proto3" json:"totalPriceCents,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -683,6 +684,13 @@ func (x *ProposalItem) GetSourceBlockType() string {
 		return x.SourceBlockType
 	}
 	return ""
+}
+
+func (x *ProposalItem) GetTotalPriceCents() int64 {
+	if x != nil {
+		return x.TotalPriceCents
+	}
+	return 0
 }
 
 type Snapshot struct {
@@ -968,7 +976,7 @@ const file_proto_grocer_proto_rawDesc = "" +
 	"\foriginalHash\x18\n" +
 	" \x01(\tR\foriginalHash\x12 \n" +
 	"\vocrMarkdown\x18\v \x01(\tR\vocrMarkdown\x12*\n" +
-	"\x10ocrMinConfidence\x18\f \x01(\x02R\x10ocrMinConfidence\"\xce\x02\n" +
+	"\x10ocrMinConfidence\x18\f \x01(\x02R\x10ocrMinConfidence\"\xf8\x02\n" +
 	"\fProposalItem\x12\x1e\n" +
 	"\n" +
 	"parsedName\x18\x01 \x01(\tR\n" +
@@ -984,7 +992,9 @@ const file_proto_grocer_proto_rawDesc = "" +
 	"userChoice\x18\a \x01(\tR\n" +
 	"userChoice\x12$\n" +
 	"\rocrConfidence\x18\b \x01(\x02R\rocrConfidence\x12(\n" +
-	"\x0fsourceBlockType\x18\t \x01(\tR\x0fsourceBlockType\"\xeb\x02\n" +
+	"\x0fsourceBlockType\x18\t \x01(\tR\x0fsourceBlockType\x12(\n" +
+	"\x0ftotalPriceCents\x18\n" +
+	" \x01(\x03R\x0ftotalPriceCents\"\xeb\x02\n" +
 	"\bSnapshot\x12\"\n" +
 	"\x05users\x18\x01 \x03(\v2\f.grocer.UserR\x05users\x120\n" +
 	"\n" +

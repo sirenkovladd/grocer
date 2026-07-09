@@ -22,6 +22,9 @@ func TestReceiptPromptsContainCriticalRules(t *testing.T) {
 	// Every rule must appear in BOTH prompts so the two paths produce
 	// consistent output regardless of which one is used.
 	for _, rule := range []string{
+		// "copy the printed price exactly" rule (the one that fixes 8.45)
+		"copy the printed price",
+		"EXACTLY as it appears",
 		// weighted item unit-price line
 		"@ $1.96/kg",
 		// discount on the preceding item (Save / Coupon / More Rewards)
@@ -31,6 +34,8 @@ func TestReceiptPromptsContainCriticalRules(t *testing.T) {
 		// bottle deposit / recycle fee
 		"*DEPOSIT",
 		"*RECYCLE FEE",
+		// explicit example: milk + deposit + recycle
+		"Dld 2% Fltrd Milk",
 		// footer lines that must not become items
 		"Balance Due",
 		"Sub Total",

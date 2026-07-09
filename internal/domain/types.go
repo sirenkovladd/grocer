@@ -70,4 +70,5 @@ type ProposalItem struct {
 	UserChoice      string  `json:"userChoice,omitempty" protobuf:"bytes,7,opt,name=userChoice"`
 	OcrConfidence   float32 `json:"ocrConfidence,omitempty" protobuf:"fixed32,8,opt,name=ocrConfidence"`
 	SourceBlockType string  `json:"sourceBlockType,omitempty" protobuf:"bytes,9,opt,name=sourceBlockType"`
+	TotalPriceCents int64   `json:"totalPriceCents,omitempty" protobuf:"varint,10,opt,name=totalPriceCents"`
 }

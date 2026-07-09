@@ -390,6 +390,7 @@ func (p *Parser) buildProposalItems(ctx context.Context, items []llm.ParsedItem,
 			ParsedName:     item.Name,
 			Quantity:       item.Quantity,
 			UnitPriceCents: dollarsToCents(item.UnitPrice),
+			TotalPriceCents: dollarsToCents(item.TotalPrice),
 		}
 		if ocr != nil {
 			pi.OcrConfidence = llm.ConfidenceForLine(ocr, item.Name)
