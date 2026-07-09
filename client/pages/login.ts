@@ -13,18 +13,14 @@ const Login = () => {
     error.val = ""
 
     try {
-      const result = await api.post("/auth/login", {
+      // The server authenticates by setting an HttpOnly session cookie
+      // via the Set-Cookie response header. The browser stores and
+      // auto-attaches it; we don't read the token out of the response.
+      await api.post("/auth/login", {
         username: username.val,
         password: password.val,
       })
-
-      if (result.token) {
-        localStorage.setItem("token", result.token)
-        localStorage.setItem("user", JSON.stringify(result.user))
-        navigate("/receipts")
-      } else {
-        error.val = "Invalid credentials"
-      }
+      navigate("/receipts")
     } catch (err) {
       error.val = "Login failed"
     }

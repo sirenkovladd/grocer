@@ -557,5 +557,30 @@ This avoids any "deploy both at once" risk.
 
 ## Decisions log
 
-_(Append decisions made during implementation. Format:
-`- YYYY-MM-DD: <decision> — <reason>`)_
+- 2026-07-09: Added a `POST /api/auth/logout` endpoint (not in the original
+  ticket but flagged as a recommended follow-up). The endpoint deletes the
+  server session and clears the cookie via `Set-Cookie: session=; Max-Age=-1`.
+  It is idempotent — calling it with no cookie or an invalid token still
+  returns 200, so callers don't have to special-case "already logged out".
+  No UI is wired up in this ticket (no Logout button exists yet); a
+  follow-up can add the button.
+- 2026-07-09: `COOKIE_SECURE` defaults to `true` (production-safe) and is
+  read in `internal/api/auth.go` directly via `os.Getenv`. Dev users set
+  `COOKIE_SECURE=false` to log in over plain HTTP. The two new test
+  functions pin this to `false` with `t.Setenv` so the test outcome
+  doesn't depend on the developer's shell.
+- 2026-07-09: Client uses **Option A** (lazy auth check) as recommended —
+  the upfront `guardAuth(path)` is removed. The first API call on a
+  protected page either succeeds (cookie valid) or 401s and the
+  `api.fetch` handler redirects to `/login`. A short flash of empty
+  content is acceptable; the API call resolves in <50ms.
+- 2026-07-09: The SSE fetch in `client/pages/proposal.ts` was also
+  cleaned up (the ticket only explicitly mentioned the photo fetch).
+  It was reading `localStorage.getItem("token")` and setting
+  `Authorization: Bearer`; both are removed and the cookie is
+  auto-attached. This keeps the codebase free of any localStorage-based
+  auth path.
+- 2026-07-09: Server keeps returning the JSON `{token, user}` body on
+  login. It's no longer used by the browser, but the ticket calls it
+  out as forward-compat for non-browser clients. `result.user` is
+  ignored on the client.

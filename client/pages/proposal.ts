@@ -148,10 +148,9 @@ const ProposalDetailPage = () => {
     abortController?.abort()
     abortController = new AbortController()
 
-    const token = localStorage.getItem("token")
     try {
       const response = await fetch(`/api/proposals/${id}/stream`, {
-        headers: { "Authorization": `Bearer ${token}` },
+        credentials: "same-origin",
         signal: abortController.signal,
       })
 
@@ -164,6 +163,7 @@ const ProposalDetailPage = () => {
         } catch {}
         throw new Error(msg)
       }
+
 
       const reader = response.body!.getReader()
       const decoder = new TextDecoder()

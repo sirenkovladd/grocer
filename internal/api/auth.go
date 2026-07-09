@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -24,6 +25,55 @@ type loginRequest struct {
 type loginResponse struct {
 	Token string      `json:"token"`
 	User  interface{} `json:"user"`
+}
+
+// sessionCookieName is the name of the session cookie set on login. It is
+// short and unprefixed because Path: "/" scopes it to the whole origin and
+// the app is single-domain.
+const sessionCookieName = "session"
+
+// sessionCookieMaxAge matches the maximum lifetime of a session cookie.
+// The store itself does not currently expire sessions, so this is the
+// only bound on session lifetime for browser users.
+const sessionCookieMaxAge = 60 * 60 * 24 * 7 // 7 days
+
+// cookieSecure reports whether the session cookie should be marked
+// Secure. Defaults to true; set COOKIE_SECURE=false in local dev (plain
+// HTTP) to allow the browser to send the cookie back.
+func cookieSecure() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("COOKIE_SECURE")))
+	if v == "" {
+		return true
+	}
+	return v != "false" && v != "0" && v != "no"
+}
+
+// setSessionCookie writes a Set-Cookie header that authenticates the
+// caller for subsequent requests. The browser auto-attaches it for
+// same-origin requests, so no client-side token storage is needed.
+func setSessionCookie(w http.ResponseWriter, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   cookieSecure(),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   sessionCookieMaxAge,
+	})
+}
+
+// clearSessionCookie instructs the browser to discard the session cookie.
+func clearSessionCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   cookieSecure(),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
 }
 
 func (r *Router) handleLogin(w http.ResponseWriter, req *http.Request) {
@@ -75,10 +125,44 @@ func (r *Router) handleLogin(w http.ResponseWriter, req *http.Request) {
 
 	idTokenString := fmt.Sprintf("%d:%s", session.SessionID, tokenString)
 
+	// Set the HttpOnly session cookie. The JSON token field is kept for
+	// non-browser clients (tests, future CLI tools) but the browser no
+	// longer stores it client-side.
+	setSessionCookie(w, idTokenString)
+
 	writeJSON(w, http.StatusOK, loginResponse{
 		Token: idTokenString,
 		User:  user,
 	})
+}
+
+// handleLogout invalidates the current session and instructs the browser
+// to drop the session cookie. Idempotent: returns 200 even if there is no
+// valid session, so callers don't have to special-case "already logged
+// out".
+func (r *Router) handleLogout(w http.ResponseWriter, req *http.Request) {
+	// Try to delete the session if the caller has one, but don't error
+	// out if the token is missing or invalid — the goal is to clear
+	// local state either way.
+	if c, err := req.Cookie(sessionCookieName); err == nil && c.Value != "" {
+		if sessionID, _, perr := parseTokenString(c.Value); perr == nil {
+			if err := r.store.DeleteSession(sessionID); err != nil {
+				log.Printf("Warning: failed to delete session %d: %v", sessionID, err)
+			}
+		}
+	} else if authHeader := req.Header.Get("Authorization"); authHeader != "" {
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		if token != authHeader {
+			if sessionID, _, perr := parseTokenString(token); perr == nil {
+				if err := r.store.DeleteSession(sessionID); err != nil {
+					log.Printf("Warning: failed to delete session %d: %v", sessionID, err)
+				}
+			}
+		}
+	}
+
+	clearSessionCookie(w)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func verifyPassword(password, encodedHash string) (bool, error) {

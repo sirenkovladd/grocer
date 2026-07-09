@@ -13,37 +13,23 @@ export const navigate = (path: string) => {
   window.location.hash = path
 }
 
-export const isAuthenticated = () => !!localStorage.getItem("token")
-
-// Routes that don't require authentication
-const publicRoutes = new Set(["/login"])
-
-// Auth guard: returns true if navigation should proceed
-const guardAuth = (path: string): boolean => {
-  if (!isAuthenticated() && !publicRoutes.has(path)) {
-    navigate("/login")
-    return false
-  }
-  if (isAuthenticated() && publicRoutes.has(path)) {
-    navigate("/")
-    return false
-  }
-  return true
-}
-
 // API helper
+//
+// Session auth lives in an HttpOnly cookie set by the server on login.
+// The browser auto-attaches the cookie to same-origin requests, so the
+// client never reads or stores the token. On 401 we just navigate to
+// /login — there is no local state to clean up.
 export const api = {
   async fetch(path: string, options: RequestInit = {}) {
-    const token = localStorage.getItem("token")
     const headers: Record<string, string> = {
       ...options.headers as Record<string, string>,
     }
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`
-    }
-    const response = await fetch(`/api${path}`, { ...options, headers })
+    const response = await fetch(`/api${path}`, {
+      ...options,
+      headers,
+      credentials: "same-origin",
+    })
     if (response.status === 401) {
-      localStorage.removeItem("token")
       navigate("/login")
       throw new Error("Unauthorized")
     }
@@ -71,18 +57,12 @@ export const api = {
   }),
   delete: (path: string) => api.fetch(path, { method: "DELETE" }),
   postFormData: async (path: string, formData: FormData) => {
-    const token = localStorage.getItem("token")
-    const headers: Record<string, string> = {}
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`
-    }
     const response = await fetch(`/api${path}`, {
       method: "POST",
-      headers,
       body: formData,
+      credentials: "same-origin",
     })
     if (response.status === 401) {
-      localStorage.removeItem("token")
       navigate("/login")
       throw new Error("Unauthorized")
     }
@@ -160,25 +140,36 @@ import CategoriesPage from "./pages/categories"
 import AnalysisPage from "./pages/analysis"
 
 // App
+//
+// We no longer do a synchronous auth check on every navigation. The
+// browser auto-attaches the session cookie to same-origin requests, so
+// the first API call from any protected page will either succeed (the
+// cookie is valid) or 401 (the cookie is missing/expired). The 401
+// handler in `api.fetch` redirects to /login. A logged-in user who
+// visits /login can simply re-submit the form; the worst case is they
+// see the login page for a moment, which is fine.
+//
+// Route dispatch is a SINGLE function-child of #app. We deliberately
+// do NOT nest a second function-child inside Layout that also reads
+// `currentPath.val` — VanJS registers every function-child as a
+// binding on the states it reads, and a nested pair that share a
+// dependency can cause the inner to re-evaluate in subsequent
+// `updateDoms` cycles (the receipt page's `loadData()` schedules
+// another `updateDoms` microtask, which re-runs the inner, which
+// re-mounts the page, which schedules another load — infinite loop).
+// Reading `currentPath` once and dispatching directly keeps the
+// binding graph a tree.
 const App = () => {
   return div({ id: "app" },
     () => {
       const path = currentPath.val
-
-      // Auth guards — redirect before rendering
-      if (!guardAuth(path)) return div()
-
       if (path === "/login") {
         return Login()
       }
-
       if (path === "/") {
         return Layout(HomePage())
       }
-
-      return Layout(
-        () => PageContent(currentPath.val)
-      )
+      return Layout(PageContent(path))
     }
   )
 }

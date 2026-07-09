@@ -1,7 +1,7 @@
 import van from "vanjs-core"
+import { ReceiptCard, type EnrichedReceiptSummary } from "../components/receipt-card"
 import { api, navigate } from "../main"
 import { indexBy } from "../utils"
-import { ReceiptCard, type EnrichedReceiptSummary } from "../components/receipt-card"
 
 const { div, h1, h3, p, button, input, select, option } = van.tags
 
@@ -29,7 +29,7 @@ const ReceiptsPage = () => {
   const loading = van.state(true)
   const error = van.state<string | null>(null)
 
-  // Filters — all client-side per the ticket 07 design.
+  // Filters
   const search = van.state("")
   const from = van.state("")
   const to = van.state("")
@@ -40,10 +40,6 @@ const ReceiptsPage = () => {
     loading.val = true
     error.val = null
     try {
-      // Three parallel fetches: enriched receipts, merchants (for
-      // merchant-filter dropdown), users (for owner-filter dropdown).
-      // Owner names are loaded but not displayed in this view per the
-      // UX overhaul plan; they power the dropdown only.
       const [r, m, u] = await Promise.all([
         api.get("/receipts/enriched"),
         api.get("/merchants"),
@@ -95,7 +91,7 @@ const ReceiptsPage = () => {
       button({ onclick: () => navigate("/receipts/upload") }, "Upload Receipt"),
     ),
 
-    // Filter bar — always visible so users can scope down before/after load.
+    // Filter bar — with dynamic options
     div({ class: "filter-bar" },
       input({
         type: "search",
@@ -122,7 +118,18 @@ const ReceiptsPage = () => {
         },
         "aria-label": "To date",
       }),
-      select({
+      // The entire <select> is wrapped in a function-child so that
+      // reading `users.val` / `merchants.val` is scoped to this
+      // function-child, not the surrounding App function-child.
+      // Without this, VanJS captures the reads as dependencies of
+      // App, pushing the App binding into users._bindings /
+      // merchants._bindings. When loadData() later sets those
+      // states, App re-evaluates, calls ReceiptsPage() again,
+      // creates new state objects, and loops forever.
+      //
+      // The function-child must return a single element (not an
+      // array) — see https://vanjs.org/tutorial#api-tags
+      () => select({
         value: ownerFilter,
         onchange: (e: Event) => {
           ownerFilter.val = (e.target as HTMLSelectElement).value
@@ -137,7 +144,7 @@ const ReceiptsPage = () => {
             option({ value: u.userId }, u.name),
           ),
       ),
-      select({
+      () => select({
         value: merchantFilter,
         onchange: (e: Event) => {
           merchantFilter.val = (e.target as HTMLSelectElement).value

@@ -1,9 +1,9 @@
 // Photo helpers for receipt/proposal pages.
 //
-// The /api/photos/{id} endpoint requires the Bearer token (unlike the
-// GCS-served PhotoURL embedded in enriched DTOs, which is public). This
-// helper wraps fetch with the auth header and converts the response to
-// a blob URL that the <img> tag can use directly.
+// The /api/photos/{id} endpoint is authenticated by the HttpOnly session
+// cookie, which the browser auto-attaches to same-origin requests. No
+// client-side token is needed. The GCS-served PhotoURL embedded in
+// enriched DTOs is unauthenticated and public.
 //
 // Cache strategy: LRU-bounded (PHOTO_CACHE_MAX entries). Map iteration
 // order is insertion order in JavaScript, so the oldest entry is at the
@@ -32,9 +32,8 @@ export const fetchPhotoUrl = async (receiptId: number | string): Promise<string>
     return cached
   }
 
-  const token = localStorage.getItem("token")
   const response = await fetch(`/api/photos/${key}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: "same-origin",
   })
   if (!response.ok) {
     throw new Error(`Failed to load photo: HTTP ${response.status}`)

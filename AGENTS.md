@@ -109,6 +109,33 @@ go run cmd/server/main.go --create-user --name "Dad" --username dad --password s
 - Pages import `{ api, navigate }` from `../main`; do not duplicate auth logic
 - All navigation via `navigate()` (not `window.location` directly) to preserve auth guard
 
+### Debugging rendering issues (re-render loops, infinite fetches)
+
+**Never install or use headless browsers (Puppeteer, Playwright, etc.) from
+agent sessions.** They require downloading browser binaries (~150MB),
+playwright system deps, and often hang in the sandboxed runtime.
+
+**Instead, add temporary diagnostic `console.log` statements** with a
+`[debug]` prefix and ask the user to reproduce the issue in their own
+browser, then paste the console output back.
+
+Recommended log placement for re-render / loop bugs:
+
+- Component function entry (e.g. `ReceiptsPage()`, `HomePage()`) —
+  logs every time the component is mounted.
+- Data-loading functions called from the component body
+  (e.g. `loadData()`) — logs every time data fetch is triggered.
+- Function-children of the App root in `client/main.ts` — logs every
+  time the route re-evaluates.
+- Inside the `on...` handlers suspected of firing repeatedly (e.g.
+  `onchange`, `oninput`) — logs every time user input or programmatic
+  state change triggers them.
+
+Pattern: include a short stack trace via
+`new Error().stack?.split("\n").slice(1, 6).join(" | ")` so the source
+of the unexpected call is visible. Strip the debug logs once the
+root cause is identified and confirmed fixed.
+
 ### LLM Integration
 
 - Provider interface in `internal/llm/llm.go`
@@ -159,6 +186,7 @@ go run cmd/server/main.go --create-user --name "Dad" --username dad --password s
 | `BOT_WEB_URL` | Yes | Web app URL |
 | `PHOTO_CACHE_DIR` | No | Local cache (default: `./cache/photos`) |
 | `PHOTO_CACHE_SIZE` | No | Max cache MB (default: `500`) |
+| `COOKIE_SECURE` | No | Set session cookie `Secure` flag (`true` default; set `false` for local dev over plain HTTP) |
 
 ## Key Design Decisions
 
@@ -169,6 +197,48 @@ go run cmd/server/main.go --create-user --name "Dad" --username dad --password s
 - **Normalized protobuf** — no denormalization, compact dumps
 - **Snapshot on every write** — simple, last-write-wins (acceptable for family tool)
 - **Fail fast** — crash if snapshot pull fails on startup
+
+## VanJS Gotchas
+
+**Dynamic children inside `van.tags` props (e.g. `select(...children)`) read state variables at render time.** Even when those children are NOT wrapped in a function-child, VanJS captures the state reads as dependencies of the surrounding function-child context. If that surrounding function-child is `App` (the top-level router), the App binding gets pushed into the state's `_bindings` array. When the state later changes (e.g. after an API call sets it), `App` re-evaluates, calls the page component again, creates new state objects, and loops forever.
+
+**Fix:** wrap the **entire element** in a function-child (not just the children). A VanJS function-child must return a single `ValidChildDomValue` — not an array. See https://vanjs.org/tutorial#api-tags
+
+```ts
+// WRONG — function returns array, not allowed by VanJS types:
+//   Argument of type '() => HTMLOptionElement[]' is not assignable...
+select({ value: ownerFilter, ... },
+  option({ value: "" }, "All owners"),
+  ...Object.values(users.val).map(u => option({ value: u.userId }, u.name)),
+)
+
+// WRONG (same issue) — function-as-child returns array:
+select({ value: ownerFilter, ... },
+  () => [
+    option({ value: "" }, "All owners"),
+    ...Object.values(users.val).map(u => option({ value: u.userId }, u.name)),
+  ],
+)
+
+// RIGHT — wrap the entire <select> in a function-child that
+// returns a single element. The function-child creates its own
+// dep-tracking context, so reading `users.val` here does NOT
+// leak the App binding into users._bindings.
+() => select({
+  value: ownerFilter,
+  onchange: (e) => { ownerFilter.val = e.target.value },
+  "aria-label": "Filter by owner",
+},
+  option({ value: "" }, "All owners"),
+  ...Object.values(users.val).map(u => option({ value: u.userId }, u.name)),
+),
+```
+
+The function-child re-evaluates when `users.val` changes, returning a fresh `<select>` with the current options. The `value: ownerFilter` binding on the new select keeps the selected value in sync.
+
+This bug only manifests when the state read in the dynamic children is later *written* during the same render cycle (e.g. a page component that creates state and then sets it via an async API call in the same microtask). Pages that only read pre-existing state don't trigger it.
+
+The minimal repro: a page component that calls `van.state(...)` and then asynchronously sets those states (e.g. from an API call), combined with a non-function-child render that reads those same states.
 
 ## Design Spec
 

@@ -241,6 +241,171 @@ func TestAuthorizedAccess(t *testing.T) {
 	}
 }
 
+func TestSessionCookie(t *testing.T) {
+	router, s := setupTestRouter(t)
+
+	// Override COOKIE_SECURE so the test isn't affected by the dev shell.
+	t.Setenv("COOKIE_SECURE", "false")
+
+	user := &domain.User{
+		UserID:       s.UserID.Gen(),
+		Username:     "cookietest",
+		Name:         "Cookie Test",
+		PasswordHash: hashPasswordForTest("password123"),
+	}
+	if err := s.CreateUser(user); err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	loginReq := map[string]string{
+		"username": "cookietest",
+		"password": "password123",
+	}
+	body, _ := json.Marshal(loginReq)
+	req := httptest.NewRequest("POST", "/api/auth/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	// Find the Set-Cookie: session=... entry and verify its flags.
+	cookies := w.Result().Cookies()
+	var session *http.Cookie
+	for _, c := range cookies {
+		if c.Name == "session" {
+			session = c
+			break
+		}
+	}
+	if session == nil {
+		t.Fatal("Expected Set-Cookie: session=...; got none")
+	}
+	if !session.HttpOnly {
+		t.Error("Expected HttpOnly=true")
+	}
+	if session.SameSite != http.SameSiteLaxMode {
+		t.Errorf("Expected SameSite=Lax, got %v", session.SameSite)
+	}
+	if session.Path != "/" {
+		t.Errorf("Expected Path=/, got %q", session.Path)
+	}
+	if session.MaxAge != 60*60*24*7 {
+		t.Errorf("Expected MaxAge=7 days, got %d", session.MaxAge)
+	}
+	if session.Secure {
+		t.Error("Expected Secure=false (COOKIE_SECURE=false in this test)")
+	}
+	if session.Value == "" {
+		t.Error("Expected non-empty cookie value")
+	}
+
+	// Now use the cookie to make an authenticated request.
+	req2 := httptest.NewRequest("GET", "/api/receipts", nil)
+	req2.AddCookie(session)
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusOK {
+		t.Errorf("Cookie-authenticated request failed: %d %s", w2.Code, w2.Body.String())
+	}
+}
+
+func TestSessionCookieRejectedWithoutCookieOrHeader(t *testing.T) {
+	router, _ := setupTestRouter(t)
+
+	// No cookie, no header → 401.
+	req := httptest.NewRequest("GET", "/api/receipts", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", w.Code)
+	}
+}
+
+func TestLogoutClearsCookieAndSession(t *testing.T) {
+	router, s := setupTestRouter(t)
+	t.Setenv("COOKIE_SECURE", "false")
+
+	user := &domain.User{
+		UserID:       s.UserID.Gen(),
+		Username:     "logouttest",
+		Name:         "Logout Test",
+		PasswordHash: hashPasswordForTest("password123"),
+	}
+	if err := s.CreateUser(user); err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Log in to create a session + cookie.
+	loginReq := map[string]string{
+		"username": "logouttest",
+		"password": "password123",
+	}
+	body, _ := json.Marshal(loginReq)
+	req := httptest.NewRequest("POST", "/api/auth/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("login: expected 200, got %d", w.Code)
+	}
+	var session *http.Cookie
+	for _, c := range w.Result().Cookies() {
+		if c.Name == "session" {
+			session = c
+			break
+		}
+	}
+	if session == nil {
+		t.Fatal("expected session cookie after login")
+	}
+	sessionID, _, err := parseTokenString(session.Value)
+	if err != nil {
+		t.Fatalf("parse token: %v", err)
+	}
+	if _, err := s.GetSession(sessionID); err != nil {
+		t.Fatalf("expected session to exist after login, got %v", err)
+	}
+
+	// Logout with the cookie.
+	logoutReq := httptest.NewRequest("POST", "/api/auth/logout", nil)
+	logoutReq.AddCookie(session)
+	logoutW := httptest.NewRecorder()
+	router.ServeHTTP(logoutW, logoutReq)
+
+	if logoutW.Code != http.StatusOK {
+		t.Errorf("logout: expected 200, got %d", logoutW.Code)
+	}
+	// The response must include a Set-Cookie: session=...; Max-Age=-1
+	// (or Expires in the past) to clear the browser's copy.
+	cleared := false
+	for _, c := range logoutW.Result().Cookies() {
+		if c.Name == "session" && (c.MaxAge < 0 || c.Value == "") {
+			cleared = true
+			break
+		}
+	}
+	if !cleared {
+		t.Error("expected logout to clear the session cookie")
+	}
+	if _, err := s.GetSession(sessionID); err == nil {
+		t.Error("expected session to be deleted from the store after logout")
+	}
+
+	// Logout is idempotent — calling again with no cookie still returns 200.
+	logoutReq2 := httptest.NewRequest("POST", "/api/auth/logout", nil)
+	logoutW2 := httptest.NewRecorder()
+	router.ServeHTTP(logoutW2, logoutReq2)
+	if logoutW2.Code != http.StatusOK {
+		t.Errorf("second logout: expected 200, got %d", logoutW2.Code)
+	}
+}
+
 // Helper functions
 
 func hashPasswordForTest(password string) string {

@@ -7,7 +7,7 @@ discussion, 2026-07-09).
 
 | # | Ticket | Type | Status | Depends on |
 |---|--------|------|--------|------------|
-| 01 | [Server-side cookie-based session management](./01-cookie-based-sessions.md) | backend + frontend | ⬜ | — |
+| 01 | [Server-side cookie-based session management](./01-cookie-based-sessions.md) | backend + frontend | ✅ | — |
 
 ## Why a separate folder
 

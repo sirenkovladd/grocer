@@ -60,6 +60,7 @@ func (r *Router) setupRoutes() {
 
 	// Auth (with rate limiting)
 	r.mux.HandleFunc("POST /api/auth/login", r.withCORS(r.withRateLimit(r.handleLogin, 5, time.Minute)))
+	r.mux.HandleFunc("POST /api/auth/logout", r.withCORS(r.handleLogout))
 
 	// Receipts
 	r.mux.HandleFunc("GET /api/receipts", r.withCORS(r.withAuth(r.withAuditLogging("list", "receipts", r.handleListReceipts))))
@@ -122,15 +123,21 @@ const userIDKey contextKey = "userID"
 
 func (r *Router) withAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		authHeader := req.Header.Get("Authorization")
-		if authHeader == "" {
-			writeError(w, http.StatusUnauthorized, "missing authorization header")
-			return
-		}
-
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-		if token == authHeader {
-			writeError(w, http.StatusUnauthorized, "invalid authorization format")
+		// Prefer the HttpOnly session cookie (browser path). Fall back to
+		// the Authorization header for tests, CLI clients, and any future
+		// service-to-service callers.
+		var token string
+		if c, err := req.Cookie(sessionCookieName); err == nil && c.Value != "" {
+			token = c.Value
+		} else if authHeader := req.Header.Get("Authorization"); authHeader != "" {
+			stripped := strings.TrimPrefix(authHeader, "Bearer ")
+			if stripped == authHeader {
+				writeError(w, http.StatusUnauthorized, "invalid authorization format")
+				return
+			}
+			token = stripped
+		} else {
+			writeError(w, http.StatusUnauthorized, "missing session")
 			return
 		}
 
