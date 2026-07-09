@@ -451,10 +451,36 @@ const ReceiptDetailPage = () => {
                 ...r.items.map((item, index) => {
                   if (isEditing.val) {
                     // Edit-mode row: item dropdown + numeric inputs.
-                    return tr({ class: "editing-row" },
+                    //
+                    // IMPORTANT: each row is wrapped in a function-child
+                    // so the state reads inside it (the per-row values,
+                    // the dynamic sortedItems.map children) create a
+                    // LOCAL dependency context. Without this wrapper,
+                    // those reads leak into the surrounding page-level
+                    // function-child context, and VanJS treats
+                    // `value: () => editItemItemId.val[index]` as a
+                    // one-time getter (functions are not bindings) so
+                    // every row ends up showing the first item's value.
+                    // See AGENTS.md 'VanJS Gotchas'.
+                    return (() => {
+                      // Read the current item once at the top of the
+                      // function-child so both the <select value> and
+                      // the <option selected> use the same source.
+                      //
+                      // The <option selected> attribute is the real
+                      // fix for the bug: setting select.value before
+                      // its <option> children are appended doesn't
+                      // work, because the browser records the value
+                      // at element-creation time and doesn't re-check
+                      // it when options are added. Marking the
+                      // matching option as selected makes the browser
+                      // respect the choice regardless of the order of
+                      // attribute/child setup.
+                      const currentItemId = editItemItemId.val[index] ?? ""
+                      return tr({ class: "editing-row" },
                       td({ "data-label": "Item" },
                         select({
-                          value: () => editItemItemId.val[index] ?? "",
+                          value: currentItemId,
                           onchange: (e: Event) => {
                             const v = (e.target as HTMLSelectElement).value
                             editItemItemId.val = { ...editItemItemId.val, [index]: v }
@@ -464,7 +490,10 @@ const ReceiptDetailPage = () => {
                           "aria-label": `Item for row ${index + 1}`,
                         },
                           ...sortedItems.map(it =>
-                            option({ value: it.itemId }, it.name),
+                            option({
+                              value: it.itemId,
+                              selected: it.itemId === currentItemId,
+                            }, it.name),
                           ),
                         ),
                       ),
@@ -476,7 +505,7 @@ const ReceiptDetailPage = () => {
                           type: "number",
                           step: "0.001",
                           min: "0",
-                          value: () => editItemQty.val[index] ?? "",
+                          value: editItemQty.val[index] ?? "",
                           oninput: (e: Event) => {
                             const v = (e.target as HTMLInputElement).value
                             editItemQty.val = { ...editItemQty.val, [index]: v }
@@ -491,7 +520,7 @@ const ReceiptDetailPage = () => {
                           type: "number",
                           step: "0.01",
                           min: "0",
-                          value: () => editItemPriceDollars.val[index] ?? "",
+                          value: editItemPriceDollars.val[index] ?? "",
                           oninput: (e: Event) => {
                             const v = (e.target as HTMLInputElement).value
                             editItemPriceDollars.val = { ...editItemPriceDollars.val, [index]: v }
@@ -511,7 +540,8 @@ const ReceiptDetailPage = () => {
                           return formatMoney(Math.round(q * p * 100))
                         },
                       ),
-                    )
+                      )
+                    })()
                   }
                   // Read-mode row (unchanged from previous behavior).
                   const isWeighted =
