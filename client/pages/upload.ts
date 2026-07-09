@@ -157,7 +157,13 @@ const UploadPage = () => {
   return div({ class: "upload-page" },
     div({ class: "page-header" },
       h1("Upload Receipt"),
-      button({ onclick: () => navigate("/receipts") }, "Back"),
+      div({ class: "page-header-actions" },
+        button({
+          onclick: () => navigate("/receipts/manual"),
+          class: "btn-secondary",
+        }, "Enter Manually"),
+        button({ onclick: () => navigate("/receipts") }, "Back"),
+      ),
     ),
     div({ class: "upload-form" },
       () => preview.val

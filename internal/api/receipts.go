@@ -590,6 +590,95 @@ func (r *Router) handleReopenReceipt(w http.ResponseWriter, req *http.Request) {
 	})
 }
 
+// createManualReceiptRequest is the body of POST /api/receipts/manual.
+// Used by the "Create receipt manually" form on the upload page when
+// the LLM can't parse a photo (or for entering historic receipts).
+type createManualReceiptRequest struct {
+	MerchantID uint64        `json:"merchantId"`
+	Date       int64         `json:"date"`
+	TotalCents int64         `json:"totalCents"`
+	Items      []struct {
+		ItemID         uint64  `json:"itemId"`
+		Quantity       float64 `json:"quantity"`
+		UnitPriceCents int64   `json:"unitPriceCents"`
+	} `json:"items"`
+}
+
+// handleCreateManualReceipt creates a receipt from a manually-entered
+// form, bypassing the photo → LLM pipeline. Used for receipts the
+// LLM couldn't parse, or for entering historic receipts. Validates
+// that the merchant and every referenced item exist; at least one
+// item is required.
+func (r *Router) handleCreateManualReceipt(w http.ResponseWriter, req *http.Request) {
+	var reqBody createManualReceiptRequest
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if reqBody.MerchantID == 0 {
+		writeError(w, http.StatusBadRequest, "merchantId is required")
+		return
+	}
+	if reqBody.Date == 0 {
+		writeError(w, http.StatusBadRequest, "date is required")
+		return
+	}
+	if reqBody.TotalCents < 0 {
+		writeError(w, http.StatusBadRequest, "total cannot be negative")
+		return
+	}
+	if len(reqBody.Items) == 0 {
+		writeError(w, http.StatusBadRequest, "at least one item is required")
+		return
+	}
+
+	if _, err := r.store.GetMerchant(reqBody.MerchantID); err != nil {
+		writeError(w, http.StatusBadRequest, "merchant not found")
+		return
+	}
+
+	// Validate every item ID exists; build the receipt items.
+	receiptItems := make([]domain.ReceiptItem, 0, len(reqBody.Items))
+	for i, it := range reqBody.Items {
+		if it.ItemID == 0 {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("item %d: itemId is required", i))
+			return
+		}
+		if it.Quantity <= 0 {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("item %d: quantity must be positive", i))
+			return
+		}
+		if it.UnitPriceCents < 0 {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("item %d: unit price cannot be negative", i))
+			return
+		}
+		if _, err := r.store.GetItem(it.ItemID); err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("item %d: item not found", i))
+			return
+		}
+		receiptItems = append(receiptItems, domain.ReceiptItem{
+			ItemID:         it.ItemID,
+			Quantity:       it.Quantity,
+			UnitPriceCents: it.UnitPriceCents,
+		})
+	}
+
+	receipt := &domain.Receipt{
+		ReceiptID:  r.store.ReceiptID.Gen(),
+		MerchantID: reqBody.MerchantID,
+		OwnerID:    r.getUserID(req),
+		Date:       reqBody.Date,
+		Items:      receiptItems,
+		TotalCents: reqBody.TotalCents,
+	}
+	if err := r.store.CreateReceipt(receipt); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create receipt")
+		return
+	}
+	writeJSON(w, http.StatusCreated, receipt)
+}
+
 func (r *Router) handleUploadReceipt(w http.ResponseWriter, req *http.Request) {
 	userID := r.getUserID(req)
 

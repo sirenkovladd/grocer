@@ -157,6 +157,7 @@ import HomePage from "./pages/home"
 import ReceiptsPage from "./pages/receipts"
 import ReceiptDetailPage from "./pages/receipt"
 import UploadPage from "./pages/upload"
+import ManualReceiptPage from "./pages/manual-receipt"
 import ProposalDetailPage from "./pages/proposal"
 import ItemsPage from "./pages/items"
 import ItemDetailPage from "./pages/item-detail"
@@ -232,6 +233,7 @@ const routeName = (path: string): string => {
   if (path === "/") return "Home"
   if (path === "/receipts") return "Receipts"
   if (path === "/receipts/upload") return "Upload"
+  if (path === "/receipts/manual") return "Manual entry"
   if (path.startsWith("/receipts/")) return "Receipt detail"
   if (path.startsWith("/proposals/")) return "Proposal detail"
   if (path === "/items") return "Items"
@@ -246,6 +248,7 @@ const routeName = (path: string): string => {
 const PageContent = (path: string) => {
   if (path === "/receipts") return ReceiptsPage()
   if (path === "/receipts/upload") return UploadPage()
+  if (path === "/receipts/manual") return ManualReceiptPage()
   if (path.startsWith("/receipts/")) return ReceiptDetailPage()
   if (path.startsWith("/proposals/")) return ProposalDetailPage()
   if (path === "/items") return ItemsPage()

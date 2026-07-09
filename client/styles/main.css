@@ -668,6 +668,45 @@ th {
   margin: 4rem auto;
 }
 
+/* Manual receipt entry form. Uses a 3-column grid on desktop for
+   the header fields, stacking on narrow viewports. */
+.manual-receipt-page {
+  max-width: 900px;
+}
+
+.manual-form .form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  align-items: flex-end;
+}
+
+.manual-form .form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 12rem;
+  flex: 1 1 12rem;
+}
+
+.manual-form .form-field label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.manual-form .total-hint {
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.manual-form .form-actions {
+  justify-content: flex-end;
+  margin-top: 1.5rem;
+}
+
 /* Trips section on the Analysis page. Each trip is a card; the
    receipts within are listed as small links below the meta row. */
 .trips-section {
