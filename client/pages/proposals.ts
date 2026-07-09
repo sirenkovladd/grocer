@@ -27,11 +27,20 @@ interface Proposal {
 const statusBadge = (status: string) => {
   const classes: Record<string, string> = {
     parsing: "badge-parsing",
+    uploaded: "badge-parsing",
+    parsed_ocr: "badge-parsing",
+    parsed_llm: "badge-parsing",
     pending: "badge-pending",
     failed: "badge-failed",
     approved: "badge-approved",
   }
-  return span({ class: `badge ${classes[status] || ""}` }, status)
+  // Show a friendlier label for the intermediate parsing states.
+  const labels: Record<string, string> = {
+    uploaded: "uploading",
+    parsed_ocr: "reading receipt",
+    parsed_llm: "extracting items",
+  }
+  return span({ class: `badge ${classes[status] || ""}` }, labels[status] || status)
 }
 
 const ProposalCard = (proposal: Proposal, onAction: () => void) => {

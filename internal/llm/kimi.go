@@ -43,7 +43,7 @@ type kimiMessage struct {
 }
 
 type kimiImageContent struct {
-	Type     string      `json:"type"`
+	Type     string       `json:"type"`
 	ImageURL kimiImageURL `json:"image_url"`
 }
 
@@ -124,8 +124,8 @@ func (k *KimiProvider) ParseReceiptStream(ctx context.Context, photo []byte) (<-
 	log.Printf("KIMI_STREAM: starting, model=%s, image=%d chars", k.model, len(b64))
 
 	req := kimiChatRequest{
-		Model:  k.model,
-		Stream: true,
+		Model:    k.model,
+		Stream:   true,
 		Thinking: kimiThinking{Type: "disabled"},
 		Messages: []kimiMessage{
 			{
@@ -240,4 +240,96 @@ func (k *KimiProvider) CategorizeItem(ctx context.Context, itemName string, exis
 	}
 
 	return parseCategorizationResponse(chatResp.Choices[0].Message.Content)
+}
+
+// ParseReceiptFromText extracts structured JSON from pre-OCR'd text.
+// Kimi supports streaming text completion on a text-only message, so the
+// non-streaming path here just calls the streaming variant in a goroutine
+// and waits for the accumulated result.
+func (k *KimiProvider) ParseReceiptFromText(ctx context.Context, ocr *OCRResult) (*ParsedReceipt, error) {
+	if ocr == nil {
+		return nil, fmt.Errorf("nil OCR result")
+	}
+	ch, err := k.ParseReceiptFromTextStream(ctx, ocr)
+	if err != nil {
+		return nil, err
+	}
+	var acc string
+	for c := range ch {
+		if c.Error != nil {
+			return nil, c.Error
+		}
+		acc += c.Text
+	}
+	return ParseReceiptResponse(acc)
+}
+
+// ParseReceiptFromTextStream streams a text-only chat completion that asks
+// Kimi to extract JSON from the OCR markdown. Streaming is preserved so the
+// UI can show "Found N items..." progressively.
+func (k *KimiProvider) ParseReceiptFromTextStream(ctx context.Context, ocr *OCRResult) (<-chan StreamChunk, error) {
+	if ocr == nil {
+		return nil, fmt.Errorf("nil OCR result")
+	}
+	prompt := buildReceiptFromTextPrompt(ocr)
+
+	req := kimiChatRequest{
+		Model:    k.model,
+		Stream:   true,
+		Thinking: kimiThinking{Type: "disabled"},
+		Messages: []kimiMessage{
+			{Role: "user", Content: prompt},
+		},
+	}
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", k.baseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+k.apiKey)
+
+	resp, err := k.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("do request: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		errBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API error: %d %s", resp.StatusCode, string(errBody))
+	}
+
+	ch := make(chan StreamChunk, 64)
+	go func() {
+		defer resp.Body.Close()
+		defer close(ch)
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			data := strings.TrimPrefix(line, "data: ")
+			if data == "[DONE]" {
+				return
+			}
+			var delta kimiStreamDelta
+			if err := json.Unmarshal([]byte(data), &delta); err != nil {
+				continue
+			}
+			if len(delta.Choices) > 0 && delta.Choices[0].Delta.Content != "" {
+				ch <- StreamChunk{Text: delta.Choices[0].Delta.Content}
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			ch <- StreamChunk{Error: err}
+		}
+	}()
+
+	return ch, nil
 }

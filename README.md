@@ -79,9 +79,12 @@ mise run build_client
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `LLM_PROVIDER` | Yes | `kimi` or `qwen` |
+| `LLM_PROVIDER` | Yes | `kimi`, `qwen`, or `minimax` |
 | `LLM_API_KEY` | Yes | API key for LLM provider |
-| `LLM_MODEL` | Yes | Model ID (e.g. `kimi-k2.6` or `qwen3.6-plus`) |
+| `LLM_MODEL` | Yes | Model ID (e.g. `kimi-k2.6`, `qwen3.6-plus`, `minimax-m3`) |
+| `OCR_PROVIDER` | No | OCR engine. `mistral` (default) or `none` to disable |
+| `MISTRAL_API_KEY` | When `OCR_PROVIDER=mistral` | Mistral API key for OCR 4 |
+| `MISTRAL_OCR_MODEL` | No | OCR model (default `mistral-ocr-4-0`) |
 | `GCS_BUCKET` | Yes | GCloud Storage bucket name |
 | `GCS_PREFIX` | No | Snapshot prefix (default: `snapshots/`) |
 | `GCS_CREDENTIALS_FILE` | Yes | Path to GCloud service account JSON |
@@ -90,6 +93,17 @@ mise run build_client
 | `BOT_WEB_URL` | Yes | Web app URL (for bot message links) |
 | `PHOTO_CACHE_DIR` | No | Local photo cache (default: `./cache/photos`) |
 | `PHOTO_CACHE_SIZE` | No | Max cache size in MB (default: `500`) |
+
+## Receipt parsing pipeline
+
+Receipts are parsed in two stages when `OCR_PROVIDER=mistral` (the default):
+
+1. **OCR** — Mistral OCR 4 extracts text, structural blocks, and per-word confidence from the photo. The markdown is stored on the proposal and a `parsed_ocr` status is set.
+2. **LLM extraction** — The OCR markdown is passed to `LLM_PROVIDER` (`minimax-m3`, `qwen3.6-plus`, or `kimi-k2.6`) which extracts merchant, date, and line items as JSON. A `parsed_llm` status is set, then `pending` when ready for review.
+
+When `OCR_PROVIDER=none` the legacy single-stage path is used: the photo is sent directly to the LLM as a multimodal message.
+
+Per-item auto-match to the catalog is gated on OCR confidence: items whose OCR confidence is below 0.85 are always routed to human review, even when the parsed name matches an existing item.
 
 ## API
 

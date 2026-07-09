@@ -119,13 +119,14 @@ go run cmd/server/main.go --create-user --name "Dad" --username dad --password s
 
 ### Receipt Parsing Flow
 
-1. Photo → store → LLM parse → `ParsedReceipt`
-2. Fuzzy match items against catalog (normalized + aliases)
-3. ≥99% confidence → auto-match
-4. >80% confidence → user review
-5. ≤80% → new item, LLM suggests category
-6. User approves proposal → commit to store
-7. User corrections become aliases (learning over time)
+1. Photo → upload (status `uploaded`) → optionally Mistral OCR 4 (status `parsed_ocr`, markdown stored on proposal)
+2. OCR markdown (or raw photo if OCR is disabled) → LLM extraction → structured `ParsedReceipt` (status `parsed_llm`)
+3. Fuzzy match items against catalog (normalized + aliases)
+4. ≥99% string similarity **and** ≥0.85 OCR confidence → auto-match
+5. >80% string similarity → user review (auto-match gated on OCR confidence)
+6. ≤80% → new item, LLM suggests category via `CategorizeItem`
+7. User approves proposal → commit to store (status `pending` → `approved`)
+8. User corrections become aliases (learning over time)
 
 ### Bots
 
@@ -144,9 +145,12 @@ go run cmd/server/main.go --create-user --name "Dad" --username dad --password s
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `LLM_PROVIDER` | Yes | `kimi` or `qwen` |
+| `LLM_PROVIDER` | Yes | `kimi`, `qwen`, or `minimax` |
 | `LLM_API_KEY` | Yes | API key |
-| `LLM_MODEL` | Yes | Model ID |
+| `LLM_MODEL` | Yes | Model ID (e.g. `kimi-k2.6`, `qwen3.6-plus`, `minimax-m3`) |
+| `OCR_PROVIDER` | No | `mistral` (default) or `none` to skip OCR |
+| `MISTRAL_API_KEY` | When OCR enabled | Mistral API key for OCR 4 |
+| `MISTRAL_OCR_MODEL` | No | OCR model (default `mistral-ocr-4-0`) |
 | `GCS_BUCKET` | Yes | GCloud Storage bucket |
 | `GCS_PREFIX` | No | Snapshot prefix (default: `snapshots/`) |
 | `GCS_CREDENTIALS_FILE` | Yes | Service account JSON path |

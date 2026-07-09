@@ -75,7 +75,7 @@ func (r *Router) handleListReceipts(w http.ResponseWriter, req *http.Request) {
 		if err == nil {
 			// Batch load all items to avoid N+1 queries
 			itemMap := r.loadItemMap(filtered)
-			
+
 			var result []*domain.Receipt
 			for _, receipt := range filtered {
 				for _, item := range receipt.Items {
@@ -101,7 +101,7 @@ func (r *Router) loadItemMap(receipts []*domain.Receipt) map[uint64]*domain.Item
 			itemIDs[item.ItemID] = true
 		}
 	}
-	
+
 	// Batch load all items
 	itemMap := make(map[uint64]*domain.Item)
 	for itemID := range itemIDs {
@@ -109,7 +109,7 @@ func (r *Router) loadItemMap(receipts []*domain.Receipt) map[uint64]*domain.Item
 			itemMap[itemID] = itemObj
 		}
 	}
-	
+
 	return itemMap
 }
 
@@ -168,11 +168,13 @@ func (r *Router) handleUploadReceipt(w http.ResponseWriter, req *http.Request) {
 	// Resize for LLM
 	llmData := resizeImageForLLM(photoData)
 
-	// Create proposal immediately with "parsing" status
+	// Create proposal immediately with "uploaded" status. The OCR stage
+	// (if configured) will move it to "parsed_ocr", then the LLM extraction
+	// stage to "parsed_llm", and finally to "pending" when ready for review.
 	proposal := &domain.Proposal{
 		ProposalID:   r.store.ProposalID.Gen(),
 		OwnerID:      userID,
-		Status:       "parsing",
+		Status:       "uploaded",
 		OriginalHash: originalHash,
 	}
 
@@ -230,5 +232,3 @@ func resizeImageForLLM(data []byte) []byte {
 	log.Printf("Resized image: %dx%d -> %dx%d (%d -> %d bytes)", w, h, newW, newH, len(data), buf.Len())
 	return buf.Bytes()
 }
-
-

@@ -58,6 +58,8 @@ message Proposal {
   string status = 8;
   fixed64 merchantId = 9;
   string originalHash = 10;
+  string ocrMarkdown = 11;
+  float ocrMinConfidence = 12;
 }
 
 message ProposalItem {
@@ -68,6 +70,8 @@ message ProposalItem {
   fixed64 categoryId = 5;
   bool isNewCategory = 6;
   string userChoice = 7;
+  float ocrConfidence = 8;
+  string sourceBlockType = 9;
 }
 
 message Snapshot {

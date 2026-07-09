@@ -21,7 +21,7 @@ func setupTestRouter(t *testing.T) (*Router, *store.Store) {
 		t.Fatalf("Failed to create store: %v", err)
 	}
 
-	router := NewRouter(s, nil, nil, nil)
+	router := NewRouter(s, nil, nil, nil, nil)
 	return router, s
 }
 
@@ -247,10 +247,10 @@ func hashPasswordForTest(password string) string {
 	// Use argon2 for testing (same as production)
 	salt := []byte("testsalt12345678")
 	hash := argon2.IDKey([]byte(password), salt, 1, 64*1024, 4, 32)
-	
+
 	saltB64 := base64.RawStdEncoding.EncodeToString(salt)
 	hashB64 := base64.RawStdEncoding.EncodeToString(hash)
-	
+
 	return fmt.Sprintf("$argon2id$v=19$m=65536,t=1,p=4$%s$%s", saltB64, hashB64)
 }
 

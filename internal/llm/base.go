@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"code.sirenko.ca/grocer/internal/domain"
@@ -145,7 +146,7 @@ func trimMarkdownCodeBlock(content string) string {
 		for endOfFirstLine < len(content) && content[endOfFirstLine] != '\n' {
 			endOfFirstLine++
 		}
-		
+
 		// Find the closing ```
 		closingIdx := lastIndex(content, "```")
 		if closingIdx > endOfFirstLine {
@@ -174,6 +175,48 @@ func buildReceiptPrompt() string {
 
 Note: quantity can be a decimal for weighted items (e.g. 0.445 for 445g, 1.5 for 1.5kg).
 Return ONLY the JSON, no other text.`
+}
+
+// buildReceiptFromTextPrompt is the second-stage prompt used after OCR has
+// already extracted text. The model receives the OCR markdown and produces
+// the same JSON shape as buildReceiptPrompt.
+func buildReceiptFromTextPrompt(ocr *OCRResult) string {
+	var sb strings.Builder
+	sb.WriteString("Below is OCR-extracted text from a grocery receipt.\n\n")
+	if ocr.Header != "" {
+		sb.WriteString("HEADER (likely merchant info):\n")
+		sb.WriteString(ocr.Header)
+		sb.WriteString("\n\n")
+	}
+	if ocr.Footer != "" {
+		sb.WriteString("FOOTER (likely totals/tax):\n")
+		sb.WriteString(ocr.Footer)
+		sb.WriteString("\n\n")
+	}
+	sb.WriteString("FULL OCR TEXT:\n")
+	sb.WriteString(ocr.Markdown)
+	sb.WriteString("\n\n")
+	sb.WriteString("Extract the structured receipt data as JSON:\n")
+	sb.WriteString("{\n")
+	sb.WriteString(`  "merchant": "store name",` + "\n")
+	sb.WriteString(`  "date": "YYYY-MM-DD",` + "\n")
+	sb.WriteString(`  "items": [` + "\n")
+	sb.WriteString("    {\n")
+	sb.WriteString(`      "name": "item name as shown on receipt",` + "\n")
+	sb.WriteString(`      "quantity": 1,` + "\n")
+	sb.WriteString(`      "unit_price": 2.99,` + "\n")
+	sb.WriteString(`      "total_price": 2.99` + "\n")
+	sb.WriteString("    }\n")
+	sb.WriteString("  ],\n")
+	sb.WriteString(`  "total": 25.99` + "\n")
+	sb.WriteString("}\n\n")
+	sb.WriteString("Notes:\n")
+	sb.WriteString("- quantity can be a decimal for weighted items (e.g. 0.445 for 445g, 1.5 for 1.5kg)\n")
+	sb.WriteString("- skip subtotals, taxes, change, payment method, loyalty IDs, cashier names\n")
+	sb.WriteString("- discounts and coupons are items with negative total_price\n")
+	sb.WriteString("- ignore any text that is clearly not a purchased product\n")
+	sb.WriteString("Return ONLY the JSON, no other text.")
+	return sb.String()
 }
 
 // buildCategorizationPrompt builds the prompt for item categorization

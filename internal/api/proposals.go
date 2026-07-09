@@ -10,6 +10,16 @@ import (
 	"code.sirenko.ca/grocer/internal/domain"
 )
 
+// isInProgressStatus reports whether a proposal is still being parsed and
+// therefore a stream consumer should subscribe to live events.
+func isInProgressStatus(status string) bool {
+	switch status {
+	case "uploaded", "parsed_ocr", "parsed_llm", "parsing":
+		return true
+	}
+	return false
+}
+
 type approveRequest struct {
 	Choices map[int]string `json:"choices"`
 }
@@ -107,8 +117,10 @@ func (r *Router) handleProposalStream(w http.ResponseWriter, req *http.Request) 
 	// Always send snapshot first
 	writeSSE("snapshot", proposal)
 
-	// If not parsing, we're done
-	if proposal.Status != "parsing" {
+	// If not in progress, we're done. The in-progress states are
+	// "uploaded" (just received), "parsed_ocr" (OCR done), "parsed_llm"
+	// (LLM extraction done), and the legacy "parsing" alias.
+	if !isInProgressStatus(proposal.Status) {
 		return
 	}
 
@@ -198,7 +210,7 @@ func (r *Router) handleDeleteProposal(w http.ResponseWriter, req *http.Request) 
 type updateProposalItemRequest struct {
 	ParsedName     string  `json:"parsedName"`
 	Quantity       float64 `json:"quantity"`
-	UnitPriceCents int64  `json:"unitPriceCents"`
+	UnitPriceCents int64   `json:"unitPriceCents"`
 }
 
 func (r *Router) handleUpdateProposalItem(w http.ResponseWriter, req *http.Request) {

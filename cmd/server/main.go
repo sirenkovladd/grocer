@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"cloud.google.com/go/storage"
 	"code.sirenko.ca/grocer/internal/api"
 	"code.sirenko.ca/grocer/internal/bot"
 	"code.sirenko.ca/grocer/internal/domain"
@@ -20,7 +21,6 @@ import (
 	"code.sirenko.ca/grocer/internal/photo"
 	"code.sirenko.ca/grocer/internal/receipt"
 	"code.sirenko.ca/grocer/internal/store"
-	"cloud.google.com/go/storage"
 	"golang.org/x/crypto/argon2"
 	"google.golang.org/api/option"
 )
@@ -150,6 +150,8 @@ func main() {
 		provider = llm.NewKimiProvider(llmAPIKey, llmModel)
 	case "qwen":
 		provider = llm.NewQwenProvider(llmAPIKey, llmModel)
+	case "minimax":
+		provider = llm.NewMinimaxProvider(llmAPIKey, llmModel)
 	default:
 		log.Fatalf("Unknown LLM provider: %s", llmProvider)
 	}
@@ -160,6 +162,28 @@ func main() {
 	// Initialize event hub and wire into parser
 	eventHub := events.NewHub()
 	parser.SetEventHub(eventHub)
+
+	// Initialize OCR engine. Default is Mistral OCR 4 (uses MISTRAL_API_KEY).
+	// Set OCR_PROVIDER=none to disable OCR and use the legacy image-in path.
+	ocrProvider := os.Getenv("OCR_PROVIDER")
+	mistralAPIKey := os.Getenv("MISTRAL_API_KEY")
+	mistralOCRModel := os.Getenv("MISTRAL_OCR_MODEL")
+	if ocrProvider == "" {
+		ocrProvider = "mistral"
+	}
+	switch ocrProvider {
+	case "mistral":
+		if mistralAPIKey == "" {
+			log.Fatalf("OCR_PROVIDER=mistral requires MISTRAL_API_KEY")
+		}
+		ocr := llm.NewMistralOCR(mistralAPIKey, mistralOCRModel)
+		parser.SetOCREngine(ocr)
+		log.Printf("OCR enabled: mistral-ocr (model=%s)", ocrModelOrDefault(mistralOCRModel))
+	case "none", "disabled", "off":
+		log.Printf("OCR disabled (OCR_PROVIDER=%s); using legacy image-in path", ocrProvider)
+	default:
+		log.Fatalf("Unknown OCR provider: %s", ocrProvider)
+	}
 
 	// Initialize photo store
 	var photoStore photo.Store
@@ -267,4 +291,12 @@ func hashPassword(password string) (string, error) {
 	b64Hash := base64.RawStdEncoding.EncodeToString(hash)
 
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s", argon2.Version, 64*1024, 3, 2, b64Salt, b64Hash), nil
+}
+
+// ocrModelOrDefault returns the OCR model name, defaulting to mistral-ocr-4-0.
+func ocrModelOrDefault(model string) string {
+	if model == "" {
+		return "mistral-ocr-4-0"
+	}
+	return model
 }

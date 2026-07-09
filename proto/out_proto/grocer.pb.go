@@ -446,19 +446,21 @@ func (x *ReceiptItem) GetUnitPriceCents() int64 {
 }
 
 type Proposal struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProposalId    uint64                 `protobuf:"fixed64,1,opt,name=proposalId,proto3" json:"proposalId,omitempty"`
-	OwnerId       uint64                 `protobuf:"fixed64,2,opt,name=ownerId,proto3" json:"ownerId,omitempty"`
-	Merchant      string                 `protobuf:"bytes,3,opt,name=merchant,proto3" json:"merchant,omitempty"`
-	Date          uint64                 `protobuf:"fixed64,4,opt,name=date,proto3" json:"date,omitempty"`
-	PhotoUrl      string                 `protobuf:"bytes,5,opt,name=photoUrl,proto3" json:"photoUrl,omitempty"`
-	Items         []*ProposalItem        `protobuf:"bytes,6,rep,name=items,proto3" json:"items,omitempty"`
-	TotalCents    int64                  `protobuf:"varint,7,opt,name=totalCents,proto3" json:"totalCents,omitempty"`
-	Status        string                 `protobuf:"bytes,8,opt,name=status,proto3" json:"status,omitempty"`
-	MerchantId    uint64                 `protobuf:"fixed64,9,opt,name=merchantId,proto3" json:"merchantId,omitempty"`
-	OriginalHash  string                 `protobuf:"bytes,10,opt,name=originalHash,proto3" json:"originalHash,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	ProposalId       uint64                 `protobuf:"fixed64,1,opt,name=proposalId,proto3" json:"proposalId,omitempty"`
+	OwnerId          uint64                 `protobuf:"fixed64,2,opt,name=ownerId,proto3" json:"ownerId,omitempty"`
+	Merchant         string                 `protobuf:"bytes,3,opt,name=merchant,proto3" json:"merchant,omitempty"`
+	Date             uint64                 `protobuf:"fixed64,4,opt,name=date,proto3" json:"date,omitempty"`
+	PhotoUrl         string                 `protobuf:"bytes,5,opt,name=photoUrl,proto3" json:"photoUrl,omitempty"`
+	Items            []*ProposalItem        `protobuf:"bytes,6,rep,name=items,proto3" json:"items,omitempty"`
+	TotalCents       int64                  `protobuf:"varint,7,opt,name=totalCents,proto3" json:"totalCents,omitempty"`
+	Status           string                 `protobuf:"bytes,8,opt,name=status,proto3" json:"status,omitempty"`
+	MerchantId       uint64                 `protobuf:"fixed64,9,opt,name=merchantId,proto3" json:"merchantId,omitempty"`
+	OriginalHash     string                 `protobuf:"bytes,10,opt,name=originalHash,proto3" json:"originalHash,omitempty"`
+	OcrMarkdown      string                 `protobuf:"bytes,11,opt,name=ocrMarkdown,proto3" json:"ocrMarkdown,omitempty"`
+	OcrMinConfidence float32                `protobuf:"fixed32,12,opt,name=ocrMinConfidence,proto3" json:"ocrMinConfidence,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *Proposal) Reset() {
@@ -561,17 +563,33 @@ func (x *Proposal) GetOriginalHash() string {
 	return ""
 }
 
+func (x *Proposal) GetOcrMarkdown() string {
+	if x != nil {
+		return x.OcrMarkdown
+	}
+	return ""
+}
+
+func (x *Proposal) GetOcrMinConfidence() float32 {
+	if x != nil {
+		return x.OcrMinConfidence
+	}
+	return 0
+}
+
 type ProposalItem struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	ParsedName     string                 `protobuf:"bytes,1,opt,name=parsedName,proto3" json:"parsedName,omitempty"`
-	Quantity       float64                `protobuf:"fixed64,2,opt,name=quantity,proto3" json:"quantity,omitempty"`
-	UnitPriceCents int64                  `protobuf:"varint,3,opt,name=unitPriceCents,proto3" json:"unitPriceCents,omitempty"`
-	MatchedItemId  uint64                 `protobuf:"fixed64,4,opt,name=matchedItemId,proto3" json:"matchedItemId,omitempty"`
-	CategoryId     uint64                 `protobuf:"fixed64,5,opt,name=categoryId,proto3" json:"categoryId,omitempty"`
-	IsNewCategory  bool                   `protobuf:"varint,6,opt,name=isNewCategory,proto3" json:"isNewCategory,omitempty"`
-	UserChoice     string                 `protobuf:"bytes,7,opt,name=userChoice,proto3" json:"userChoice,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	ParsedName      string                 `protobuf:"bytes,1,opt,name=parsedName,proto3" json:"parsedName,omitempty"`
+	Quantity        float64                `protobuf:"fixed64,2,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	UnitPriceCents  int64                  `protobuf:"varint,3,opt,name=unitPriceCents,proto3" json:"unitPriceCents,omitempty"`
+	MatchedItemId   uint64                 `protobuf:"fixed64,4,opt,name=matchedItemId,proto3" json:"matchedItemId,omitempty"`
+	CategoryId      uint64                 `protobuf:"fixed64,5,opt,name=categoryId,proto3" json:"categoryId,omitempty"`
+	IsNewCategory   bool                   `protobuf:"varint,6,opt,name=isNewCategory,proto3" json:"isNewCategory,omitempty"`
+	UserChoice      string                 `protobuf:"bytes,7,opt,name=userChoice,proto3" json:"userChoice,omitempty"`
+	OcrConfidence   float32                `protobuf:"fixed32,8,opt,name=ocrConfidence,proto3" json:"ocrConfidence,omitempty"`
+	SourceBlockType string                 `protobuf:"bytes,9,opt,name=sourceBlockType,proto3" json:"sourceBlockType,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ProposalItem) Reset() {
@@ -649,6 +667,20 @@ func (x *ProposalItem) GetIsNewCategory() bool {
 func (x *ProposalItem) GetUserChoice() string {
 	if x != nil {
 		return x.UserChoice
+	}
+	return ""
+}
+
+func (x *ProposalItem) GetOcrConfidence() float32 {
+	if x != nil {
+		return x.OcrConfidence
+	}
+	return 0
+}
+
+func (x *ProposalItem) GetSourceBlockType() string {
+	if x != nil {
+		return x.SourceBlockType
 	}
 	return ""
 }
@@ -916,7 +948,7 @@ const file_proto_grocer_proto_rawDesc = "" +
 	"\vReceiptItem\x12\x16\n" +
 	"\x06itemId\x18\x01 \x01(\x06R\x06itemId\x12\x1a\n" +
 	"\bquantity\x18\x02 \x01(\x01R\bquantity\x12&\n" +
-	"\x0eunitPriceCents\x18\x03 \x01(\x03R\x0eunitPriceCents\"\xb8\x02\n" +
+	"\x0eunitPriceCents\x18\x03 \x01(\x03R\x0eunitPriceCents\"\x86\x03\n" +
 	"\bProposal\x12\x1e\n" +
 	"\n" +
 	"proposalId\x18\x01 \x01(\x06R\n" +
@@ -934,7 +966,9 @@ const file_proto_grocer_proto_rawDesc = "" +
 	"merchantId\x18\t \x01(\x06R\n" +
 	"merchantId\x12\"\n" +
 	"\foriginalHash\x18\n" +
-	" \x01(\tR\foriginalHash\"\xfe\x01\n" +
+	" \x01(\tR\foriginalHash\x12 \n" +
+	"\vocrMarkdown\x18\v \x01(\tR\vocrMarkdown\x12*\n" +
+	"\x10ocrMinConfidence\x18\f \x01(\x02R\x10ocrMinConfidence\"\xce\x02\n" +
 	"\fProposalItem\x12\x1e\n" +
 	"\n" +
 	"parsedName\x18\x01 \x01(\tR\n" +
@@ -948,7 +982,9 @@ const file_proto_grocer_proto_rawDesc = "" +
 	"\risNewCategory\x18\x06 \x01(\bR\risNewCategory\x12\x1e\n" +
 	"\n" +
 	"userChoice\x18\a \x01(\tR\n" +
-	"userChoice\"\xeb\x02\n" +
+	"userChoice\x12$\n" +
+	"\rocrConfidence\x18\b \x01(\x02R\rocrConfidence\x12(\n" +
+	"\x0fsourceBlockType\x18\t \x01(\tR\x0fsourceBlockType\"\xeb\x02\n" +
 	"\bSnapshot\x12\"\n" +
 	"\x05users\x18\x01 \x03(\v2\f.grocer.UserR\x05users\x120\n" +
 	"\n" +

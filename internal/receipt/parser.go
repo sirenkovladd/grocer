@@ -12,15 +12,27 @@ import (
 	"code.sirenko.ca/grocer/internal/store"
 )
 
+// ocrAutoMatchThreshold is the string-similarity threshold above which a
+// parsed item is auto-matched to an existing catalog item — but only if
+// the OCR confidence is also above ocrMinConfidenceForAutoMatch.
+const ocrAutoMatchThreshold = 0.99
+
+// ocrMinConfidenceForAutoMatch is the minimum OCR confidence (0..1) required
+// for an item to be auto-matched. Below this, the item is forced into human
+// review even if the name matches an existing item, because the OCR was
+// unsure about what was actually on the receipt.
+const ocrMinConfidenceForAutoMatch = 0.85
+
 type EventPublisher interface {
 	Publish(proposalID uint64, event ParseEvent)
 }
 
 type Parser struct {
-	store    *store.Store
-	llm      llm.Provider
-	matcher  *Matcher
-	eventHub EventPublisher
+	store     *store.Store
+	llm       llm.Provider
+	matcher   *Matcher
+	ocrEngine llm.OCREngine
+	eventHub  EventPublisher
 }
 
 func NewParser(store *store.Store, llmProvider llm.Provider) *Parser {
@@ -35,11 +47,19 @@ func (p *Parser) SetEventHub(hub EventPublisher) {
 	p.eventHub = hub
 }
 
+// SetOCREngine wires a Mistral OCR engine (or any OCREngine) into the parser.
+// When set, ParseReceiptAsync / ParseReceiptData will OCR the photo first
+// and pass the markdown to the LLM extraction step. When nil, the legacy
+// image-in path is used.
+func (p *Parser) SetOCREngine(engine llm.OCREngine) {
+	p.ocrEngine = engine
+}
+
 // ParseReceiptData parses receipt from photo without saving (caller handles persistence)
 func (p *Parser) ParseReceiptData(ctx context.Context, photo []byte, ownerID uint64) (*domain.Proposal, error) {
-	parsed, err := p.llm.ParseReceipt(ctx, photo)
+	parsed, ocr, err := p.runParsePipeline(ctx, photo)
 	if err != nil {
-		return nil, fmt.Errorf("llm.ParseReceipt: %w", err)
+		return nil, err
 	}
 
 	merchant, err := p.findOrCreateMerchant(parsed.Merchant)
@@ -47,38 +67,7 @@ func (p *Parser) ParseReceiptData(ctx context.Context, photo []byte, ownerID uin
 		return nil, fmt.Errorf("findOrCreateMerchant: %w", err)
 	}
 
-	proposalItems := make([]domain.ProposalItem, len(parsed.Items))
-	for i, item := range parsed.Items {
-		matched, confidence, err := p.matcher.FindMatch(item.Name)
-		if err != nil {
-			return nil, fmt.Errorf("FindMatch: %w", err)
-		}
-
-		pi := domain.ProposalItem{
-			ParsedName:     item.Name,
-			Quantity:       item.Quantity,
-			UnitPriceCents: dollarsToCents(item.UnitPrice),
-		}
-
-		if matched != nil && confidence >= 0.99 {
-			pi.MatchedItemID = matched.ItemID
-			pi.CategoryID = matched.CategoryID
-			pi.UserChoice = "existing"
-		} else if matched != nil && confidence > 0.80 {
-			pi.MatchedItemID = matched.ItemID
-			pi.CategoryID = matched.CategoryID
-			pi.UserChoice = ""
-		} else {
-			cat, err := p.categorizeItem(ctx, item.Name)
-			if err != nil {
-				return nil, fmt.Errorf("categorizeItem: %w", err)
-			}
-			pi.CategoryID = cat.CategoryID
-			pi.IsNewCategory = cat.IsNew
-		}
-
-		proposalItems[i] = pi
-	}
+	proposalItems := p.buildProposalItems(ctx, parsed.Items, ocr)
 
 	proposal := &domain.Proposal{
 		ProposalID: p.store.ProposalID.Gen(),
@@ -88,38 +77,60 @@ func (p *Parser) ParseReceiptData(ctx context.Context, photo []byte, ownerID uin
 		Date:       parsed.Date.Unix(),
 		Items:      proposalItems,
 		TotalCents: dollarsToCents(parsed.Total),
-		Status:     "pending",
+		Status:     StatusPending,
 	}
-
+	if ocr != nil {
+		proposal.OcrMarkdown = ocr.Markdown
+		proposal.OcrMinConfidence = float32(ocr.MinConfidence)
+	}
 	return proposal, nil
 }
 
 // ParseEvent is sent during streaming parse.
 type ParseEvent struct {
-	Type     string             `json:"type"` // "progress", "item", "done", "error"
-	Message  string             `json:"message,omitempty"`
+	Type     string               `json:"type"` // "progress", "item", "done", "error", "ocr_done"
+	Message  string               `json:"message,omitempty"`
 	Item     *domain.ProposalItem `json:"item,omitempty"`
-	Index    int                `json:"index,omitempty"`
-	Proposal *domain.Proposal   `json:"proposal,omitempty"`
+	Index    int                  `json:"index,omitempty"`
+	Proposal *domain.Proposal     `json:"proposal,omitempty"`
 }
 
 // ParseReceiptStream parses receipt from photo, emitting events as items are recognized.
 // Events are sent to the returned channel. Caller must consume all events.
 func (p *Parser) ParseReceiptStream(ctx context.Context, photo []byte, ownerID uint64) (<-chan ParseEvent, error) {
-	log.Printf("PARSE_STREAM: starting LLM stream, photo=%d bytes, ownerID=%d", len(photo), ownerID)
-	streamCh, err := p.llm.ParseReceiptStream(ctx, photo)
-	if err != nil {
-		log.Printf("PARSE_STREAM: LLM stream init error: %v", err)
-		return nil, fmt.Errorf("llm.ParseReceiptStream: %w", err)
-	}
-	log.Printf("PARSE_STREAM: LLM stream channel obtained, starting goroutine")
+	log.Printf("PARSE_STREAM: starting, photo=%d bytes, ownerID=%d", len(photo), ownerID)
 
 	events := make(chan ParseEvent, 32)
 
 	go func() {
 		defer close(events)
 
-		events <- ParseEvent{Type: "progress", Message: "Parsing receipt with AI..."}
+		// Stage 1: OCR (optional)
+		var ocr *llm.OCRResult
+		if p.ocrEngine != nil {
+			events <- ParseEvent{Type: "progress", Message: "Reading receipt..."}
+			result, err := p.ocrEngine.Extract(ctx, photo, "image/jpeg")
+			if err != nil {
+				events <- ParseEvent{Type: "error", Message: fmt.Sprintf("OCR: %v", err)}
+				return
+			}
+			ocr = result
+			events <- ParseEvent{Type: "ocr_done", Message: fmt.Sprintf("Read receipt (%d blocks, %.0f%% confidence)", len(ocr.Blocks), ocr.MinConfidence*100)}
+		}
+
+		// Stage 2: LLM extraction (text-only if OCR succeeded, else image-in)
+		events <- ParseEvent{Type: "progress", Message: "Extracting items..."}
+		var streamCh <-chan llm.StreamChunk
+		var err error
+		if ocr != nil {
+			streamCh, err = p.llm.ParseReceiptFromTextStream(ctx, ocr)
+		} else {
+			streamCh, err = p.llm.ParseReceiptStream(ctx, photo)
+		}
+		if err != nil {
+			events <- ParseEvent{Type: "error", Message: fmt.Sprintf("LLM: %v", err)}
+			return
+		}
 
 		var accumulated string
 		var lastItemCount int
@@ -127,7 +138,6 @@ func (p *Parser) ParseReceiptStream(ctx context.Context, photo []byte, ownerID u
 
 		for chunk := range streamCh {
 			if chunk.Error != nil {
-				log.Printf("PARSE_STREAM: chunk error: %v", chunk.Error)
 				events <- ParseEvent{Type: "error", Message: chunk.Error.Error()}
 				return
 			}
@@ -137,10 +147,8 @@ func (p *Parser) ParseReceiptStream(ctx context.Context, photo []byte, ownerID u
 				log.Printf("PARSE_STREAM: received %d chunks, accumulated %d chars", chunkCount, len(accumulated))
 			}
 
-			// Try to parse accumulated JSON to detect new items
 			var partial struct {
-				Merchant string `json:"merchant"`
-				Items    []struct {
+				Items []struct {
 					Name       string  `json:"name"`
 					Quantity   float64 `json:"quantity"`
 					UnitPrice  float64 `json:"unit_price"`
@@ -165,7 +173,6 @@ func (p *Parser) ParseReceiptStream(ctx context.Context, photo []byte, ownerID u
 			}
 		}
 
-		// Final parse with full matching & categorization
 		parsed, err := llm.ParseReceiptResponse(accumulated)
 		if err != nil {
 			events <- ParseEvent{Type: "error", Message: fmt.Sprintf("parse response: %v", err)}
@@ -180,37 +187,7 @@ func (p *Parser) ParseReceiptStream(ctx context.Context, photo []byte, ownerID u
 			return
 		}
 
-		proposalItems := make([]domain.ProposalItem, len(parsed.Items))
-		for i, item := range parsed.Items {
-			matched, confidence, err := p.matcher.FindMatch(item.Name)
-			if err != nil {
-				events <- ParseEvent{Type: "error", Message: fmt.Sprintf("match: %v", err)}
-				return
-			}
-
-			pi := domain.ProposalItem{
-				ParsedName:     item.Name,
-				Quantity:       item.Quantity,
-				UnitPriceCents: dollarsToCents(item.UnitPrice),
-			}
-
-			if matched != nil && confidence >= 0.99 {
-				pi.MatchedItemID = matched.ItemID
-				pi.CategoryID = matched.CategoryID
-				pi.UserChoice = "existing"
-			} else if matched != nil && confidence > 0.80 {
-				pi.MatchedItemID = matched.ItemID
-				pi.CategoryID = matched.CategoryID
-			} else {
-				cat, err := p.categorizeItem(ctx, item.Name)
-				if err == nil {
-					pi.CategoryID = cat.CategoryID
-					pi.IsNewCategory = cat.IsNew
-				}
-			}
-
-			proposalItems[i] = pi
-		}
+		proposalItems := p.buildProposalItems(ctx, parsed.Items, ocr)
 
 		proposal := &domain.Proposal{
 			ProposalID: p.store.ProposalID.Gen(),
@@ -220,7 +197,11 @@ func (p *Parser) ParseReceiptStream(ctx context.Context, photo []byte, ownerID u
 			Date:       parsed.Date.Unix(),
 			Items:      proposalItems,
 			TotalCents: dollarsToCents(parsed.Total),
-			Status:     "pending",
+			Status:     StatusPending,
+		}
+		if ocr != nil {
+			proposal.OcrMarkdown = ocr.Markdown
+			proposal.OcrMinConfidence = float32(ocr.MinConfidence)
 		}
 
 		if err := p.store.CreateProposal(proposal); err != nil {
@@ -247,18 +228,40 @@ func (p *Parser) ParseReceiptAsync(ctx context.Context, proposalID uint64, photo
 
 	fail := func(msg string) {
 		log.Printf("PARSE_ASYNC: failed proposal %d: %s", proposalID, msg)
-		_ = p.store.UpdateProposalStatus(proposalID, "failed", msg)
+		_ = p.store.UpdateProposalStatus(proposalID, StatusFailed, msg)
 		publish(ParseEvent{Type: "error", Message: msg})
 	}
 
-	// Stream from LLM
-	streamCh, err := p.llm.ParseReceiptStream(ctx, photo)
-	if err != nil {
-		fail(fmt.Sprintf("LLM error: %v", err))
-		return
+	// Stage 1: OCR (optional)
+	var ocr *llm.OCRResult
+	if p.ocrEngine != nil {
+		publish(ParseEvent{Type: "progress", Message: "Reading receipt..."})
+		result, err := p.ocrEngine.Extract(ctx, photo, "image/jpeg")
+		if err != nil {
+			fail(fmt.Sprintf("OCR: %v", err))
+			return
+		}
+		ocr = result
+		if err := p.store.UpdateProposalOcrResult(proposalID, ocr.Markdown, float32(ocr.MinConfidence)); err != nil {
+			fail(fmt.Sprintf("save OCR result: %v", err))
+			return
+		}
+		publish(ParseEvent{Type: "ocr_done", Message: fmt.Sprintf("Read receipt (%d blocks, %.0f%% confidence)", len(ocr.Blocks), ocr.MinConfidence*100)})
 	}
 
-	publish(ParseEvent{Type: "progress", Message: "Parsing receipt with AI..."})
+	// Stage 2: LLM extraction
+	publish(ParseEvent{Type: "progress", Message: "Extracting items..."})
+	var streamCh <-chan llm.StreamChunk
+	var err error
+	if ocr != nil {
+		streamCh, err = p.llm.ParseReceiptFromTextStream(ctx, ocr)
+	} else {
+		streamCh, err = p.llm.ParseReceiptStream(ctx, photo)
+	}
+	if err != nil {
+		fail(fmt.Sprintf("LLM stream: %v", err))
+		return
+	}
 
 	var accumulated string
 	var lastItemCount int
@@ -272,7 +275,6 @@ func (p *Parser) ParseReceiptAsync(ctx context.Context, proposalID uint64, photo
 		chunkCount++
 		accumulated += chunk.Text
 
-		// Try partial parse for progressive items
 		var partial struct {
 			Items []struct {
 				Name       string  `json:"name"`
@@ -297,7 +299,6 @@ func (p *Parser) ParseReceiptAsync(ctx context.Context, proposalID uint64, photo
 		}
 	}
 
-	// Final parse
 	parsed, err := llm.ParseReceiptResponse(accumulated)
 	if err != nil {
 		fail(fmt.Sprintf("parse response: %v", err))
@@ -312,46 +313,13 @@ func (p *Parser) ParseReceiptAsync(ctx context.Context, proposalID uint64, photo
 		return
 	}
 
-	// Build final items with matching
-	proposalItems := make([]domain.ProposalItem, len(parsed.Items))
-	for i, item := range parsed.Items {
-		matched, confidence, err := p.matcher.FindMatch(item.Name)
-		if err != nil {
-			fail(fmt.Sprintf("match: %v", err))
-			return
-		}
+	proposalItems := p.buildProposalItems(ctx, parsed.Items, ocr)
 
-		pi := domain.ProposalItem{
-			ParsedName:     item.Name,
-			Quantity:       item.Quantity,
-			UnitPriceCents: dollarsToCents(item.UnitPrice),
-		}
-
-		if matched != nil && confidence >= 0.99 {
-			pi.MatchedItemID = matched.ItemID
-			pi.CategoryID = matched.CategoryID
-			pi.UserChoice = "existing"
-		} else if matched != nil && confidence > 0.80 {
-			pi.MatchedItemID = matched.ItemID
-			pi.CategoryID = matched.CategoryID
-		} else {
-			cat, err := p.categorizeItem(ctx, item.Name)
-			if err == nil {
-				pi.CategoryID = cat.CategoryID
-				pi.IsNewCategory = cat.IsNew
-			}
-		}
-
-		proposalItems[i] = pi
-	}
-
-	// Update proposal with final data
 	if err := p.store.UpdateProposalParseResult(proposalID, merchant.MerchantID, merchant.Name, parsed.Date.Unix(), dollarsToCents(parsed.Total), proposalItems); err != nil {
 		fail(fmt.Sprintf("save result: %v", err))
 		return
 	}
 
-	// Build full proposal for the done event
 	proposal := &domain.Proposal{
 		ProposalID: proposalID,
 		OwnerID:    ownerID,
@@ -360,7 +328,11 @@ func (p *Parser) ParseReceiptAsync(ctx context.Context, proposalID uint64, photo
 		Date:       parsed.Date.Unix(),
 		Items:      proposalItems,
 		TotalCents: dollarsToCents(parsed.Total),
-		Status:     "pending",
+		Status:     StatusPending,
+	}
+	if ocr != nil {
+		proposal.OcrMarkdown = ocr.Markdown
+		proposal.OcrMinConfidence = float32(ocr.MinConfidence)
 	}
 
 	publish(ParseEvent{Type: "done", Proposal: proposal})
@@ -380,14 +352,82 @@ func (p *Parser) ParseReceipt(ctx context.Context, photo []byte, ownerID uint64)
 	return proposal, nil
 }
 
+// runParsePipeline is the non-streaming, single-shot version of the
+// OCR → LLM extraction pipeline. Returns the parsed receipt, the OCR result
+// (nil if no OCR engine was configured), and any error.
+func (p *Parser) runParsePipeline(ctx context.Context, photo []byte) (*llm.ParsedReceipt, *llm.OCRResult, error) {
+	if p.ocrEngine != nil {
+		ocr, err := p.ocrEngine.Extract(ctx, photo, "image/jpeg")
+		if err != nil {
+			return nil, nil, fmt.Errorf("OCR: %w", err)
+		}
+		parsed, err := p.llm.ParseReceiptFromText(ctx, ocr)
+		if err != nil {
+			return nil, nil, fmt.Errorf("LLM extract: %w", err)
+		}
+		return parsed, ocr, nil
+	}
+	parsed, err := p.llm.ParseReceipt(ctx, photo)
+	if err != nil {
+		return nil, nil, err
+	}
+	return parsed, nil, nil
+}
+
+// buildProposalItems runs the matcher + categorizer and returns the final
+// ProposalItem slice. If ocr is non-nil, OCR confidence is used to gate
+// the auto-match threshold — items whose OCR confidence is below the
+// minimum are forced into human review even when string similarity is high.
+func (p *Parser) buildProposalItems(ctx context.Context, items []llm.ParsedItem, ocr *llm.OCRResult) []domain.ProposalItem {
+	out := make([]domain.ProposalItem, len(items))
+	for i, item := range items {
+		matched, confidence, err := p.matcher.FindMatch(item.Name)
+		if err != nil {
+			log.Printf("buildProposalItems: matcher error on %q: %v", item.Name, err)
+		}
+
+		pi := domain.ProposalItem{
+			ParsedName:     item.Name,
+			Quantity:       item.Quantity,
+			UnitPriceCents: dollarsToCents(item.UnitPrice),
+		}
+		if ocr != nil {
+			pi.OcrConfidence = llm.ConfidenceForLine(ocr, item.Name)
+			pi.SourceBlockType = llm.BlockTypeForLine(ocr, item.Name)
+		}
+
+		// OCR-aware auto-match: require BOTH high string similarity and
+		// high OCR confidence for "existing" auto-match. Low confidence
+		// forces the user to verify.
+		ocrConf := float64(pi.OcrConfidence)
+		ocrConfIsGood := ocr == nil || ocrConf >= ocrMinConfidenceForAutoMatch
+
+		if matched != nil && confidence >= ocrAutoMatchThreshold && ocrConfIsGood {
+			pi.MatchedItemID = matched.ItemID
+			pi.CategoryID = matched.CategoryID
+			pi.UserChoice = "existing"
+		} else if matched != nil && confidence > 0.80 {
+			pi.MatchedItemID = matched.ItemID
+			pi.CategoryID = matched.CategoryID
+		} else {
+			cat, err := p.categorizeItem(ctx, item.Name)
+			if err == nil {
+				pi.CategoryID = cat.CategoryID
+				pi.IsNewCategory = cat.IsNew
+			}
+		}
+
+		out[i] = pi
+	}
+	return out
+}
+
 func (p *Parser) findOrCreateMerchant(name string) (*domain.Merchant, error) {
-	// Try to find existing merchant first
 	merchant, err := p.store.GetMerchantByName(name)
 	if err == nil {
 		return merchant, nil
 	}
 
-	// Create new merchant if not found
 	merchant = &domain.Merchant{
 		MerchantID: p.store.MerchantID.Gen(),
 		Name:       name,
@@ -415,12 +455,10 @@ func (p *Parser) categorizeItem(ctx context.Context, itemName string) (*llm.Cate
 }
 
 func (p *Parser) HandlePhoto(ctx context.Context, photo []byte, senderID string) (uint64, error) {
-	// Parse senderID to get the owner ID
 	if senderID == "" {
 		return 0, fmt.Errorf("senderID is required")
 	}
 
-	// Try to parse senderID as uint64
 	ownerID, err := strconv.ParseUint(senderID, 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("invalid senderID format: %w", err)
@@ -440,7 +478,7 @@ func (p *Parser) ApproveProposal(ctx context.Context, proposalID uint64, choices
 		return nil, err
 	}
 
-	if proposal.Status != "pending" {
+	if proposal.Status != StatusPending {
 		return nil, fmt.Errorf("proposal already %s", proposal.Status)
 	}
 
@@ -451,10 +489,9 @@ func (p *Parser) ApproveProposal(ctx context.Context, proposalID uint64, choices
 		proposal.Items[i].UserChoice = choice
 	}
 
-	// Prepare items to create and receipt items
 	var itemsToCreate []*domain.Item
 	receiptItems := make([]domain.ReceiptItem, len(proposal.Items))
-	
+
 	for i, pi := range proposal.Items {
 		var itemID uint64
 
@@ -489,7 +526,6 @@ func (p *Parser) ApproveProposal(ctx context.Context, proposalID uint64, choices
 		TotalCents: proposal.TotalCents,
 	}
 
-	// Use transaction for atomic operation
 	if err := p.store.ApproveProposalWithTransaction(proposalID, itemsToCreate, receipt); err != nil {
 		return nil, err
 	}

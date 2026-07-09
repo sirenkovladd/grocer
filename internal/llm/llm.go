@@ -10,6 +10,8 @@ import (
 type Provider interface {
 	ParseReceipt(ctx context.Context, photo []byte) (*ParsedReceipt, error)
 	ParseReceiptStream(ctx context.Context, photo []byte) (<-chan StreamChunk, error)
+	ParseReceiptFromText(ctx context.Context, ocr *OCRResult) (*ParsedReceipt, error)
+	ParseReceiptFromTextStream(ctx context.Context, ocr *OCRResult) (<-chan StreamChunk, error)
 	CategorizeItem(ctx context.Context, itemName string, existingCategories []domain.Category) (*Categorization, error)
 }
 

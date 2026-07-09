@@ -31,7 +31,7 @@ type Store struct {
 	ReceiptID  *Generator
 	ProposalID *Generator
 	snapshot   *GCloudStorage
-	
+
 	// Snapshot debouncing
 	snapshotMu       sync.Mutex
 	snapshotTimer    *time.Timer
@@ -58,7 +58,7 @@ func NewStore() (*Store, error) {
 			debounceSeconds = d
 		}
 	}
-	
+
 	schema := &memdb.DBSchema{
 		Tables: map[string]*memdb.TableSchema{
 			"users": {
@@ -1184,6 +1184,39 @@ func (s *Store) UpdateProposalStatus(id uint64, status string, errorMsg ...strin
 	return nil
 }
 
+// UpdateProposalOcrResult stores the OCR markdown and minimum confidence on
+// a proposal and sets its status to StatusParsedOCR. Called after OCR
+// completes successfully and before the LLM extraction step starts.
+func (s *Store) UpdateProposalOcrResult(id uint64, markdown string, minConfidence float32) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	txn := s.db.Txn(false)
+	defer txn.Abort()
+
+	raw, err := txn.First("proposals", "id", id)
+	if err != nil {
+		return err
+	}
+	if raw == nil {
+		return ErrNotFound
+	}
+
+	p := raw.(*domain.Proposal)
+	p.OcrMarkdown = markdown
+	p.OcrMinConfidence = minConfidence
+	p.Status = "parsed_ocr"
+
+	txn2 := s.db.Txn(true)
+	defer txn2.Abort()
+	if err := txn2.Insert("proposals", p); err != nil {
+		return err
+	}
+	txn2.Commit()
+	s.SaveSnapshotAsync(context.Background())
+	return nil
+}
+
 // AppendProposalItem adds an item to a proposal during streaming parse.
 func (s *Store) AppendProposalItem(id uint64, item domain.ProposalItem) error {
 	s.mu.Lock()
@@ -1213,7 +1246,8 @@ func (s *Store) AppendProposalItem(id uint64, item domain.ProposalItem) error {
 	return nil
 }
 
-// ResetProposalForReparse clears items and resets status to "parsing" for retry.
+// ResetProposalForReparse clears items and OCR results and resets status to
+// "uploaded" so the next ParseReceiptAsync runs the full OCR → LLM pipeline.
 func (s *Store) ResetProposalForReparse(id uint64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1230,12 +1264,15 @@ func (s *Store) ResetProposalForReparse(id uint64) error {
 	}
 
 	p := raw.(*domain.Proposal)
-	p.Status = "parsing"
+	p.Status = "uploaded"
 	p.Items = nil
 	p.TotalCents = 0
 	p.MerchantID = 0
 	p.Merchant = ""
 	p.Date = 0
+	p.OcrMarkdown = ""
+	p.OcrMinConfidence = 0
+	p.Error = ""
 
 	txn2 := s.db.Txn(true)
 	defer txn2.Abort()
@@ -1313,12 +1350,12 @@ func (s *Store) UpdateProposalItems(id uint64, items []domain.ProposalItem) erro
 func (s *Store) SaveSnapshotAsync(ctx context.Context) {
 	s.snapshotMu.Lock()
 	defer s.snapshotMu.Unlock()
-	
+
 	// Cancel existing timer
 	if s.snapshotTimer != nil {
 		s.snapshotTimer.Stop()
 	}
-	
+
 	// Create new debounced timer
 	s.snapshotTimer = time.AfterFunc(s.snapshotDebounce, func() {
 		if err := s.SaveSnapshot(ctx); err != nil {
