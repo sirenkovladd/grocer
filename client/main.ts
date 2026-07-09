@@ -155,6 +155,7 @@ import UploadPage from "./pages/upload"
 import ProposalDetailPage from "./pages/proposal"
 import ItemsPage from "./pages/items"
 import ItemDetailPage from "./pages/item-detail"
+import MergeItemsPage from "./pages/merge-items"
 import CategoriesPage from "./pages/categories"
 import AnalysisPage from "./pages/analysis"
 
@@ -199,6 +200,7 @@ const PageContent = (path: string) => {
   if (path.startsWith("/receipts/")) return ReceiptDetailPage()
   if (path.startsWith("/proposals/")) return ProposalDetailPage()
   if (path === "/items") return ItemsPage()
+  if (path === "/items/merge") return MergeItemsPage()
   if (path.startsWith("/items/")) return ItemDetailPage()
   if (path === "/categories") return CategoriesPage()
   if (path === "/analysis") return AnalysisPage()

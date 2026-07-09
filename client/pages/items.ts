@@ -237,6 +237,10 @@ const ItemsPage = () => {
   return div({ class: "items-page" },
     div({ class: "page-header" },
       h1("Items"),
+      button({
+        onclick: () => navigate("/items/merge"),
+        class: "btn-secondary",
+      }, "Merge Duplicates"),
     ),
 
     div({ class: "filter-bar" },

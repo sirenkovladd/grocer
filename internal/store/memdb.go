@@ -662,6 +662,56 @@ func (s *Store) DeleteItem(id uint64) error {
 	return nil
 }
 
+// MergeItem retargets every receipt that references `sourceID` to
+// instead reference `targetID`, then deletes the source item.
+// Both items must exist; self-merges (sourceID == targetID) are
+// rejected at the handler level.
+//
+// Returns the number of receipt line items that were retargeted so
+// the caller can report a summary to the user. The merge is
+// all-or-nothing within a single store write transaction.
+func (s *Store) MergeItem(sourceID, targetID uint64) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	txn := s.db.Txn(true)
+	defer txn.Abort()
+
+	// Walk every receipt. For each one whose Items contain
+	// sourceID, replace with targetID and re-insert the receipt.
+	receiptsRaw, err := txn.Get("receipts", "id")
+	if err != nil {
+		return 0, err
+	}
+	var updated []*domain.Receipt
+	retargeted := 0
+	for raw := receiptsRaw.Next(); raw != nil; raw = receiptsRaw.Next() {
+		r := raw.(*domain.Receipt)
+		dirty := false
+		for i, ri := range r.Items {
+			if ri.ItemID == sourceID {
+				r.Items[i].ItemID = targetID
+				retargeted++
+				dirty = true
+			}
+		}
+		if dirty {
+			updated = append(updated, r)
+		}
+	}
+	for _, r := range updated {
+		if err := txn.Insert("receipts", r); err != nil {
+			return retargeted, err
+		}
+	}
+	if err := txn.Delete("items", &domain.Item{ItemID: sourceID}); err != nil {
+		return retargeted, err
+	}
+	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
+	return retargeted, nil
+}
+
 // Receipt operations
 
 func (s *Store) CreateReceipt(r *domain.Receipt) error {

@@ -88,6 +88,7 @@ func (r *Router) setupRoutes() {
 	r.mux.HandleFunc("GET /api/items/{id}", r.withCORS(r.withAuth(r.withAuditLogging("read", "item", r.handleGetItem))))
 	r.mux.HandleFunc("PATCH /api/items/{id}", r.withCORS(r.withAuth(r.withAuditLogging("update", "item", r.handleUpdateItem))))
 	r.mux.HandleFunc("DELETE /api/items/{id}", r.withCORS(r.withAuth(r.withAuditLogging("delete", "item", r.handleDeleteItem))))
+	r.mux.HandleFunc("POST /api/items/{id}/merge", r.withCORS(r.withAuth(r.withAuditLogging("merge", "item", r.handleMergeItem))))
 
 	// Categories
 	r.mux.HandleFunc("GET /api/categories", r.withCORS(r.withAuth(r.withAuditLogging("list", "categories", r.handleListCategories))))

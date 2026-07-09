@@ -132,3 +132,60 @@ func (r *Router) handleDeleteItem(w http.ResponseWriter, req *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// mergeItemRequest is the body of POST /api/items/{id}/merge. The
+// {id} in the path is the source; the body's `targetId` is the item
+// to retarget references to.
+type mergeItemRequest struct {
+	TargetID uint64 `json:"targetId"`
+}
+
+// handleMergeItem consolidates two items: every receipt that
+// references the source item (path id) is rewritten to reference
+// the target item (body targetId), then the source item is
+// deleted. Returns the number of receipt line items that were
+// retargeted so the client can show a summary.
+func (r *Router) handleMergeItem(w http.ResponseWriter, req *http.Request) {
+	sourceStr := req.PathValue("id")
+	sourceID, err := strconv.ParseUint(sourceStr, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid source item ID")
+		return
+	}
+
+	var reqBody mergeItemRequest
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if reqBody.TargetID == sourceID {
+		writeError(w, http.StatusBadRequest, "cannot merge an item into itself")
+		return
+	}
+	if reqBody.TargetID == 0 {
+		writeError(w, http.StatusBadRequest, "targetId is required")
+		return
+	}
+
+	// Confirm both items exist — silent no-ops are worse than
+	// explicit 404s for a destructive operation.
+	if _, err := r.store.GetItem(sourceID); err != nil {
+		writeError(w, http.StatusNotFound, "source item not found")
+		return
+	}
+	if _, err := r.store.GetItem(reqBody.TargetID); err != nil {
+		writeError(w, http.StatusNotFound, "target item not found")
+		return
+	}
+
+	retargeted, err := r.store.MergeItem(sourceID, reqBody.TargetID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "merge failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":     "merged",
+		"retargeted": retargeted,
+	})
+}
