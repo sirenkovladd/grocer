@@ -74,6 +74,21 @@ export const api = {
   },
 }
 
+// Logout handler. The server clears the session cookie via
+// `POST /api/auth/logout`; the client just needs to call it and redirect
+// to `/login`. We always navigate to `/login` even on failure — the
+// worst case is the cookie is still valid for one more request, and the
+// user explicitly clicked "Sign out".
+const handleLogout = async () => {
+  try {
+    await api.post("/auth/logout", {})
+  } catch (err) {
+    console.error("Logout request failed:", err)
+  } finally {
+    navigate("/login")
+  }
+}
+
 // Layout
 //
 // The Sidebar is its own reactive component: the active link highlights
@@ -119,6 +134,16 @@ const Sidebar = () => nav({ class: "sidebar" },
     "aria-current": () => currentPath.val === "/analysis" ? "page" : null,
     onclick: (e: Event) => { e.preventDefault(); navigate("/analysis") },
   }, "Analysis"),
+  // Footer pushed to the bottom of the flex column via `margin-top: auto`
+  // (set in CSS). Holds the Sign-out button so it sits below the nav
+  // links without disrupting the existing layout.
+  div({ class: "sidebar-footer" },
+    button({
+      class: "sidebar-logout",
+      type: "button",
+      onclick: handleLogout,
+    }, "Sign out"),
+  ),
 )
 
 const Layout = (content: any) => div({ class: "layout" },

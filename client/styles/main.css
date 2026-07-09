@@ -53,6 +53,37 @@ body {
   color: var(--text-primary);
 }
 
+/* Sidebar footer — holds the Sign-out button. `margin-top: auto` on the
+   inner div pushes it to the bottom of the flex column, mirroring the
+   visual convention of nav footers in desktop apps. */
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+/* Logout button styled to match the sidebar links so it doesn't look
+   like a primary action. Plain <button> (not <a>) because it triggers
+   a state-changing POST, not navigation. */
+.sidebar-logout {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.9375rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.sidebar-logout:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
 .content {
   flex: 1;
   padding: 2rem;
