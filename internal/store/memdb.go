@@ -1251,8 +1251,64 @@ func (s *Store) AppendProposalItem(id uint64, item domain.ProposalItem) error {
 func (s *Store) ResetProposalForReparse(id uint64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.resetProposalLocked(id); err != nil {
+		return err
+	}
+	s.SaveSnapshotAsync(context.Background())
+	return nil
+}
+
+// ResetProposalForReparseKeepOCR is like ResetProposalForReparse but
+// preserves OcrMarkdown and OcrMinConfidence. Used by the LLM-text
+// reparse path, which reuses the existing OCR result instead of running
+// OCR again.
+func (s *Store) ResetProposalForReparseKeepOCR(id uint64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	txn := s.db.Txn(false)
+	defer txn.Abort()
+
+	raw, err := txn.First("proposals", "id", id)
+	if err != nil {
+		return err
+	}
+	if raw == nil {
+		return ErrNotFound
+	}
+
+	// Capture OCR fields before reset.
+	p := raw.(*domain.Proposal)
+	preservedMarkdown := p.OcrMarkdown
+	preservedMinConf := p.OcrMinConfidence
+
+	// Apply the standard reset (clears OCR too).
+	if err := s.resetProposalLocked(id); err != nil {
+		return err
+	}
+
+	// Restore OCR fields on the freshly-reset proposal.
+	txn2 := s.db.Txn(true)
+	defer txn2.Abort()
+	raw2, err := txn2.First("proposals", "id", id)
+	if err != nil {
+		return err
+	}
+	p2 := raw2.(*domain.Proposal)
+	p2.OcrMarkdown = preservedMarkdown
+	p2.OcrMinConfidence = preservedMinConf
+	if err := txn2.Insert("proposals", p2); err != nil {
+		return err
+	}
+	txn2.Commit()
+	s.SaveSnapshotAsync(context.Background())
+	return nil
+}
+
+// resetProposalLocked is the shared body of the two reset variants.
+// Caller must hold s.mu.
+func (s *Store) resetProposalLocked(id uint64) error {
+	txn := s.db.Txn(true)
 	defer txn.Abort()
 
 	raw, err := txn.First("proposals", "id", id)
@@ -1274,13 +1330,10 @@ func (s *Store) ResetProposalForReparse(id uint64) error {
 	p.OcrMinConfidence = 0
 	p.Error = ""
 
-	txn2 := s.db.Txn(true)
-	defer txn2.Abort()
-	if err := txn2.Insert("proposals", p); err != nil {
+	if err := txn.Insert("proposals", p); err != nil {
 		return err
 	}
-	txn2.Commit()
-	s.SaveSnapshotAsync(context.Background())
+	txn.Commit()
 	return nil
 }
 

@@ -215,10 +215,19 @@ func (p *Parser) ParseReceiptStream(ctx context.Context, photo []byte, ownerID u
 	return events, nil
 }
 
-// ParseReceiptAsync runs the full parse pipeline in the background,
-// updating the proposal in the store and broadcasting events via the hub.
-func (p *Parser) ParseReceiptAsync(ctx context.Context, proposalID uint64, photo []byte, ownerID uint64) {
-	log.Printf("PARSE_ASYNC: starting for proposal %d", proposalID)
+// ParseReceiptAsync runs the parse pipeline in the background, updating
+// the proposal in the store and broadcasting events via the hub. The
+// engine parameter selects which pipeline to run:
+//
+//   - "full" or "": OCR (if configured) + LLM from text. Original behavior.
+//   - "llm_text": Skip OCR, use the proposal's existing OcrMarkdown, call LLM.
+//     Useful when OCR was clean but the LLM extraction was bad.
+//   - "llm_image": Skip OCR, send the photo bytes directly to the LLM.
+//
+// For "llm_text", the proposal must already have OcrMarkdown set; otherwise
+// the caller should reject the request before invoking this function.
+func (p *Parser) ParseReceiptAsync(ctx context.Context, proposalID uint64, photo []byte, ownerID uint64, engine string) {
+	log.Printf("PARSE_ASYNC: starting for proposal %d, engine=%s", proposalID, engine)
 
 	publish := func(event ParseEvent) {
 		if p.eventHub != nil {
@@ -232,21 +241,42 @@ func (p *Parser) ParseReceiptAsync(ctx context.Context, proposalID uint64, photo
 		publish(ParseEvent{Type: "error", Message: msg})
 	}
 
-	// Stage 1: OCR (optional)
+	// Stage 1: OCR (optional) — controlled by engine.
 	var ocr *llm.OCRResult
-	if p.ocrEngine != nil {
-		publish(ParseEvent{Type: "progress", Message: "Reading receipt..."})
-		result, err := p.ocrEngine.Extract(ctx, photo, "image/jpeg")
+	switch engine {
+	case "llm_image":
+		// Skip OCR entirely. LLM receives the image directly.
+	case "llm_text":
+		// Reuse existing OCR markdown from the proposal.
+		proposal, err := p.store.GetProposal(proposalID)
 		if err != nil {
-			fail(fmt.Sprintf("OCR: %v", err))
+			fail(fmt.Sprintf("load proposal: %v", err))
 			return
 		}
-		ocr = result
-		if err := p.store.UpdateProposalOcrResult(proposalID, ocr.Markdown, float32(ocr.MinConfidence)); err != nil {
-			fail(fmt.Sprintf("save OCR result: %v", err))
+		if proposal.OcrMarkdown == "" {
+			fail("llm_text engine requires existing OCR result; use engine=full or engine=llm_image")
 			return
 		}
-		publish(ParseEvent{Type: "ocr_done", Message: fmt.Sprintf("Read receipt (%d blocks, %.0f%% confidence)", len(ocr.Blocks), ocr.MinConfidence*100)})
+		ocr = &llm.OCRResult{
+			Markdown:      proposal.OcrMarkdown,
+			MinConfidence: float64(proposal.OcrMinConfidence),
+		}
+		publish(ParseEvent{Type: "ocr_done", Message: fmt.Sprintf("Reusing existing OCR (%.0f%% confidence)", ocr.MinConfidence*100)})
+	default: // "full" or ""
+		if p.ocrEngine != nil {
+			publish(ParseEvent{Type: "progress", Message: "Reading receipt..."})
+			result, err := p.ocrEngine.Extract(ctx, photo, "image/jpeg")
+			if err != nil {
+				fail(fmt.Sprintf("OCR: %v", err))
+				return
+			}
+			ocr = result
+			if err := p.store.UpdateProposalOcrResult(proposalID, ocr.Markdown, float32(ocr.MinConfidence)); err != nil {
+				fail(fmt.Sprintf("save OCR result: %v", err))
+				return
+			}
+			publish(ParseEvent{Type: "ocr_done", Message: fmt.Sprintf("Read receipt (%d blocks, %.0f%% confidence)", len(ocr.Blocks), ocr.MinConfidence*100)})
+		}
 	}
 
 	// Stage 2: LLM extraction
@@ -350,6 +380,31 @@ func (p *Parser) ParseReceipt(ctx context.Context, photo []byte, ownerID uint64)
 	}
 
 	return proposal, nil
+}
+
+// ApplyUserInput replaces the items on an existing proposal with ones
+// derived from a user-supplied ParsedReceipt (typically the result of
+// pasting an external LLM's TOML/JSON response). The matcher and
+// categorizer run on the parsed items so the new proposal has the same
+// item-matching quality as the auto pipeline. The proposal is left in
+// the pending state so the user can review and approve as usual.
+//
+// If ocr is non-nil, OCR-confidence gating is applied to the auto-match
+// step (just like the auto pipeline). Pass nil if no OCR result is
+// available (e.g. the user ran the LLM-image pipeline previously).
+func (p *Parser) ApplyUserInput(ctx context.Context, proposalID uint64, parsed *llm.ParsedReceipt, ocr *llm.OCRResult) (*domain.Proposal, error) {
+	merchant, err := p.findOrCreateMerchant(parsed.Merchant)
+	if err != nil {
+		return nil, fmt.Errorf("findOrCreateMerchant: %w", err)
+	}
+
+	proposalItems := p.buildProposalItems(ctx, parsed.Items, ocr)
+
+	if err := p.store.UpdateProposalParseResult(proposalID, merchant.MerchantID, merchant.Name, parsed.Date.Unix(), dollarsToCents(parsed.Total), proposalItems); err != nil {
+		return nil, fmt.Errorf("save result: %w", err)
+	}
+
+	return p.store.GetProposal(proposalID)
 }
 
 // runParsePipeline is the non-streaming, single-shot version of the

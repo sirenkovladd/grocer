@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"code.sirenko.ca/grocer/internal/domain"
+	"code.sirenko.ca/grocer/internal/llm"
 )
 
 // isInProgressStatus reports whether a proposal is still being parsed and
@@ -148,11 +149,29 @@ func (r *Router) handleProposalStream(w http.ResponseWriter, req *http.Request) 
 	}
 }
 
+type reparseRequest struct {
+	Engine string `json:"engine"` // "full" | "llm_text" | "llm_image", default "full"
+}
+
 func (r *Router) handleReparseProposal(w http.ResponseWriter, req *http.Request) {
 	idStr := req.PathValue("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid proposal ID")
+		return
+	}
+
+	var reqBody reparseRequest
+	_ = json.NewDecoder(req.Body).Decode(&reqBody) // body is optional; ignore errors
+	engine := reqBody.Engine
+	if engine == "" {
+		engine = "full"
+	}
+	switch engine {
+	case "full", "llm_text", "llm_image":
+		// ok
+	default:
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("unknown engine: %q (want full, llm_text, or llm_image)", engine))
 		return
 	}
 
@@ -162,15 +181,25 @@ func (r *Router) handleReparseProposal(w http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	if proposal.Status != "failed" {
-		writeError(w, http.StatusBadRequest, "proposal is not in failed state")
+	// engine=llm_text requires an existing OCR result on the proposal.
+	if engine == "llm_text" && proposal.OcrMarkdown == "" {
+		writeError(w, http.StatusBadRequest, "no OCR result; use engine=full or engine=llm_image")
 		return
 	}
 
-	// Reset proposal for reparse
-	if err := r.store.ResetProposalForReparse(id); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to reset proposal")
-		return
+	// Reset proposal for reparse. For llm_text, keep the existing OCR
+	// markdown so the LLM can re-process it; for full and llm_image, OCR
+	// will be (re-)run or skipped entirely, so clearing it is fine.
+	if engine == "llm_text" {
+		if err := r.store.ResetProposalForReparseKeepOCR(id); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to reset proposal")
+			return
+		}
+	} else {
+		if err := r.store.ResetProposalForReparse(id); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to reset proposal")
+			return
+		}
 	}
 
 	// Get photo data for re-parsing
@@ -186,7 +215,7 @@ func (r *Router) handleReparseProposal(w http.ResponseWriter, req *http.Request)
 	}
 
 	llmData := resizeImageForLLM(photoData)
-	go r.parser.ParseReceiptAsync(context.Background(), id, llmData, proposal.OwnerID)
+	go r.parser.ParseReceiptAsync(context.Background(), id, llmData, proposal.OwnerID, engine)
 
 	writeJSON(w, http.StatusOK, map[string]string{"id": fmt.Sprintf("%d", id)})
 }
@@ -205,6 +234,56 @@ func (r *Router) handleDeleteProposal(w http.ResponseWriter, req *http.Request) 
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+type applyExternalRequest struct {
+	Content string `json:"content"`
+}
+
+func (r *Router) handleApplyExternal(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid proposal ID")
+		return
+	}
+
+	var reqBody applyExternalRequest
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	proposal, err := r.store.GetProposal(id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "proposal not found")
+		return
+	}
+
+	parsed, err := llm.ParseUserInput([]byte(reqBody.Content))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("parse: %v", err))
+		return
+	}
+
+	// Reuse existing OCR markdown (if any) so item matching uses
+	// OCR-confidence gating, same as the auto pipeline. Without OCR
+	// fields, matching falls back to string similarity alone.
+	var ocr *llm.OCRResult
+	if proposal.OcrMarkdown != "" {
+		ocr = &llm.OCRResult{
+			Markdown:      proposal.OcrMarkdown,
+			MinConfidence: float64(proposal.OcrMinConfidence),
+		}
+	}
+
+	updated, err := r.parser.ApplyUserInput(req.Context(), id, parsed, ocr)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("apply: %v", err))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, updated)
 }
 
 type updateProposalItemRequest struct {

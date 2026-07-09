@@ -422,7 +422,7 @@ func (r *Router) handleUploadReceipt(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// Spawn background parse goroutine with detached context
-	go r.parser.ParseReceiptAsync(context.Background(), proposal.ProposalID, llmData, userID)
+	go r.parser.ParseReceiptAsync(context.Background(), proposal.ProposalID, llmData, userID, "full")
 
 	writeJSON(w, http.StatusOK, map[string]string{"id": fmt.Sprintf("%d", proposal.ProposalID)})
 }
