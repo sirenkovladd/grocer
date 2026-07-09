@@ -204,6 +204,33 @@ const ReceiptDetailPage = () => {
     editError.val = null
   }
 
+  // Re-open the current receipt as a fresh proposal. Destructive
+  // (the source receipt is deleted server-side; the user re-approves
+  // the new proposal to recreate it), so we prompt for confirmation
+  // and disable both the Edit and Re-open buttons while in flight.
+  const reopening = van.state(false)
+  const handleReopen = async () => {
+    const r = receipt.val
+    if (!r) return
+    if (!confirm(
+      `Re-open this receipt as a proposal?\n\n` +
+      `The current receipt will be deleted and a new proposal created with the same items. ` +
+      `After you re-approve, a new receipt will be committed.`,
+    )) {
+      return
+    }
+    reopening.val = true
+    try {
+      const result = await api.post(`/receipts/${r.receiptId}/reopen`, {})
+      const newId = (result as any).id
+      navigate(`/proposals/${newId}`)
+    } catch (err) {
+      alert(`Re-open failed: ${(err as Error).message}`)
+    } finally {
+      reopening.val = false
+    }
+  }
+
   const saveEdit = async () => {
     const r = receipt.val
     if (!r) return
@@ -368,7 +395,13 @@ const ReceiptDetailPage = () => {
                 button({
                   onclick: enterEdit,
                   class: "btn-secondary",
+                  disabled: () => reopening.val,
                 }, "Edit"),
+                button({
+                  onclick: handleReopen,
+                  class: "btn-secondary",
+                  disabled: () => reopening.val,
+                }, () => reopening.val ? "Re-opening…" : "Re-open as Proposal"),
                 button({
                   onclick: () => navigate("/receipts"),
                   class: "btn-secondary",

@@ -496,6 +496,100 @@ func (r *Router) handleUpdateReceiptItem(w http.ResponseWriter, req *http.Reques
 	writeJSON(w, http.StatusOK, receipt.Items[index])
 }
 
+// handleReopenReceipt converts an approved receipt back into a
+// proposal for full re-edit. Used by the 'Re-open as proposal'
+// button on the receipt detail page when the user wants more
+// invasive changes than the per-field PATCH (e.g. replacing the
+// whole item list, or re-running the LLM).
+//
+// We snapshot the current items (preserving itemId, quantity,
+// unitPriceCents, computed total), look up the merchant and
+// item names, then create a fresh proposal. The original
+// receipt is deleted; the user re-approves the new proposal
+// to commit a new receipt. This is destructive of the source
+// receipt; the client should confirm before calling.
+func (r *Router) handleReopenReceipt(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid receipt ID")
+		return
+	}
+
+	receipt, err := r.store.GetReceipt(id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "receipt not found")
+		return
+	}
+
+	// Look up merchant name. Falls back to "Unknown" if the
+	// merchant was deleted; the user can rename in the proposal.
+	merchantName := "Unknown"
+	if m, err := r.store.GetMerchant(receipt.MerchantID); err == nil {
+		merchantName = m.Name
+	}
+
+	// Build the proposal items with parsedName from the catalog.
+	// We preserve quantity and unitPriceCents exactly so the line
+	// totals are unchanged; the user can edit them in the
+	// proposal flow. Items that point at a deleted catalog item
+	// fall back to "Unknown item" — the proposal can then be
+	// edited to retarget them.
+	proposalItems := make([]domain.ProposalItem, 0, len(receipt.Items))
+	for _, ri := range receipt.Items {
+		parsedName := "Unknown item"
+		var catID uint64
+		if it, err := r.store.GetItem(ri.ItemID); err == nil {
+			parsedName = it.Name
+			catID = it.CategoryID
+		}
+		// Use the per-line total if it differs from quantity*unit
+		// (weighted items); otherwise compute it.
+		total := int64(math.Round(ri.Quantity * float64(ri.UnitPriceCents)))
+		proposalItems = append(proposalItems, domain.ProposalItem{
+			ParsedName:      parsedName,
+			Quantity:        ri.Quantity,
+			UnitPriceCents:  ri.UnitPriceCents,
+			TotalPriceCents: total,
+			MatchedItemID:   ri.ItemID,
+			CategoryID:      catID,
+		})
+	}
+
+	// Create the new proposal. Status is "pending" — the proposal
+	// is ready for review immediately, not "uploaded"/"parsing".
+	proposal := &domain.Proposal{
+		ProposalID: r.store.ProposalID.Gen(),
+		OwnerID:    receipt.OwnerID,
+		MerchantID: receipt.MerchantID,
+		Merchant:   merchantName,
+		Date:       receipt.Date,
+		PhotoURL:   receipt.PhotoURL,
+		Items:      proposalItems,
+		TotalCents: receipt.TotalCents,
+		Status:     "pending",
+	}
+	if err := r.store.CreateProposal(proposal); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create proposal")
+		return
+	}
+
+	// Delete the source receipt. The proposal approval flow
+	// creates a fresh receipt when the user re-approves; we
+	// don't want two records of the same shopping trip.
+	if err := r.store.DeleteReceipt(id); err != nil {
+		// Roll back: delete the proposal we just created so the
+		// user doesn't see a half-finished state.
+		r.store.DeleteProposal(proposal.ProposalID)
+		writeError(w, http.StatusInternalServerError, "failed to delete source receipt")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"id": fmt.Sprintf("%d", proposal.ProposalID),
+	})
+}
+
 func (r *Router) handleUploadReceipt(w http.ResponseWriter, req *http.Request) {
 	userID := r.getUserID(req)
 
