@@ -181,11 +181,90 @@ const HomePage = () => {
   // Cap "Recent Receipts" at 10; matches the previous home-page limit.
   const recentReceipts = () => receipts.val.slice(0, 10)
 
+  // Compute this-month and last-month totals from the already-loaded
+  // enriched receipts. We don't make a separate /api/analysis call —
+  // the list endpoint has all the data we need at family scale.
+  //
+  // Returns { total, count, avg, lastMonthTotal } so the UI can show
+  // a delta vs last month. lastMonthTotal is null if there were no
+  // receipts last month (no meaningful comparison to display).
+  const monthStats = (): {
+    total: number
+    count: number
+    avg: number
+    lastMonthTotal: number | null
+  } | null => {
+    if (receipts.val.length === 0) return null
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = now.getMonth()
+    // last month: rollover Dec → Jan handled by JS Date arithmetic
+    const lastMonthDate = new Date(year, month - 1, 1)
+    const lastYear = lastMonthDate.getFullYear()
+    const lastMonth = lastMonthDate.getMonth()
+
+    let total = 0
+    let count = 0
+    let lastMonthTotal = 0
+    let lastMonthCount = 0
+    for (const r of receipts.val) {
+      const d = new Date(r.date * 1000)
+      if (d.getFullYear() === year && d.getMonth() === month) {
+        total += r.totalCents
+        count++
+      } else if (d.getFullYear() === lastYear && d.getMonth() === lastMonth) {
+        lastMonthTotal += r.totalCents
+        lastMonthCount++
+      }
+    }
+    if (count === 0 && lastMonthCount === 0) return null
+    const avg = count > 0 ? total / count : 0
+    const lastMonthResult = lastMonthCount > 0 ? lastMonthTotal : null
+    return { total, count, avg, lastMonthTotal: lastMonthResult }
+  }
+
+  // Format a cents delta as a "+12% vs last month" or "-8% vs last
+  // month" string. Returns null when there's no meaningful comparison
+  // (no receipts last month).
+  const deltaPct = (current: number, last: number | null): string | null => {
+    if (last === null || last === 0) return null
+    const pct = Math.round(((current - last) / last) * 100)
+    if (pct === 0) return "same as last month"
+    return `${pct > 0 ? "+" : ""}${pct}% vs last month`
+  }
+
   return div({ class: "home-page" },
     div({ class: "page-header" },
       h1("Home"),
       button({ onclick: () => navigate("/receipts/upload"), class: "btn-primary" }, "Upload Receipt"),
     ),
+
+    // This-month summary stats. Skipped while receipts are loading
+    // (we'd just show zeros) and when there's no data at all (the
+    // "No receipts yet" empty state in the Recent Receipts section
+    // carries the message).
+    () => {
+      const stats = monthStats()
+      if (!stats) return ""
+      const delta = deltaPct(stats.total, stats.lastMonthTotal)
+      return div({ class: "home-stats" },
+        div({ class: "stat-card card" },
+          p({ class: "stat-label" }, "This Month"),
+          p({ class: "stat-value money" }, formatMoney(stats.total)),
+          () => delta ? p({ class: "stat-delta muted" }, delta) : "",
+        ),
+        div({ class: "stat-card card" },
+          p({ class: "stat-label" }, "Receipts"),
+          p({ class: "stat-value" }, String(stats.count)),
+          p({ class: "stat-delta muted" }, "this month"),
+        ),
+        div({ class: "stat-card card" },
+          p({ class: "stat-label" }, "Average per Trip"),
+          p({ class: "stat-value money" }, stats.count > 0 ? formatMoney(Math.round(stats.avg)) : "—"),
+          p({ class: "stat-delta muted" }, stats.count > 0 ? `across ${stats.count} receipt${stats.count === 1 ? "" : "s"}` : ""),
+        ),
+      )
+    },
 
     // Proposals section
     div({ class: "home-section" },

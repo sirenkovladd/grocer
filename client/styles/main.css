@@ -679,6 +679,21 @@ th {
   font-weight: 600;
 }
 
+.stat-delta {
+  font-size: 0.8125rem;
+  margin-top: 0.25rem;
+}
+
+/* Home page this-month stats strip. Reuses .stat-card but lays them
+   out as a horizontal row instead of stacking (item-detail uses the
+   same cards but in a grid; here we want a more compact 3-up). */
+.home-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
 .trend-up {
   color: var(--error);
 }
