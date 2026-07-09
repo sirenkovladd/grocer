@@ -1138,3 +1138,201 @@ button:disabled {
   left: -6px;
   cursor: sw-resize;
 }
+
+/* ==========================================================================
+   UX Overhaul additions (ticket 05)
+   ========================================================================== */
+
+/* Sidebar active state */
+.sidebar a.active,
+.sidebar a[aria-current="page"] {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-left: 2px solid var(--accent);
+  padding-left: calc(0.75rem - 2px);
+}
+
+/* Skeleton row (for list/table loading).
+   Distinct from the existing .skeleton-line used by the proposal page
+   (single shimmer bar); this is a flex row of cells for list views. */
+.skeleton-row {
+  display: flex;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  align-items: center;
+}
+
+.skeleton-cell {
+  height: 16px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 25%,
+    var(--bg-secondary) 50%,
+    var(--bg-tertiary) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+.skeleton-cell-sm { width: 60px; }
+.skeleton-cell-md { width: 120px; }
+.skeleton-cell-lg { flex: 1; }
+
+/* Money column — right-aligned, tabular-nums so digits line up. */
+.money {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.muted { color: var(--text-secondary); }
+
+/* Receipt card — enriched layout. Additive to the existing .receipt-card rule. */
+.receipt-card .receipt-merchant {
+  font-weight: 600;
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.receipt-card .receipt-meta {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+  align-items: baseline;
+}
+
+/* Breadcrumb */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.breadcrumb a {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.breadcrumb a:hover { color: var(--text-primary); }
+
+.breadcrumb .separator { color: var(--border); }
+
+.breadcrumb .current { color: var(--text-primary); }
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 3rem 2rem;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+.empty-state h3 {
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.empty-state p { margin-bottom: 1rem; }
+
+/* Filter bar (receipts list, future pages) */
+.filter-bar {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.filter-bar input,
+.filter-bar select {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.875rem;
+}
+
+.filter-bar .search-input {
+  flex: 1;
+  min-width: 200px;
+}
+
+.filter-bar .filter-label {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+/* Category badge */
+.category-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border-radius: 10px;
+  font-size: 0.75rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.category-badge:hover { color: var(--text-primary); }
+
+/* Item name link (receipt detail items table) */
+.item-name-link {
+  color: var(--text-primary);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.item-name-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* Receipt photo on detail page — constrain full-size image from /api/photos. */
+.receipt-photo img {
+  max-height: 400px;
+  max-width: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+/* Page header meta line (e.g. date + total on receipt detail). */
+.page-header-meta {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+  font-size: 0.95rem;
+}
+
+/* Mobile responsive — tables collapse into stacked cards under 768px.
+   Page must add .responsive-table to <table> and data-label to each <td>. */
+@media (max-width: 768px) {
+  .responsive-table thead { display: none; }
+
+  .responsive-table tr {
+    display: block;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .responsive-table td {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.25rem 0.75rem;
+    border: none;
+  }
+
+  .responsive-table td::before {
+    content: attr(data-label);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin-right: 1rem;
+  }
+}

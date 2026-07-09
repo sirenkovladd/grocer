@@ -93,16 +93,7 @@ const ZoomableImage = (src: () => string, alt: string) => {
   return container
 }
 
-// Fetch photo with auth header and return blob URL
-const fetchPhotoUrl = async (receiptId: number): Promise<string> => {
-  const token = localStorage.getItem("token")
-  const response = await fetch(`/api/photos/${receiptId}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
-  const blob = await response.blob()
-  return URL.createObjectURL(blob)
-}
+import { fetchPhotoUrl } from "../photos"
 
 interface ProposalItem {
   parsedName: string

@@ -169,4 +169,10 @@ Manual: load the page, verify cards render correctly, try filters.
 
 ## Decisions log
 
-_(Append decisions made during implementation. Format: `- YYYY-MM-DD: <decision> — <reason>`)_
+- 2026-07-09: **ID fields typed as `string` (not `number`).** Backend serializes uint64 as JSON string; values exceed `Number.MAX_SAFE_INTEGER`. New pages diverge from existing `number`-typed pages; follow-up migrates old pages. See ticket 04 decisions log.
+- 2026-07-09: **Owner filter dropdown shows names** (filtering UI ≠ display per spec).
+- 2026-07-09: **Merchant filter dropdown added** (sketched but not in acceptance criteria; ~5 LOC; uses existing `/api/merchants`).
+- 2026-07-09: **Search filters merchant name only** (case-insensitive substring). Server-side search is a future ticket.
+- 2026-07-09: **Empty state has two modes:** no receipts (CTA: "Upload your first receipt") and no matches (CTA: "Clear filters"). Implemented via `hasFilters` check.
+- 2026-07-09: **No filter persistence in URL.** Easy to add later; per ticket 07 recommendation.
+- 2026-07-09: **Card pluralization:** "1 item" vs "2 items" handled.

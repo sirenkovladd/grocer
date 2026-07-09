@@ -10,10 +10,10 @@
 | 02 | [Backend: enriched receipt DTOs](./02-backend-enriched-dtos.md) | backend | ✅ | — |
 | 03 | [Backend: enriched receipt endpoints](./03-backend-enriched-receipts-endpoint.md) | backend | ✅ | 02 |
 | 04 | [Frontend: shared utility helpers](./04-frontend-utils.md) | frontend | ✅ | — |
-| 05 | [Frontend: new CSS](./05-frontend-css.md) | frontend | ⬜ | — |
-| 06 | [Frontend: sidebar active state](./06-frontend-sidebar-active-state.md) | frontend | ⬜ | 05 |
-| 07 | [Frontend: receipts list page](./07-frontend-receipts-list.md) | frontend | ⬜ | 01, 02, 03, 04, 05 |
-| 08 | [Frontend: receipt detail page](./08-frontend-receipt-detail.md) | frontend | ⬜ | 01, 02, 03, 04, 05 |
+| 05 | [Frontend: new CSS](./05-frontend-css.md) | frontend | ✅ | — |
+| 06 | [Frontend: sidebar active state](./06-frontend-sidebar-active-state.md) | frontend | ✅ | 05 |
+| 07 | [Frontend: receipts list page](./07-frontend-receipts-list.md) | frontend | ✅ | 01, 02, 03, 04, 05 |
+| 08 | [Frontend: receipt detail page](./08-frontend-receipt-detail.md) | frontend | ✅ | 01, 02, 03, 04, 05 |
 | 09 | [Frontend: items list page](./09-frontend-items-list.md) | frontend | ⬜ | 04, 05 |
 | 10 | [Frontend: item detail page](./10-frontend-item-detail.md) | frontend | ⬜ | 04, 05 |
 | 11 | [Frontend: home page](./11-frontend-home.md) | frontend | ⬜ | 04, 05 |

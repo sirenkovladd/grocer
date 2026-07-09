@@ -87,15 +87,54 @@ export const api = {
 }
 
 // Layout
+//
+// The Sidebar is its own reactive component: the active link highlights
+// based on `currentPath.val`. Using function-valued attributes for
+// `aria-current` makes VanJS track the dependency and re-render the
+// attribute on every route change. `e.preventDefault()` in the onclick
+// handler stops the browser from updating the hash twice (once via the
+// default anchor behavior, once via the explicit navigate() call).
+const Sidebar = () => nav({ class: "sidebar" },
+  a({
+    href: "#/",
+    "aria-current": () => currentPath.val === "/" ? "page" : null,
+    onclick: (e: Event) => { e.preventDefault(); navigate("/") },
+  }, "Home"),
+  a({
+    href: "#/receipts",
+    "aria-current": () => {
+      const p = currentPath.val
+      return p === "/receipts" || p.startsWith("/receipts/") ? "page" : null
+    },
+    onclick: (e: Event) => { e.preventDefault(); navigate("/receipts") },
+  }, "Receipts"),
+  a({
+    href: "#/items",
+    "aria-current": () => {
+      const p = currentPath.val
+      return p === "/items" || p.startsWith("/items/") ? "page" : null
+    },
+    onclick: (e: Event) => { e.preventDefault(); navigate("/items") },
+  }, "Items"),
+  a({
+    href: "#/merchants",
+    "aria-current": () => currentPath.val === "/merchants" ? "page" : null,
+    onclick: (e: Event) => { e.preventDefault(); navigate("/merchants") },
+  }, "Merchants"),
+  a({
+    href: "#/categories",
+    "aria-current": () => currentPath.val === "/categories" ? "page" : null,
+    onclick: (e: Event) => { e.preventDefault(); navigate("/categories") },
+  }, "Categories"),
+  a({
+    href: "#/analysis",
+    "aria-current": () => currentPath.val === "/analysis" ? "page" : null,
+    onclick: (e: Event) => { e.preventDefault(); navigate("/analysis") },
+  }, "Analysis"),
+)
+
 const Layout = (content: any) => div({ class: "layout" },
-  nav({ class: "sidebar" },
-    a({ href: "#/", onclick: () => navigate("/") }, "Home"),
-    a({ href: "#/receipts", onclick: () => navigate("/receipts") }, "Receipts"),
-    a({ href: "#/items", onclick: () => navigate("/items") }, "Items"),
-    a({ href: "#/merchants", onclick: () => navigate("/merchants") }, "Merchants"),
-    a({ href: "#/categories", onclick: () => navigate("/categories") }, "Categories"),
-    a({ href: "#/analysis", onclick: () => navigate("/analysis") }, "Analysis"),
-  ),
+  Sidebar(),
   div({ class: "content" }, content),
 )
 

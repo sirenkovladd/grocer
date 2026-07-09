@@ -208,4 +208,9 @@ You can also visually inspect in the browser. Since this is CSS-only with no mar
 
 ## Decisions log
 
-_(Append decisions made during implementation. Format: `- YYYY-MM-DD: <decision> — <reason>`)_
+- 2026-07-09: **Appended to `client/styles/main.css` (no new file).** Keeps the project convention of one big stylesheet.
+- 2026-07-09: **Reused existing CSS variables** (`--bg-tertiary`, `--text-secondary`, `--accent`, `--border`). No new variables needed.
+- 2026-07-09: **New `.skeleton-row` / `.skeleton-cell` coexists with existing `.skeleton-line`.** They serve different shapes (list row vs single bar). The existing `.skeleton-line` is hardcoded with light colors (`#f0f0f0`) that don't match the dark theme; left untouched per ticket 05's "no existing styles modified" rule. Visual inconsistency is a known follow-up.
+- 2026-07-09: **Mobile responsive CSS lives in ticket 05**, not 12. Ticket 12 will be the per-page application, not new CSS.
+- 2026-07-09: **Added `.receipt-photo img` constraints** (max-height 400px, object-fit contain) per ticket 08's open question, since the new class needs it.
+- 2026-07-09: **Added `.page-header-meta`** for the receipt detail page's date+total line.

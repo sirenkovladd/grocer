@@ -195,4 +195,11 @@ Manual: navigate to a receipt detail page, verify all the new elements render.
 
 ## Decisions log
 
-_(Append decisions made during implementation. Format: `- YYYY-MM-DD: <decision> — <reason>`)_
+- 2026-07-09: **ID fields typed as `string` (not `number`).** See ticket 04 + 07 decisions logs.
+- 2026-07-09: **Refactored `fetchPhotoUrl` to `client/photos.ts`** (shared module). Replaces the local copy in `proposal.ts`. Adds `revokePhotoUrl` for blob-URL cleanup and a per-ID cache. Photo memory leaks (out of scope per ticket 08) are now addressable.
+- 2026-07-09: **Photo URL revoked when receipt ID changes.** New `revokePhotoUrl` is called when navigating between receipts to avoid blob-URL leaks.
+- 2026-07-09: **Photo `max-height: 400px` added in ticket 05 CSS** (not on the page), so the new `receipt-photo` class can apply it without inline styles.
+- 2026-07-09: **Category badge is static** (not a link). Per ticket 08 recommendation; no `/items?category={id}` filter UI yet.
+- 2026-07-09: **Owner name loaded but never rendered.** Per UX overhaul plan. Data is fetched in the enriched DTO; a comment on the `ownerName` field documents the deferral.
+- 2026-07-09: **Item name links to `/items/{id}`** using the SPA `navigate()` pattern. Cmd-click open-in-new-tab does not work (known trade-off; cmd-click works on real `href` only).
+- 2026-07-09: **Empty items list** shows "No items on this receipt." in an empty-state box. Defensive UI per ticket 08 open question.

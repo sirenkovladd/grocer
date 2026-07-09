@@ -129,4 +129,7 @@ Manual: open each route in a browser, confirm the correct sidebar item is highli
 
 ## Decisions log
 
-_(Append decisions made during implementation. Format: `- YYYY-MM-DD: <decision> — <reason>`)_
+- 2026-07-09: **`aria-current="page"` only, no `class="active"`.** CSS targets both, so the `class` attribute is redundant. `aria-current` is the accessible signal.
+- 2026-07-09: **`e.preventDefault()` added to all sidebar link handlers.** Fixes a latent double-`hashchange` bug (browser default + explicit `navigate()`).
+- 2026-07-09: **`Sidebar` is a separate reactive component**; `Layout` calls it. The function-valued `aria-current` attribute re-evaluates on `currentPath.val` changes; VanJS diffs and updates the DOM in place.
+- 2026-07-09: **Receipts/Items highlights also match nested paths** (`/receipts/123`, `/items/45`) via `startsWith`. Proposal pages highlight nothing (per recommendation).
