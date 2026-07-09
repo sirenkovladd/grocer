@@ -156,6 +156,22 @@ func trimMarkdownCodeBlock(content string) string {
 	return content
 }
 
+// receiptParsingRules is the shared set of rules for parsing a grocery
+// receipt. It's embedded in both the image-in and text-only prompts so the
+// two paths produce consistent output. Keep rules specific and verifiable —
+// the LLM has to read these against ambiguous OCR text.
+const receiptParsingRules = `Critical parsing rules:
+- A line like "0.875 kg @ $1.96/kg" or "$1.96/lb" is unit-price info for the immediately preceding item, NOT a separate item.
+- A line like "Card $X.XX Save -Y" or "Save -$Y" or "Coupon -$Y" or "More Rewards -$Y" is a discount on the immediately preceding item. Reduce that item's total_price (or unit_price) by Y. Do NOT output it as a separate item.
+- A line starting with "*" (e.g. "*DEPOSIT", "*RECYCLE FEE", "*ENV FEE", "*BOTTLE DEPOSIT") is a price adder on the immediately preceding item. Add to that item's total_price. Do NOT output it as a separate item.
+- Lines that say "Sub Total", "Subtotal", "Tax", "GST", "PST", "HST", "Total", "Balance Due", "Credit", "Cash", "Change", "Payment", "VISA", "MASTERCARD", "DEBIT" are footer / payment info, NOT items.
+- Card numbers (e.g. "XXXXX6431"), transaction IDs, dates/times of the transaction, "TRANSACTION RECORD", "TYPE: Purchase", "ACCT:", "REF#", "AUTHOR#", "AID:", "APPROVED", "NO SIGNATURE" are all transaction metadata, NOT items.
+- Loyalty / rewards lines ("Your Savings Today", "Points Earned", "Opening Balance", "More Rewards Card") are NOT items.
+- Weighted items: quantity is the weight (e.g. 0.875), unit_price is the per-kg/lb price, total_price is quantity * unit_price.
+- "Card $X.XX" appearing alone (without "Save" / "Coupon") is the amount actually paid for the previous item after the discount — it confirms the discounted total. Do NOT output it as a separate item.
+- quantity can be a decimal for weighted items.
+- Return ONLY the JSON, no other text.`
+
 // buildReceiptPrompt builds the prompt for receipt parsing
 func buildReceiptPrompt() string {
 	return `Analyze this grocery receipt photo and extract the following information in JSON format:
@@ -173,8 +189,7 @@ func buildReceiptPrompt() string {
   "total": 25.99
 }
 
-Note: quantity can be a decimal for weighted items (e.g. 0.445 for 445g, 1.5 for 1.5kg).
-Return ONLY the JSON, no other text.`
+` + receiptParsingRules
 }
 
 // buildReceiptFromTextPrompt is the second-stage prompt used after OCR has
@@ -210,12 +225,7 @@ func buildReceiptFromTextPrompt(ocr *OCRResult) string {
 	sb.WriteString("  ],\n")
 	sb.WriteString(`  "total": 25.99` + "\n")
 	sb.WriteString("}\n\n")
-	sb.WriteString("Notes:\n")
-	sb.WriteString("- quantity can be a decimal for weighted items (e.g. 0.445 for 445g, 1.5 for 1.5kg)\n")
-	sb.WriteString("- skip subtotals, taxes, change, payment method, loyalty IDs, cashier names\n")
-	sb.WriteString("- discounts and coupons are items with negative total_price\n")
-	sb.WriteString("- ignore any text that is clearly not a purchased product\n")
-	sb.WriteString("Return ONLY the JSON, no other text.")
+	sb.WriteString(receiptParsingRules)
 	return sb.String()
 }
 

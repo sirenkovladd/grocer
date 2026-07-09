@@ -133,19 +133,6 @@ interface Proposal {
 const inProgressStatuses = new Set(["uploaded", "parsed_ocr", "parsed_llm", "parsing"])
 const isInProgressStatus = (s: string) => inProgressStatuses.has(s)
 
-// confidenceBadge renders a small colored pill next to an item name showing
-// OCR confidence. Returns "" when OCR didn't run for this item (the field
-// is left at zero by the parser in that case, see ConfidenceForLine).
-const confidenceBadge = (item: ProposalItem) => {
-  if (!item.ocrConfidence || item.ocrConfidence <= 0) return ""
-  const conf = item.ocrConfidence
-  const pct = Math.round(conf * 100)
-  const level = conf >= 0.85 ? "high" : conf >= 0.60 ? "medium" : "low"
-  const source = item.sourceBlockType ? ` (from ${item.sourceBlockType})` : ""
-  const title = `OCR confidence: ${pct}%${source}`
-  return span({ class: `item-confidence item-confidence-${level}`, title }, `${pct}%`)
-}
-
 const ProposalDetailPage = () => {
   const proposal = van.state<Proposal | null>(null)
   const status = van.state<string>("loading")
@@ -399,11 +386,7 @@ const ProposalDetailPage = () => {
 
     // Normal display row
     return tr(
-      td({ class: "item-name-cell" },
-        item.parsedName,
-        " ",
-        confidenceBadge(item),
-      ),
+      td(item.parsedName),
       td(String(item.quantity)),
       td(`$${(item.unitPriceCents / 100).toFixed(2)}`),
       td(
