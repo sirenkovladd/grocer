@@ -208,34 +208,82 @@ th {
   border-color: var(--accent);
 }
 
-/* Thumbnail at the top of the card. Hidden when no photo is
-   available — the card text remains usable without one. */
-.receipt-thumb {
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  overflow: hidden;
-  border-radius: 6px;
-  margin-bottom: 0.5rem;
-  background: var(--bg-tertiary);
+/* Receipt card — horizontal row layout. Thumb on the left
+   (3:4 aspect, contains the full vertical image), text on the
+   right. The card is ~110px tall so the list view stays
+   scannable. */
+.receipt-card {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0.875rem;
+  padding: 0.625rem;
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
 }
 
-.receipt-thumb img {
+.receipt-card:hover {
+  border-color: var(--accent);
+  background: var(--bg-secondary);
+}
+
+.receipt-card .receipt-thumb {
+  flex: 0 0 auto;
+  width: 60px;
+  aspect-ratio: 3 / 4;
+  border-radius: 4px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.receipt-card .receipt-thumb img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;  /* show the full vertical receipt, no cover-crop */
   display: block;
 }
 
-.receipt-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
+.receipt-card .receipt-thumb-empty {
+  background: var(--bg-tertiary);
 }
 
-.receipt-date {
+.receipt-card-body {
+  flex: 1 1 auto;
+  min-width: 0;  /* allow text truncation if needed */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.25rem;
+}
+
+.receipt-card .receipt-merchant {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.receipt-card .receipt-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
   color: var(--text-secondary);
-  font-size: 0.875rem;
+  flex-wrap: wrap;
+}
+
+.receipt-card-sep {
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
+.receipt-card-total {
+  margin-left: auto;
+  color: var(--text-primary);
+  font-weight: 500;
 }
 
 .receipt-body {
@@ -511,7 +559,10 @@ th {
 
 .proposal-layout {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* Items column gets more room than the photo column. Receipts
+     are always vertical, so the photo only needs ~42% of the width
+     to show at a useful size. */
+  grid-template-columns: 1fr 1.4fr;
   gap: 2rem;
 }
 
@@ -536,7 +587,7 @@ th {
   overflow: hidden;
   cursor: zoom-in;
   touch-action: none;
-  max-height: 600px;
+  max-height: 540px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -544,7 +595,7 @@ th {
 
 .zoom-image {
   max-width: 100%;
-  max-height: 600px;
+  max-height: 540px;
   object-fit: contain;
   border-radius: 4px;
   will-change: transform;
@@ -565,7 +616,7 @@ th {
 
 .proposal-photo img {
   max-width: 100%;
-  max-height: 600px;
+  max-height: 540px;
   border-radius: 4px;
 }
 
@@ -1465,16 +1516,6 @@ button:disabled {
   font-size: 1rem;
   margin-bottom: 0.25rem;
 }
-
-.receipt-card .receipt-meta {
-  display: flex;
-  gap: 0.75rem;
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  margin-top: 0.5rem;
-  align-items: baseline;
-}
-
 /* Breadcrumb */
 .breadcrumb {
   display: flex;
@@ -1571,6 +1612,63 @@ button:disabled {
   object-fit: contain;
   border-radius: 8px;
   border: 1px solid var(--border);
+}
+
+/* Receipt detail page layout. Receipts are always vertical, so the
+   photo column is narrower than the items column. Photo uses
+   ?size=thumb and object-fit: contain so the whole receipt is
+   visible without scrolling on a desktop. Stacks on mobile. */
+.receipt-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 40%) 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.receipt-detail-layout .receipt-photo {
+  position: sticky;
+  top: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.receipt-detail-layout .receipt-photo img {
+  max-height: 540px;
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+}
+
+.receipt-photo-fullsize {
+  font-size: 0.8125rem;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.receipt-photo-fullsize:hover {
+  text-decoration: underline;
+}
+
+.receipt-items-column {
+  min-width: 0;  /* allow grid item to shrink so tables don't overflow */
+}
+
+@media (max-width: 768px) {
+  .receipt-detail-layout {
+    grid-template-columns: 1fr;
+  }
+  .receceipt-detail-layout .receipt-photo {
+    position: static;
+  }
+  .receipt-detail-layout .receipt-photo img {
+    max-height: 320px;
+  }
 }
 
 /* Page header meta line (e.g. date + total on receipt detail). */

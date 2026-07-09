@@ -51,18 +51,23 @@ export const ReceiptCard = (r: EnrichedReceiptSummary) => {
       class: "receipt-card card",
       onclick: () => navigate(`/receipts/${r.receiptId}`),
     },
+    // Horizontal row layout: small thumb on the left, text on the right.
+    // Receipts are always vertical, so the thumb uses object-fit: contain
+    // (not cover) to show the full receipt. The wrapper has a fixed 3:4
+    // aspect ratio at a small size, so the card stays compact.
     () => thumbUrl.val
       ? div({ class: "receipt-thumb" },
           img({ src: thumbUrl.val, alt: "", loading: "lazy" }),
         )
-      : "",
-    div({ class: "receipt-header" },
+      : div({ class: "receipt-thumb receipt-thumb-empty" }),
+    div({ class: "receipt-card-body" },
       div({ class: "receipt-merchant" }, r.merchantName),
-      div({ class: "receipt-date muted" }, formatDate(r.date)),
-    ),
-    div({ class: "receipt-meta" },
-      span(`${r.itemCount} ${r.itemCount === 1 ? "item" : "items"}`),
-      span({ class: "money" }, formatMoney(r.totalCents)),
+      div({ class: "receipt-meta" },
+        span({ class: "muted" }, formatDate(r.date)),
+        span({ class: "receipt-card-sep" }, "·"),
+        span(`${r.itemCount} ${r.itemCount === 1 ? "item" : "items"}`),
+        span({ class: "receipt-card-total money" }, formatMoney(r.totalCents)),
+      ),
     ),
   )
 }

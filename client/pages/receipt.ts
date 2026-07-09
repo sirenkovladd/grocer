@@ -137,7 +137,7 @@ const ReceiptDetailPage = () => {
       currentReceiptId = data.receiptId
 
       if (data?.photoUrl) {
-        fetchPhotoUrl(data.receiptId)
+        fetchPhotoUrl(data.receiptId, "thumb")
           .then(url => { photoSrc.val = url })
           .catch(err => {
             console.warn("Failed to load photo:", err)
@@ -415,14 +415,30 @@ const ReceiptDetailPage = () => {
           ? p({ class: "error" }, editError.val)
           : "",
 
-        // Photo
-        () => photoSrc.val
-          ? div({ class: "receipt-photo" }, img({ src: photoSrc.val, alt: "Receipt" }))
-          : "",
+        // Two-column layout: photo on the left, items + header on
+        // the right. Receipts are always vertical, so the photo
+        // column is narrower and the image is rendered with
+        // object-fit: contain to show the whole receipt.
+        // Stacks vertically on mobile (see CSS .receipt-detail-layout).
+        div({ class: "receipt-detail-layout" },
+          // Photo column
+          () => photoSrc.val
+            ? div({ class: "receipt-photo" },
+                img({ src: photoSrc.val, alt: "Receipt" }),
+                a({
+                  href: () => `/api/photos/${currentReceiptId}`,
+                  target: "_blank",
+                  rel: "noopener",
+                  class: "receipt-photo-fullsize",
+                }, "View full size →"),
+              )
+            : "",
 
-        h2("Items"),
-        hasItems
-          ? div({ class: "items-table-wrapper" },
+          // Items column
+          div({ class: "receipt-items-column" },
+            h2("Items"),
+            hasItems
+              ? div({ class: "items-table-wrapper" },
               table({ class: "responsive-table" },
                 tr(
                   th("Item"),
@@ -529,6 +545,8 @@ const ReceiptDetailPage = () => {
           : div({ class: "empty-state" },
               p("No items on this receipt."),
             ),
+          ),  // close .receipt-items-column
+        ),  // close .receipt-detail-layout
       )
     },
   )
