@@ -634,6 +634,28 @@ th {
   margin-bottom: 1.5rem;
 }
 
+/* Merchants page — per-row action cluster. Sits in the Actions
+   column with three controls (Rename, Delete, Merge target+button).
+   The merge target picker and merge button are nested in a single
+   div so they wrap as a unit on narrow viewports. */
+.merchant-actions {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.merchant-merge {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+  margin-left: 0.25rem;
+}
+
+.merge-target-picker {
+  max-width: 12rem;
+}
+
 .date-presets {
   display: flex;
   gap: 0.5rem;

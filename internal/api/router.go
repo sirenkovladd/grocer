@@ -100,6 +100,8 @@ func (r *Router) setupRoutes() {
 	r.mux.HandleFunc("GET /api/merchants", r.withCORS(r.withAuth(r.withAuditLogging("list", "merchants", r.handleListMerchants))))
 	r.mux.HandleFunc("POST /api/merchants", r.withCORS(r.withAuth(r.withAuditLogging("create", "merchant", r.handleCreateMerchant))))
 	r.mux.HandleFunc("PATCH /api/merchants/{id}", r.withCORS(r.withAuth(r.withAuditLogging("update", "merchant", r.handleUpdateMerchant))))
+	r.mux.HandleFunc("DELETE /api/merchants/{id}", r.withCORS(r.withAuth(r.withAuditLogging("delete", "merchant", r.handleDeleteMerchant))))
+	r.mux.HandleFunc("POST /api/merchants/{id}/merge", r.withCORS(r.withAuth(r.withAuditLogging("merge", "merchant", r.handleMergeMerchant))))
 
 	// Users
 	// Note: owner display is deferred per the UX overhaul spec. This endpoint

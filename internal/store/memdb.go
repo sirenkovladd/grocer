@@ -560,6 +560,44 @@ func (s *Store) DeleteMerchant(id uint64) error {
 	return nil
 }
 
+// MergeMerchant retargets every receipt that references `sourceID`
+// to instead reference `targetID`, then deletes the source
+// merchant. Both must exist (enforced at the handler level).
+// Returns the number of receipts retargeted.
+func (s *Store) MergeMerchant(sourceID, targetID uint64) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	txn := s.db.Txn(true)
+	defer txn.Abort()
+
+	receiptsRaw, err := txn.Get("receipts", "id")
+	if err != nil {
+		return 0, err
+	}
+	var updated []*domain.Receipt
+	retargeted := 0
+	for raw := receiptsRaw.Next(); raw != nil; raw = receiptsRaw.Next() {
+		r := raw.(*domain.Receipt)
+		if r.MerchantID == sourceID {
+			r.MerchantID = targetID
+			updated = append(updated, r)
+			retargeted++
+		}
+	}
+	for _, r := range updated {
+		if err := txn.Insert("receipts", r); err != nil {
+			return retargeted, err
+		}
+	}
+	if err := txn.Delete("merchants", &domain.Merchant{MerchantID: sourceID}); err != nil {
+		return retargeted, err
+	}
+	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
+	return retargeted, nil
+}
+
 // Item operations
 
 func (s *Store) CreateItem(item *domain.Item) error {
