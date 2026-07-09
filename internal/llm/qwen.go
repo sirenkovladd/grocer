@@ -1,12 +1,14 @@
 package llm
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"code.sirenko.ca/grocer/internal/domain"
 )
@@ -49,6 +51,7 @@ type zenAnthropicRequest struct {
 	MaxTokens int               `json:"max_tokens"`
 	Messages  []zenAnthropicMsg `json:"messages"`
 	System    string            `json:"system,omitempty"`
+	Stream    bool              `json:"stream,omitempty"`
 }
 
 type zenAnthropicMsg struct {
@@ -131,9 +134,30 @@ func (q *ZenAnthropicProvider) ParseReceiptFromText(ctx context.Context, ocr *OC
 	return ParseReceiptResponse(text)
 }
 
-// ParseReceiptFromTextStream is not supported for the Zen Anthropic path.
+// ParseReceiptFromTextStream extracts structured JSON from pre-OCR'd text
+// using a streaming text-only chat completion. The Anthropic API streams
+// text as SSE events of the form:
+//
+//	event: content_block_delta
+//	data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"..."}}
+//
+// We forward only the `text` field of each `content_block_delta` to the
+// channel, in reading order. The connection is closed on `message_stop`
+// or any parse / transport error.
 func (q *ZenAnthropicProvider) ParseReceiptFromTextStream(ctx context.Context, ocr *OCRResult) (<-chan StreamChunk, error) {
-	return nil, fmt.Errorf("streaming not supported for zen-anthropic provider")
+	if ocr == nil {
+		return nil, fmt.Errorf("nil OCR result")
+	}
+	prompt := buildReceiptFromTextPrompt(ocr)
+	return q.streamMessages(ctx, zenAnthropicRequest{
+		Model:     q.model,
+		MaxTokens: 4096,
+		System:    "You are a receipt parser. Return only valid JSON.",
+		Messages: []zenAnthropicMsg{
+			{Role: "user", Content: prompt},
+		},
+		Stream: true,
+	})
 }
 
 // CategorizeItem is unchanged.
@@ -194,4 +218,115 @@ func (q *ZenAnthropicProvider) callAnthropicText(ctx context.Context, userPrompt
 		},
 	}
 	return q.callAnthropic(ctx, "/messages", req)
+}
+
+// streamMessages runs an Anthropic streaming chat completion. It returns a
+// channel of StreamChunk carrying the text deltas in reading order. The
+// channel is closed when the upstream emits message_stop (or any terminal
+// event) or when an error occurs.
+//
+// Anthropic's SSE stream looks like:
+//
+//	event: message_start
+//	data: {"type":"message_start", ...}
+//
+//	event: content_block_start
+//	data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+//
+//	event: content_block_delta
+//	data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"..."}}
+//
+//	... more content_block_delta events ...
+//
+//	event: content_block_stop
+//	data: {"type":"content_block_stop","index":0}
+//
+//	event: message_stop
+//	data: {"type":"message_stop"}
+//
+// We emit one StreamChunk per content_block_delta with a non-empty text
+// payload. ping events and unknown events are ignored. The terminal
+// message_stop / message_delta event causes the goroutine to exit and the
+// channel to close. Errors are emitted as StreamChunk{Error: ...}.
+func (q *ZenAnthropicProvider) streamMessages(ctx context.Context, req zenAnthropicRequest) (<-chan StreamChunk, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("marshal: %w", err)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", q.baseURL+"/messages", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+q.apiKey)
+	httpReq.Header.Set("Accept", "text/event-stream")
+
+	resp, err := q.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("do request: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		errBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API error: %d %s", resp.StatusCode, string(errBody))
+	}
+
+	ch := make(chan StreamChunk, 64)
+	go func() {
+		defer resp.Body.Close()
+		defer close(ch)
+
+		scanner := bufio.NewScanner(resp.Body)
+		// Anthropic events can be up to a few KB each.
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+		var eventType string
+		for scanner.Scan() {
+			line := scanner.Text()
+
+			// SSE event/data lines are separated by blank lines.
+			if line == "" {
+				eventType = ""
+				continue
+			}
+			if strings.HasPrefix(line, "event: ") {
+				eventType = strings.TrimPrefix(line, "event: ")
+				continue
+			}
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			data := strings.TrimPrefix(line, "data: ")
+			if data == "" || data == "[DONE]" {
+				continue
+			}
+
+			// Only forward text deltas. message_stop terminates the stream.
+			if eventType == "content_block_delta" {
+				var ev struct {
+					Type  string `json:"type"`
+					Delta struct {
+						Type string `json:"type"`
+						Text string `json:"text"`
+					} `json:"delta"`
+				}
+				if err := json.Unmarshal([]byte(data), &ev); err != nil {
+					ch <- StreamChunk{Error: fmt.Errorf("decode stream event: %w", err)}
+					return
+				}
+				if ev.Delta.Text != "" {
+					ch <- StreamChunk{Text: ev.Delta.Text}
+				}
+				continue
+			}
+			if eventType == "message_stop" || eventType == "error" {
+				return
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			ch <- StreamChunk{Error: fmt.Errorf("stream read: %w", err)}
+		}
+	}()
+
+	return ch, nil
 }
