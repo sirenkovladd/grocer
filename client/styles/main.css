@@ -301,12 +301,15 @@ th {
 
 .create-form, .edit-form {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 1rem;
+  align-items: center;
 }
 
 .create-form input, .edit-form input {
-  flex: 1;
+  flex: 1 1 12rem;
+  min-width: 0;
 }
 
 .category-tree {
@@ -320,10 +323,38 @@ th {
   align-items: center;
   padding: 0.5rem;
   border-radius: 4px;
+  gap: 0.5rem;
 }
 
 .category-node:hover {
   background: var(--bg-tertiary);
+}
+
+/* Action buttons in the category tree row. */
+.category-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.category-actions button {
+  font-size: 0.8125rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.category-actions .btn-danger {
+  background: transparent;
+  color: var(--error);
+  border: 1px solid transparent;
+}
+
+.category-actions .btn-danger:hover {
+  background: var(--bg-secondary);
+  border-color: var(--error);
+}
+
+/* Parent picker dropdown used by both create and edit forms. */
+.parent-picker {
+  min-width: 12rem;
 }
 
 .analysis-page {
