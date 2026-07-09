@@ -137,7 +137,7 @@ const ReceiptDetailPage = () => {
       currentReceiptId = data.receiptId
 
       if (data?.photoUrl) {
-        fetchPhotoUrl(data.receiptId, "thumb")
+        fetchPhotoUrl(data.receiptId, "large")
           .then(url => { photoSrc.val = url })
           .catch(err => {
             console.warn("Failed to load photo:", err)

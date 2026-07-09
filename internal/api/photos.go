@@ -72,13 +72,24 @@ func (r *Router) handleGetPhoto(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// If the client requests a thumbnail (?size=thumb), resize the
-	// decoded image to a max edge of 200px and re-encode as JPEG.
-	// The full-size bytes are still cached on disk so this is a CPU
-	// cost only (the GCloud round-trip is the expensive part, and
-	// it's already done by the time we get here).
-	if req.URL.Query().Get("size") == "thumb" {
+	// If the client requests a resized variant, decode and re-encode
+	// the image. The full-size bytes are still cached on disk so
+	// resizing is a CPU cost only (the GCloud round-trip is the
+	// expensive part, and it's already done by the time we get here).
+	//
+	// Variants:
+	//   ?size=thumb  — 200px on the longest edge. Used for the
+	//                  receipts list card (no upscaling, scannable).
+	//   ?size=large  — 1200px on the longest edge. Used for the
+	//                  receipt detail and proposal detail views.
+	//                  Sharp on typical desktops; smaller payload
+	//                  than the original (which can be 5+ MB).
+	//   no param     — original bytes, as uploaded.
+	switch req.URL.Query().Get("size") {
+	case "thumb":
 		data = resizePhoto(data, 200)
+	case "large":
+		data = resizePhoto(data, 1200)
 	}
 
 	w.Header().Set("Content-Type", "image/jpeg")

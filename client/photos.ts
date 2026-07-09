@@ -11,15 +11,15 @@
 // entry (revoking its blob URL to free memory) before adding a new one.
 // On a cache hit we re-insert the entry to mark it as recent.
 //
-// The cache is split by size: a full-size image and a thumbnail of the
-// same receipt are cached as separate keys, so they don't evict each
-// other unpredictably.
+// The cache is split by size: a full-size image, a large variant, and
+// a thumbnail of the same receipt are cached as separate keys, so they
+// don't evict each other unpredictably.
 //
 // Worst-case memory: PHOTO_CACHE_MAX entries × ~200KB full-size +
-// ~5KB thumb = ~10MB at default cap. Family scale visits are typically
-// < 20 unique photos per session, well within the cap.
+// ~40KB large + ~5KB thumb = ~12MB at default cap. Family scale visits
+// are typically < 20 unique photos per session, well within the cap.
 
-type PhotoSize = "full" | "thumb"
+type PhotoSize = "full" | "large" | "thumb"
 
 const photoUrlCache = new Map<string, string>()
 
@@ -47,7 +47,7 @@ export const fetchPhotoUrl = async (
     return cached
   }
 
-  const params = size === "thumb" ? "?size=thumb" : ""
+  const params = size === "full" ? "" : `?size=${size}`
   const response = await fetch(`/api/photos/${id}${params}`, {
     credentials: "same-origin",
   })

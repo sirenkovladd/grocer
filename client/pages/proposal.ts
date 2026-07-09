@@ -617,7 +617,10 @@ const ProposalDetailPage = () => {
 
   const loadPhoto = async (receiptId: number) => {
     try {
-      photoSrc.val = await fetchPhotoUrl(receiptId)
+      // Use the 1200px 'large' variant — the original can be 5MB+
+      // and the user can still pinch/scroll-zoom the rendered
+      // image to inspect detail.
+      photoSrc.val = await fetchPhotoUrl(receiptId, "large")
     } catch {
       photoSrc.val = ""
     }
