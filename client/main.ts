@@ -185,6 +185,32 @@ import AnalysisPage from "./pages/analysis"
 // re-mounts the page, which schedules another load — infinite loop).
 // Reading `currentPath` once and dispatching directly keeps the
 // binding graph a tree.
+
+// Per-page error boundary. Wraps a page component so a synchronous
+// render error (typo, missing field, null deref) doesn't take down
+// the whole app. The user gets a clear error message and a Reload
+// button; the rest of the sidebar/nav remains usable.
+//
+// This only catches errors during the initial render. Errors thrown
+// later from async data fetches are already handled inside the page
+// (each page has its own error state). State-update errors that
+// happen on user interaction are not caught here — fixing those
+// requires a per-binding error boundary, which VanJS doesn't ship.
+const withErrorBoundary = (pageName: string, pageFn: () => any) => {
+  return () => {
+    try {
+      return pageFn()
+    } catch (err) {
+      console.error(`Page ${pageName} crashed during render:`, err)
+      return div({ class: "empty-state error-boundary" },
+        h2("Something went wrong"),
+        p(`The ${pageName} page failed to load.`),
+        button({ onclick: () => location.reload() }, "Reload page"),
+      )
+    }
+  }
+}
+
 const App = () => {
   return div({ id: "app" },
     () => {
@@ -193,11 +219,28 @@ const App = () => {
         return Login()
       }
       if (path === "/") {
-        return Layout(HomePage())
+        return Layout(withErrorBoundary("Home", HomePage)())
       }
-      return Layout(PageContent(path))
+      return Layout(withErrorBoundary(routeName(path), () => PageContent(path))())
     }
   )
+}
+
+// Friendly page name for the error boundary message. Falls back to
+// the raw path for unknown routes.
+const routeName = (path: string): string => {
+  if (path === "/") return "Home"
+  if (path === "/receipts") return "Receipts"
+  if (path === "/receipts/upload") return "Upload"
+  if (path.startsWith("/receipts/")) return "Receipt detail"
+  if (path.startsWith("/proposals/")) return "Proposal detail"
+  if (path === "/items") return "Items"
+  if (path === "/items/merge") return "Merge items"
+  if (path.startsWith("/items/")) return "Item detail"
+  if (path === "/merchants") return "Merchants"
+  if (path === "/categories") return "Categories"
+  if (path === "/analysis") return "Analysis"
+  return path
 }
 
 const PageContent = (path: string) => {

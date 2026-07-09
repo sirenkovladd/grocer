@@ -661,6 +661,13 @@ th {
   min-width: 12rem;
 }
 
+/* Error boundary fallback UI — reuses the .empty-state look so
+   the visual language is consistent with other error paths. */
+.error-boundary {
+  max-width: 500px;
+  margin: 4rem auto;
+}
+
 /* Trips section on the Analysis page. Each trip is a card; the
    receipts within are listed as small links below the meta row. */
 .trips-section {
