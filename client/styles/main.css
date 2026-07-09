@@ -1506,6 +1506,58 @@ button:disabled {
   border-color: var(--danger, #d63031);
 }
 
+/* Inline edit form (rendered in place of a table row when editing).
+   Uses a CSS grid to lay out Name | Category | Aliases with a second
+   row of error + action buttons. The wrapper div replaces a single
+   <tr>'s <td colspan=4> so it spans the whole table. */
+.inline-edit-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr 2fr;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+}
+
+.inline-edit-form .edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.inline-edit-form .edit-field label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.inline-edit-form .edit-input {
+  width: 100%;
+}
+
+.inline-edit-form .edit-error {
+  grid-column: 1 / -1;
+  color: var(--error);
+  font-size: 0.875rem;
+}
+
+.inline-edit-form .edit-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+@media (max-width: 768px) {
+  /* On mobile, stack the edit fields vertically rather than the
+     desktop 3-column grid. The table itself becomes a stacked card
+     list (see ticket 12) so the colspan=4 cell wraps as expected. */
+  .inline-edit-form {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Delete snackbar — fixed at bottom of viewport. */
 .delete-snackbar {
   position: fixed;

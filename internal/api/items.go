@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 )
@@ -80,4 +81,54 @@ func (r *Router) handleUpdateItem(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, item)
+}
+
+// handleDeleteItem removes an item from the catalog. Refuses with
+// 400 if any receipt still references the item — deleting it would
+// leave those receipts pointing at a missing entity, which the
+// enriched-receipt handlers would then render as "Unknown item".
+// To proceed, the caller should first migrate the affected receipts
+// to a different item (re-categorize, or use the merge tool planned
+// as item #12).
+func (r *Router) handleDeleteItem(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid item ID")
+		return
+	}
+
+	// Confirm the item exists — return 404 otherwise instead of a
+	// silent no-op from the store.
+	if _, err := r.store.GetItem(id); err != nil {
+		writeError(w, http.StatusNotFound, "item not found")
+		return
+	}
+
+	// Check if any receipt still references this item. Batch-load
+	// receipts once; iterate to find any with matching itemID.
+	receipts, err := r.store.ListReceipts()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	usedIn := 0
+	for _, rcpt := range receipts {
+		for _, ri := range rcpt.Items {
+			if ri.ItemID == id {
+				usedIn++
+				break
+			}
+		}
+	}
+	if usedIn > 0 {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("cannot delete item: %d receipt(s) still reference it", usedIn))
+		return
+	}
+
+	if err := r.store.DeleteItem(id); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
