@@ -226,8 +226,16 @@ const ProposalDetailPage = () => {
   const applyingExternal = van.state(false)
   const applyError = van.state("")
   const copyConfirm = van.state("")
+  // recentDelete holds the most recently deleted item so the user can
+  // undo within a 5s window. The delete is committed to the backend
+  // immediately; undo re-POSTs the item to put it back. We don't try to
+  // track multiple pending deletes — the snackbar shows the most recent
+  // and Undo restores only that one.
+  const recentDelete = van.state<{ item: ProposalItem; index: number } | null>(null)
+  const addingItem = van.state(false)
   let abortController: AbortController | null = null
   let copyConfirmTimer: ReturnType<typeof setTimeout> | null = null
+  let deleteSnackbarTimer: ReturnType<typeof setTimeout> | null = null
 
   const id = window.location.hash.split("/").pop()
 
@@ -409,6 +417,76 @@ const ProposalDetailPage = () => {
     }
   }
 
+  // handleAddItem creates a new empty ProposalItem on the backend, appends
+  // it to the local array, and immediately opens the inline editor for
+  // it so the user can fill in the values without a second click.
+  const handleAddItem = async () => {
+    if (!id) return
+    addingItem.val = true
+    error.val = ""
+    try {
+      const newItem = await api.post(`/proposals/${id}/items`, {})
+      streamingItems.val = [...streamingItems.val, newItem]
+      const newIndex = streamingItems.val.length - 1
+      startEdit(newIndex)
+    } catch (err) {
+      error.val = err instanceof Error ? err.message : "Add failed"
+    } finally {
+      addingItem.val = false
+    }
+  }
+
+  // handleDeleteItem removes an item from the backend and local state
+  // immediately, then shows a 5s undo snackbar. Undo re-POSTs the item
+  // with its captured data; if the user doesn't undo, the item is gone
+  // for good after 5s.
+  const handleDeleteItem = async (index: number) => {
+    if (!id) return
+    const item = streamingItems.val[index]
+    if (!item) return
+    try {
+      await api.delete(`/proposals/${id}/items/${index}`)
+      const items = [...streamingItems.val]
+      items.splice(index, 1)
+      streamingItems.val = items
+      // If we were editing this item, exit edit mode.
+      if (editingIndex.val === index) editingIndex.val = -1
+      // Show the snackbar. Cancel any previous snackbar timer so the new
+      // delete gets a full 5s window.
+      if (deleteSnackbarTimer) clearTimeout(deleteSnackbarTimer)
+      recentDelete.val = { item, index }
+      deleteSnackbarTimer = setTimeout(() => {
+        recentDelete.val = null
+        deleteSnackbarTimer = null
+      }, 5000)
+    } catch (err) {
+      error.val = err instanceof Error ? err.message : "Delete failed"
+    }
+  }
+
+  const handleUndoDelete = async () => {
+    if (!id || !recentDelete.val) return
+    const { item, index } = recentDelete.val
+    if (deleteSnackbarTimer) clearTimeout(deleteSnackbarTimer)
+    deleteSnackbarTimer = null
+    try {
+      const restored = await api.post(`/proposals/${id}/items`, {
+        parsedName: item.parsedName,
+        quantity: item.quantity,
+        unitPriceCents: item.unitPriceCents,
+        totalPriceCents: item.totalPriceCents,
+      })
+      // Insert at the original index if still in range, else append.
+      const items = [...streamingItems.val]
+      const insertAt = Math.min(index, items.length)
+      items.splice(insertAt, 0, restored)
+      streamingItems.val = items
+      recentDelete.val = null
+    } catch (err) {
+      error.val = err instanceof Error ? err.message : "Undo failed"
+    }
+  }
+
   const handleApplyExternal = async () => {
     if (!id) return
     const content = tomlInput.val.trim()
@@ -526,8 +604,13 @@ const ProposalDetailPage = () => {
       ),
       td(String(item.quantity)),
       td(`$${(totalCents / 100).toFixed(2)}`),
-      td(
+      td({ class: "row-actions" },
         button({ onclick: () => startEdit(index), class: "btn-sm btn-secondary" }, "Edit"),
+        button({
+          onclick: () => handleDeleteItem(index),
+          class: "btn-sm btn-danger",
+          title: "Delete item",
+        }, "×"),
       ),
     )
   }
@@ -569,6 +652,11 @@ const ProposalDetailPage = () => {
               ...streamingItems.val.map((item, index) => renderItemRow(item, index)),
             ),
           ),
+          button({
+            class: "btn-secondary add-item-btn",
+            disabled: addingItem.val,
+            onclick: handleAddItem,
+          }, () => addingItem.val ? "Adding…" : "+ Add item"),
           div({ class: "proposal-summary" },
             p(`Total: $${(pr.totalCents / 100).toFixed(2)}`),
             p(`Date: ${pr.date ? new Date(pr.date * 1000).toLocaleDateString() : "Unknown"}`),
@@ -614,6 +702,22 @@ const ProposalDetailPage = () => {
     ),
   )
 }
+
+  // renderDeleteSnackbar shows a fixed-position snackbar at the bottom
+  // of the screen when an item has just been deleted. The user has 5
+  // seconds to click Undo. The delete is already committed to the
+  // backend; undo re-POSTs the item.
+  const renderDeleteSnackbar = () => {
+    if (!recentDelete.val) return ""
+    const itemName = recentDelete.val.item.parsedName || "item"
+    return div({ class: "delete-snackbar" },
+      span(`Deleted "${itemName}"`),
+      button({
+        class: "delete-snackbar-undo",
+        onclick: handleUndoDelete,
+      }, "Undo"),
+    )
+  }
 
   // renderToolsPanel is the always-visible "Reparse & Override" section.
   // It re-renders as a function-child so state reads bind to this context
@@ -730,6 +834,7 @@ const ProposalDetailPage = () => {
       }
     },
     renderToolsPanel,
+    renderDeleteSnackbar,
   )
 }
 

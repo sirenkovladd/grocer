@@ -1447,3 +1447,64 @@ button:disabled {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* Add item button — below the items table. */
+.add-item-btn {
+  margin-top: 0.75rem;
+}
+
+/* Per-row action buttons (Edit, Delete). */
+.row-actions {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.row-actions .btn-danger {
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0.15rem 0.5rem;
+  color: var(--danger, #d63031);
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.row-actions .btn-danger:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--danger, #d63031);
+}
+
+/* Delete snackbar — fixed at bottom of viewport. */
+.delete-snackbar {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: #2d3436;
+  color: #fff;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  font-size: 0.9rem;
+}
+
+.delete-snackbar-undo {
+  background: transparent;
+  color: #74b9ff;
+  border: 1px solid #74b9ff;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.delete-snackbar-undo:hover {
+  background: #74b9ff;
+  color: #2d3436;
+}
