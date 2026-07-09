@@ -1634,25 +1634,29 @@ button:disabled {
   gap: 0.5rem;
 }
 
-.receipt-detail-layout .receipt-photo img {
+/* The zoom-container is the .zoom-container element rendered by
+   the shared ZoomableImage component. We constrain it to the
+   column width and a generous max-height (80vh) so the user
+   sees the full receipt at a useful size, with room to scroll
+   past the items without the image moving off-screen. */
+.receipt-detail-layout .receipt-photo .zoom-container {
   width: 100%;
-  max-width: 100%;
-  height: auto;
   max-height: 80vh;
-  object-fit: contain;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--bg-tertiary);
 }
 
-.receipt-photo-fullsize {
-  font-size: 0.8125rem;
-  color: var(--accent);
-  text-decoration: none;
+.receipt-detail-layout .receipt-photo .zoom-image {
+  max-width: 100%;
+  max-height: 78vh;
+  width: auto;
+  height: auto;
 }
 
-.receipt-photo-fullsize:hover {
-  text-decoration: underline;
+.receipt-photo-hint {
+  font-size: 0.75rem;
+  margin: 0;
 }
 
 .receipt-items-column {
@@ -1666,8 +1670,9 @@ button:disabled {
   .receceipt-detail-layout .receipt-photo {
     position: static;
   }
-  .receipt-detail-layout .receipt-photo img {
-    max-height: 320px;
+  .receipt-detail-layout .receipt-photo .zoom-container,
+  .receipt-detail-layout .receipt-photo .zoom-image {
+    max-height: 60vh;
   }
 }
 

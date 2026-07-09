@@ -2,6 +2,7 @@ import van from "vanjs-core"
 import { api, navigate } from "../main"
 import { formatDate, formatMoney, formatQuantity, shortId } from "../utils"
 import { fetchPhotoUrl, revokePhotoUrl } from "../photos"
+import { ZoomableImage } from "../components/zoomable-image"
 
 const { div, h1, h2, a, span, table, tr, td, th, button, p, img, input, select, option } = van.tags
 
@@ -137,7 +138,11 @@ const ReceiptDetailPage = () => {
       currentReceiptId = data.receiptId
 
       if (data?.photoUrl) {
-        fetchPhotoUrl(data.receiptId, "large")
+        // Full original resolution. The image is displayed scaled
+        // down to fit the column via CSS, and ZoomableImage lets
+        // the user pinch/scroll to zoom into the original detail
+        // (useful for verifying a printed price or item name).
+        fetchPhotoUrl(data.receiptId, "full")
           .then(url => { photoSrc.val = url })
           .catch(err => {
             console.warn("Failed to load photo:", err)
@@ -418,19 +423,15 @@ const ReceiptDetailPage = () => {
         // Two-column layout: photo on the left, items + header on
         // the right. Receipts are always vertical, so the photo
         // column is narrower and the image is rendered with
-        // object-fit: contain to show the whole receipt.
-        // Stacks vertically on mobile (see CSS .receipt-detail-layout).
+        // object-fit: contain to show the whole receipt. The
+        // photo is the full original resolution and supports
+        // pinch/scroll zoom via ZoomableImage. Stacks on mobile.
         div({ class: "receipt-detail-layout" },
           // Photo column
           () => photoSrc.val
             ? div({ class: "receipt-photo" },
-                img({ src: photoSrc.val, alt: "Receipt" }),
-                a({
-                  href: () => `/api/photos/${currentReceiptId}`,
-                  target: "_blank",
-                  rel: "noopener",
-                  class: "receipt-photo-fullsize",
-                }, "View full size →"),
+                ZoomableImage(() => photoSrc.val, "Receipt"),
+                p({ class: "receipt-photo-hint muted" }, "Scroll or pinch to zoom"),
               )
             : "",
 
