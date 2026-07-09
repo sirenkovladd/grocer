@@ -120,11 +120,6 @@ const Sidebar = () => nav({ class: "sidebar" },
     onclick: (e: Event) => { e.preventDefault(); navigate("/items") },
   }, "Items"),
   a({
-    href: "#/merchants",
-    "aria-current": () => currentPath.val === "/merchants" ? "page" : null,
-    onclick: (e: Event) => { e.preventDefault(); navigate("/merchants") },
-  }, "Merchants"),
-  a({
     href: "#/categories",
     "aria-current": () => currentPath.val === "/categories" ? "page" : null,
     onclick: (e: Event) => { e.preventDefault(); navigate("/categories") },
@@ -160,7 +155,6 @@ import UploadPage from "./pages/upload"
 import ProposalDetailPage from "./pages/proposal"
 import ItemsPage from "./pages/items"
 import ItemDetailPage from "./pages/item-detail"
-import MerchantsPage from "./pages/merchants"
 import CategoriesPage from "./pages/categories"
 import AnalysisPage from "./pages/analysis"
 
@@ -206,7 +200,6 @@ const PageContent = (path: string) => {
   if (path.startsWith("/proposals/")) return ProposalDetailPage()
   if (path === "/items") return ItemsPage()
   if (path.startsWith("/items/")) return ItemDetailPage()
-  if (path === "/merchants") return MerchantsPage()
   if (path === "/categories") return CategoriesPage()
   if (path === "/analysis") return AnalysisPage()
   return div("404 - Page not found")
