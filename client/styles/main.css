@@ -1615,13 +1615,13 @@ button:disabled {
 }
 
 /* Receipt detail page layout. Receipts are always vertical, so the
-   photo column is narrower than the items column. Photo uses
-   ?size=thumb and object-fit: contain so the whole receipt is
-   visible without scrolling on a desktop. Stacks on mobile. */
+   photo column gets half the layout width and the image scales to
+   fill it. The max-height is generous (80vh) so vertical receipts
+   show at a useful size on desktop. Stacks on mobile. */
 .receipt-detail-layout {
   display: grid;
-  grid-template-columns: minmax(220px, 40%) 1fr;
-  gap: 1.5rem;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
   align-items: start;
 }
 
@@ -1635,10 +1635,10 @@ button:disabled {
 }
 
 .receipt-detail-layout .receipt-photo img {
-  max-height: 540px;
+  width: 100%;
   max-width: 100%;
-  width: auto;
   height: auto;
+  max-height: 80vh;
   object-fit: contain;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -1668,6 +1668,14 @@ button:disabled {
   }
   .receipt-detail-layout .receipt-photo img {
     max-height: 320px;
+  }
+}
+
+@media (min-width: 1400px) {
+  /* On wide viewports give the photo a bit more room (still not
+     a square split so the items table has enough width). */
+  .receipt-detail-layout {
+    grid-template-columns: 5fr 4fr;
   }
 }
 
