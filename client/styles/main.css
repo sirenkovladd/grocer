@@ -1344,3 +1344,106 @@ button:disabled {
   display: grid;
   gap: 1rem;
 }
+
+/* Proposal tools panel — "Reparse & Override" section. Always visible
+   at the bottom of the proposal page. */
+.tools-panel {
+  margin-top: 2rem;
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.tools-panel h2 {
+  margin: 0 0 1rem;
+  font-size: 1.1rem;
+}
+
+.tools-section {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.tools-section:first-of-type {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.tools-section h3 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  margin: 0 0 0.5rem;
+}
+
+.tools-hint {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin: 0 0 0.75rem;
+}
+
+.tools-empty {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  margin: 0.5rem 0;
+}
+
+.reparse-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.reparse-buttons button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ocr-markdown {
+  background: var(--bg-tertiary);
+  padding: 0.75rem;
+  border-radius: 6px;
+  max-height: 300px;
+  overflow: auto;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  margin: 0.5rem 0;
+}
+
+.copy-buttons {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 0.5rem 0;
+}
+
+.copy-confirm {
+  color: #6ab04c;
+  font-size: 0.85rem;
+}
+
+.external-llm-input {
+  width: 100%;
+  min-height: 140px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 0.85rem;
+  padding: 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.external-llm-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

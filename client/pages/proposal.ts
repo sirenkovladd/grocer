@@ -1,7 +1,89 @@
 import van from "vanjs-core"
 import { api, navigate } from "../main"
 
-const { div, h1, h2, h3, table, tr, td, th, button, select, option, img, p, span, input, a } = van.tags
+// TOML template the "Copy schema" button copies. Field names match the
+// backend's userInputReceipt struct 1:1 (see internal/llm/llm_user_input.go).
+const TOML_SCHEMA = `# Receipt parser output
+merchant = "store name as printed on the receipt"
+date = "YYYY-MM-DD"
+total = 25.99
+
+[[items]]
+name = "item name as printed on the receipt"
+quantity = 1
+unit_price = 2.99
+total_price = 2.99
+`
+
+// Self-contained prompt the "Copy prompt to LLM" button copies. The user
+// pastes this into ChatGPT/Claude along with the receipt image, then
+// pastes the response back into the "Apply external" textarea. Rules are
+// kept aligned with the server-side buildReceiptPrompt so external and
+// auto parses follow the same constraints.
+const LLM_PROMPT = `You are a grocery receipt parser. I will attach a photo of a receipt.
+Extract the contents in TOML format. Output ONLY the TOML — no commentary, no code fences, no explanation.
+
+Schema:
+merchant = "store name as printed on the receipt"
+date = "YYYY-MM-DD"
+total = 25.99
+
+[[items]]
+name = "item name as printed on the receipt"
+quantity = 1
+unit_price = 2.99
+total_price = 2.99
+
+Rules (must follow):
+
+PRICE EXTRACTION (most important):
+- For non-weighted items (quantity 1), copy the printed price EXACTLY as it appears on the receipt into BOTH unit_price and total_price. If the receipt says $8.45, output $8.45 (not $8.44, not $8.4, not $8.5).
+- For weighted items, the printed line total (the number on the same line as the item name) goes in total_price. Copy it exactly. The per-kg/lb number from the next line goes in unit_price. Example: "BANANAS 1.72" then "0.875 kg @ $1.96/kg" → quantity 0.875, unit_price 1.96, total_price 1.72.
+
+ATTACHED LINES (consume into the preceding item, do NOT output as separate items):
+- "Card $X.XX Save -Y" / "Save -$Y" / "Coupon -$Y" → discount on preceding item. Reduce that item's total_price by Y.
+- "*DEPOSIT", "*RECYCLE FEE", "*ENV FEE", "*BOTTLE DEPOSIT" → price adder on preceding item. ADD to total_price.
+- "0.875 kg @ $1.96/kg" or "$1.96/lb" → unit-price info for preceding item, NOT a separate item.
+
+EXCLUDE entirely (do not emit):
+- "Sub Total", "Subtotal", "Tax", "GST", "PST", "HST", "Total", "Balance Due", "Credit", "Cash", "Change", "Payment", "VISA", "MASTERCARD", "DEBIT".
+- Card numbers (e.g. "XXXXX6431"), transaction IDs, "TYPE: Purchase", "ACCT:", "REF#", "AUTHOR#", "AID:", "APPROVED", "NO SIGNATURE".
+- Loyalty / rewards, store numbers, addresses, phone numbers.
+
+GENERAL:
+- quantity can be a decimal for weighted items (e.g. 0.875 for 875g).
+- If unsure about a line, skip it rather than guess.
+- Return ONLY the TOML.
+`
+
+// copyToClipboard copies text and resolves with true on success. Falls back
+// to a synchronous textarea-select trick if the async Clipboard API isn't
+// available (insecure context, old browsers).
+const copyToClipboard = async (text: string): Promise<boolean> => {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      // fall through to legacy path
+    }
+  }
+  try {
+    const ta = document.createElement("textarea")
+    ta.value = text
+    ta.style.position = "fixed"
+    ta.style.opacity = "0"
+    document.body.appendChild(ta)
+    ta.select()
+    const ok = document.execCommand("copy")
+    document.body.removeChild(ta)
+    return ok
+  } catch {
+    return false
+  }
+}
+
+const { div, h1, h2, h3, table, tr, td, th, button, select, option, img, p, span, input, a, pre, textarea } = van.tags
 
 // Zoomable image component with pinch/scroll support
 const ZoomableImage = (src: () => string, alt: string) => {
@@ -118,6 +200,7 @@ interface Proposal {
   totalCents: number
   status: string
   ocrMinConfidence?: number
+  ocrMarkdown?: string
 }
 
 // Mirror of the Go-side IsInProgressStatus helper. When status is any of
@@ -138,7 +221,13 @@ const ProposalDetailPage = () => {
   const editQty = van.state("")
   const editPrice = van.state("")
   const photoSrc = van.state("")
+  const showOcrDetails = van.state(false)
+  const tomlInput = van.state("")
+  const applyingExternal = van.state(false)
+  const applyError = van.state("")
+  const copyConfirm = van.state("")
   let abortController: AbortController | null = null
+  let copyConfirmTimer: ReturnType<typeof setTimeout> | null = null
 
   const id = window.location.hash.split("/").pop()
 
@@ -299,7 +388,11 @@ const ProposalDetailPage = () => {
     }
   }
 
-  const handleRetry = async () => {
+  // handleReparse kicks off a reparse with one of three engines:
+  //   - "full": OCR (if configured) + LLM from text. Default.
+  //   - "llm_text": skip OCR, reuse existing OcrMarkdown, call LLM.
+  //   - "llm_image": skip OCR, send photo to LLM directly.
+  const handleReparse = async (engine: "full" | "llm_text" | "llm_image") => {
     if (!id) return
     error.val = ""
     status.val = "loading"
@@ -307,13 +400,48 @@ const ProposalDetailPage = () => {
     progressMsg.val = ""
 
     try {
-      await api.post(`/proposals/${id}/reparse`, {})
+      await api.post(`/proposals/${id}/reparse`, { engine })
       status.val = "parsing"
       fetchSSE()
     } catch (err) {
-      error.val = err instanceof Error ? err.message : "Retry failed"
+      error.val = err instanceof Error ? err.message : "Reparse failed"
       status.val = "failed"
     }
+  }
+
+  const handleApplyExternal = async () => {
+    if (!id) return
+    const content = tomlInput.val.trim()
+    if (!content) {
+      applyError.val = "Paste TOML or JSON first"
+      return
+    }
+    applyingExternal.val = true
+    applyError.val = ""
+    try {
+      const updated = await api.post(`/proposals/${id}/apply-external`, { content })
+      proposal.val = updated
+      streamingItems.val = updated.items || []
+      status.val = "pending"
+      tomlInput.val = ""
+    } catch (err) {
+      applyError.val = err instanceof Error ? err.message : "Apply failed"
+    } finally {
+      applyingExternal.val = false
+    }
+  }
+
+  // flashCopyConfirm shows a temporary "Copied" message next to a copy
+  // button. Auto-clears after 2s; rapid re-clicks reset the timer.
+  const flashCopyConfirm = (label: string) => {
+    copyConfirm.val = label
+    if (copyConfirmTimer) clearTimeout(copyConfirmTimer)
+    copyConfirmTimer = setTimeout(() => { copyConfirm.val = "" }, 2000)
+  }
+
+  const handleCopy = async (text: string, label: string) => {
+    const ok = await copyToClipboard(text)
+    if (ok) flashCopyConfirm(`Copied ${label}`)
   }
 
   const renderParsing = () => div({ class: "proposal-parsing" },
@@ -476,7 +604,7 @@ const ProposalDetailPage = () => {
             )
           : "",
       div({ class: "card-actions" },
-        button({ onclick: handleRetry, class: "btn-primary" }, "Retry Parsing"),
+        button({ onclick: () => handleReparse("full"), class: "btn-primary" }, "Retry Parsing"),
         button({ onclick: () => {
           if (confirm("Delete this proposal?")) {
             api.delete(`/proposals/${id}`).then(() => navigate("/"))
@@ -486,6 +614,97 @@ const ProposalDetailPage = () => {
     ),
   )
 }
+
+  // renderToolsPanel is the always-visible "Reparse & Override" section.
+  // It re-renders as a function-child so state reads bind to this context
+  // (not to the App router binding — see AGENTS.md "VanJS Gotchas").
+  const renderToolsPanel = () => {
+    const reparseDisabled = status.val === "loading" || status.val === "parsing"
+    const ocr = proposal.val?.ocrMarkdown || ""
+    return div({ class: "tools-panel" },
+      h2("Reparse & Override"),
+
+      div({ class: "tools-section" },
+        h3("Reparse"),
+        div({ class: "reparse-buttons" },
+          button({
+            class: "btn-secondary",
+            disabled: reparseDisabled,
+            onclick: () => handleReparse("full"),
+          }, "Full (OCR + LLM)"),
+          button({
+            class: "btn-secondary",
+            disabled: reparseDisabled || !ocr,
+            title: !ocr ? "No OCR result to reuse; use Full or LLM (image)" : "",
+            onclick: () => handleReparse("llm_text"),
+          }, "LLM (existing OCR)"),
+          button({
+            class: "btn-secondary",
+            disabled: reparseDisabled,
+            onclick: () => handleReparse("llm_image"),
+          }, "LLM (image)"),
+        ),
+      ),
+
+      div({ class: "tools-section" },
+        h3("OCR details"),
+        button({
+          class: "btn-secondary btn-sm",
+          onclick: () => { showOcrDetails.val = !showOcrDetails.val },
+        }, () => showOcrDetails.val ? "Hide OCR details" : "Show OCR details"),
+        () => showOcrDetails.val
+          ? div({ class: "ocr-details" },
+              ocr
+                ? pre({ class: "ocr-markdown" }, ocr)
+                : p({ class: "tools-empty" }, "No OCR result yet."),
+              ocr
+                ? div({ class: "copy-buttons" },
+                    button({
+                      class: "btn-secondary btn-sm",
+                      onclick: () => handleCopy(ocr, "OCR"),
+                    }, "Copy OCR"),
+                  )
+                : "",
+              () => copyConfirm.val === "Copied OCR"
+                ? span({ class: "copy-confirm" }, "Copied")
+                : "",
+            )
+          : "",
+      ),
+
+      div({ class: "tools-section" },
+        h3("External LLM"),
+        p({ class: "tools-hint" }, "Send the receipt image to ChatGPT/Claude with the prompt below, then paste the TOML response here."),
+        div({ class: "copy-buttons" },
+          button({
+            class: "btn-secondary btn-sm",
+            onclick: () => handleCopy(TOML_SCHEMA, "schema"),
+          }, "Copy schema"),
+          button({
+            class: "btn-secondary btn-sm",
+            onclick: () => handleCopy(LLM_PROMPT, "prompt"),
+          }, "Copy prompt to LLM"),
+          () => copyConfirm.val.startsWith("Copied ")
+            ? span({ class: "copy-confirm" }, "✓")
+            : "",
+        ),
+        textarea({
+          class: "external-llm-input",
+          placeholder: "Paste TOML or JSON here…",
+          value: tomlInput.val,
+          oninput: (e: Event) => { tomlInput.val = (e.target as HTMLTextAreaElement).value },
+        }),
+        () => applyError.val
+          ? p({ class: "error" }, applyError.val)
+          : "",
+        button({
+          class: "btn-primary",
+          disabled: applyingExternal.val,
+          onclick: handleApplyExternal,
+        }, () => applyingExternal.val ? "Applying…" : "Apply response"),
+      ),
+    )
+  }
 
   return div({ class: "proposal-detail-wrapper" },
     () => {
@@ -510,6 +729,7 @@ const ProposalDetailPage = () => {
           return div("Unknown state")
       }
     },
+    renderToolsPanel,
   )
 }
 
