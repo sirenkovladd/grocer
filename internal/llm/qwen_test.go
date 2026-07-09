@@ -17,11 +17,13 @@ func TestZenAnthropic_ParseReceiptFromTextStream(t *testing.T) {
 	var gotAuth string
 	var gotStreamHeader string
 	var gotBody string
+	var gotAnthropicVersion string
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		gotAuth = r.Header.Get("Authorization")
+		gotAuth = r.Header.Get("x-api-key")
 		gotStreamHeader = r.Header.Get("Accept")
+		gotAnthropicVersion = r.Header.Get("anthropic-version")
 		buf := make([]byte, r.ContentLength)
 		_, _ = r.Body.Read(buf)
 		gotBody = string(buf)
@@ -75,8 +77,11 @@ func TestZenAnthropic_ParseReceiptFromTextStream(t *testing.T) {
 	if gotPath != "/messages" {
 		t.Errorf("path: got %q, want /messages", gotPath)
 	}
-	if gotAuth != "Bearer test-key" {
-		t.Errorf("auth: got %q", gotAuth)
+	if gotAuth != "test-key" {
+		t.Errorf("x-api-key: got %q, want %q", gotAuth, "test-key")
+	}
+	if gotAnthropicVersion != "2023-06-01" {
+		t.Errorf("anthropic-version: got %q, want 2023-06-01", gotAnthropicVersion)
 	}
 	if !strings.Contains(gotStreamHeader, "event-stream") {
 		t.Errorf("Accept: got %q, want event-stream", gotStreamHeader)

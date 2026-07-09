@@ -170,6 +170,16 @@ func (q *ZenAnthropicProvider) CategorizeItem(ctx context.Context, itemName stri
 	return parseCategorizationResponse(text)
 }
 
+// setAnthropicHeaders sets the headers required by the Anthropic Messages API.
+// Both are mandatory per the spec: x-api-key for auth and anthropic-version
+// to pin the API behavior. Some Anthropic-compatible proxies (like the
+// opencode.ai Zen gateway) reject requests missing either, typically with 401.
+func setAnthropicHeaders(req *http.Request, apiKey string) {
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+}
+
 func (q *ZenAnthropicProvider) callAnthropic(ctx context.Context, endpoint string, req zenAnthropicRequest) (string, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -179,8 +189,7 @@ func (q *ZenAnthropicProvider) callAnthropic(ctx context.Context, endpoint strin
 	if err != nil {
 		return "", fmt.Errorf("create request: %w", err)
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+q.apiKey)
+	setAnthropicHeaders(httpReq, q.apiKey)
 
 	resp, err := q.client.Do(httpReq)
 	if err != nil {
@@ -257,8 +266,7 @@ func (q *ZenAnthropicProvider) streamMessages(ctx context.Context, req zenAnthro
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+q.apiKey)
+	setAnthropicHeaders(httpReq, q.apiKey)
 	httpReq.Header.Set("Accept", "text/event-stream")
 
 	resp, err := q.client.Do(httpReq)
