@@ -109,7 +109,7 @@ Extract a `parseWithEngine` helper from `runParsePipeline` and `ParseReceiptAsyn
 func (p *Parser) parseWithEngine(ctx context.Context, photo []byte, ocr *llm.OCRResult, engine string) (*llm.ParsedReceipt, error) {
     switch engine {
     case "llm_image":
-        return p.llm.ParseReceiptFromImage(ctx, photo) // new thin wrapper, or use existing ParseReceipt
+        return p.llm.ParseReceipt(ctx, photo)
     case "llm_text":
         if ocr == nil { return nil, errors.New("llm_text requires OCR markdown") }
         return p.llm.ParseReceiptFromText(ctx, ocr)
@@ -120,7 +120,7 @@ func (p *Parser) parseWithEngine(ctx context.Context, photo []byte, ocr *llm.OCR
             if err != nil { return nil, fmt.Errorf("OCR: %w", err) }
             return p.llm.ParseReceiptFromText(ctx, fresh)
         }
-        return p.llm.ParseReceiptFromImage(ctx, photo)
+        return p.llm.ParseReceipt(ctx, photo)
     default:
         return nil, fmt.Errorf("unknown engine: %q", engine)
     }
@@ -191,12 +191,17 @@ Validation:
 - For other engines, behavior as before. Engine `"full"` (or empty) re-runs OCR + LLM.
 
 The handler logic:
-1. Validate engine
-2. Reset proposal via `store.ResetProposalForReparse(id)`
-3. Load photo bytes via `photoStore.Get(photoURL)`
-4. For `engine=llm_text`: reuse existing `OcrMarkdown`; skip OCR call. For others: pass nil OCR; the pipeline handles it.
-5. Kick off `parser.ParseReceiptAsync(...)` in a goroutine as before
-6. Return `{ "id": "..." }`
+1. Validate engine (reject unknown; default empty to `"full"`)
+2. For `engine=llm_text`: require `proposal.OcrMarkdown != ""`. If empty, 400.
+3. Reset proposal via a new helper that does NOT clear `OcrMarkdown` and `OcrMinConfidence`:
+   - `store.ResetProposalForReparseKeepOCR(id)` (new) — same as `ResetProposalForReparse` but preserves OCR fields
+   - For `engine=full` we can use the existing `ResetProposalForReparse` (clears OCR since we'll re-run it). For `engine=llm_text`, use the keep-OCR variant. For `engine=llm_image`, the existing variant is fine (no OCR markdown expected afterwards).
+4. Load photo bytes via `photoStore.Get(photoURL)`
+5. For `engine=llm_text`: pass the existing OCR result; the pipeline skips OCR. For others: pass nil OCR; the pipeline re-runs OCR or skips it.
+6. Kick off `parser.ParseReceiptAsync(...)` in a goroutine as before
+7. Return `{ "id": "..." }`
+
+**New store helper:** add `ResetProposalForReparseKeepOCR(id uint64) error` to `internal/store/memdb.go`. It mirrors `ResetProposalForReparse` but keeps `OcrMarkdown` and `OcrMinConfidence`. The LLM-text path uses it; the LLM-image and Full paths use the existing one.
 
 **Add `handleApplyExternal`:**
 
