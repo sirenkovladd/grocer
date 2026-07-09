@@ -1,12 +1,80 @@
 import van from "vanjs-core"
-import { api } from "../main"
+import { api, navigate } from "../main"
 import { Chart, registerables } from "chart.js"
 import DateRange from "../components/date-range"
-import { toCsv, downloadFile } from "../utils"
+import { toCsv, downloadFile, formatMoney, formatDate } from "../utils"
 
 Chart.register(...registerables)
 
-const { div, h1, h2, canvas, select, option, button } = van.tags
+const { div, h1, h2, h3, p, canvas, select, option, button, span, a } = van.tags
+
+interface EnrichedReceipt {
+  receiptId: string
+  merchantId: string
+  merchantName: string
+  ownerId: string
+  ownerName: string
+  date: number
+  itemCount: number
+  totalCents: number
+}
+
+// Group key for a "trip": a single person visiting a single
+// merchant on a single local day. Two receipts from the same
+// person at the same store on the same day are one trip (the
+// family stopped twice, the LLM parsed two photos, but it's
+// one shopping visit). Time-of-day is intentionally ignored.
+const tripKey = (r: EnrichedReceipt): string => {
+  const d = new Date(r.date * 1000)
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, "0")
+  const dd = String(d.getDate()).padStart(2, "0")
+  return `${r.ownerId}|${r.merchantId}|${yyyy}-${mm}-${dd}`
+}
+
+interface Trip {
+  key: string
+  ownerId: string
+  ownerName: string
+  merchantId: string
+  merchantName: string
+  date: number
+  receipts: EnrichedReceipt[]
+  totalCents: number
+  itemCount: number
+}
+
+// Group an enriched-receipt list into trips. Sorted most-recent
+// first; trips with multiple receipts are sorted by their earliest
+// receipt's date.
+const groupTrips = (receipts: EnrichedReceipt[]): Trip[] => {
+  const map = new Map<string, Trip>()
+  for (const r of receipts) {
+    const key = tripKey(r)
+    let trip = map.get(key)
+    if (!trip) {
+      trip = {
+        key,
+        ownerId: r.ownerId,
+        ownerName: r.ownerName,
+        merchantId: r.merchantId,
+        merchantName: r.merchantName,
+        date: r.date,
+        receipts: [],
+        totalCents: 0,
+        itemCount: 0,
+      }
+      map.set(key, trip)
+    }
+    trip.receipts.push(r)
+    trip.totalCents += r.totalCents
+    trip.itemCount += r.itemCount
+    if (r.date < trip.date) trip.date = r.date
+  }
+  const trips = Array.from(map.values())
+  trips.sort((a, b) => b.date - a.date)
+  return trips
+}
 
 const createLineChart = (canvas: HTMLCanvasElement, data: any) => {
   return new Chart(canvas, {
@@ -81,7 +149,12 @@ const AnalysisPage = () => {
   const spendingData = van.state<any[]>([])
   const categoryData = van.state<any[]>([])
   const familyData = van.state<any[]>([])
+  // Trips are computed from the enriched receipt list. The fetch
+  // is independent of the analysis endpoints; we just reuse the
+  // same date range filter so the trips section stays in sync.
+  const receipts = van.state<EnrichedReceipt[]>([])
   const loading = van.state(true)
+  const loadingReceipts = van.state(false)
 
   const loadData = async () => {
     loading.val = true
@@ -104,7 +177,28 @@ const AnalysisPage = () => {
     loading.val = false
   }
 
+  // Trips come from a separate fetch. We use the date range params
+  // so the trips respect the user's filter. Don't await in parallel
+  // with loadData() — trips are an additional view and shouldn't
+  // block the main charts.
+  const loadReceipts = async () => {
+    loadingReceipts.val = true
+    try {
+      const params = new URLSearchParams()
+      if (from.val) params.set("from", from.val)
+      if (to.val) params.set("to", to.val)
+      const data = await api.get(`/receipts/enriched?${params}`)
+      receipts.val = Array.isArray(data) ? data : []
+    } catch (err) {
+      console.error("Failed to load trips:", err)
+      receipts.val = []
+    } finally {
+      loadingReceipts.val = false
+    }
+  }
+
   loadData()
+  loadReceipts()
 
   let spendingChart: Chart | null = null
   let categoryChart: Chart | null = null
@@ -162,6 +256,7 @@ const AnalysisPage = () => {
 
   const handleFilterChange = () => {
     loadData()
+    loadReceipts()
     setTimeout(initCharts, 100)
   }
 
@@ -255,6 +350,54 @@ const AnalysisPage = () => {
             canvas({ id: "family-chart" }),
           ),
         ),
+
+    // Trips section — one card per (owner × merchant × day)
+    // group, computed client-side from the enriched receipt list.
+    // Respects the same from/to date filter as the charts above.
+    div({ class: "trips-section" },
+      h2("Trips"),
+      () => {
+        if (loadingReceipts.val) {
+          return div({ class: "muted" }, "Loading…")
+        }
+        const trips = groupTrips(receipts.val)
+        if (trips.length === 0) {
+          return div({ class: "empty-state" },
+            p("No trips in the selected date range."),
+          )
+        }
+        return div({ class: "trips-grid" },
+          ...trips.map(trip =>
+            div({ class: "trip-card card", key: trip.key },
+              div({ class: "trip-header" },
+                span({ class: "trip-merchant" }, trip.merchantName),
+                span({ class: "trip-date muted" }, formatDate(trip.date)),
+              ),
+              div({ class: "trip-meta" },
+                span(`by ${trip.ownerName || "Unknown"}`),
+                trip.receipts.length > 1
+                  ? span({ class: "trip-multi" }, `${trip.receipts.length} receipts`)
+                  : "",
+                span(`${trip.itemCount} items`),
+                span({ class: "money" }, formatMoney(trip.totalCents)),
+              ),
+              div({ class: "trip-receipts" },
+                ...trip.receipts.map(rcpt =>
+                  a({
+                    href: `#/receipts/${rcpt.receiptId}`,
+                    class: "trip-receipt-link",
+                    onclick: (e: Event) => {
+                      e.preventDefault()
+                      navigate(`/receipts/${rcpt.receiptId}`)
+                    },
+                  }, `View ${rcpt.receiptId.slice(-6)}`),
+                ),
+              ),
+            ),
+          ),
+        )
+      },
+    ),
   )
 }
 

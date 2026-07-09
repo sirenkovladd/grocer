@@ -656,6 +656,73 @@ th {
   max-width: 12rem;
 }
 
+/* Trips section on the Analysis page. Each trip is a card; the
+   receipts within are listed as small links below the meta row. */
+.trips-section {
+  margin-top: 2rem;
+}
+
+.trips-section h2 {
+  margin-bottom: 1rem;
+}
+
+.trips-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.trip-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.trip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.trip-merchant {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.trip-meta {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.trip-multi {
+  background: var(--bg-tertiary);
+  padding: 0 0.4rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.trip-receipts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.trip-receipt-link {
+  font-size: 0.75rem;
+  color: var(--accent);
+  text-decoration: none;
+  padding: 0.15rem 0.4rem;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+}
+
+.trip-receipt-link:hover {
+  background: var(--bg-secondary);
+}
+
 .date-presets {
   display: flex;
   gap: 0.5rem;
