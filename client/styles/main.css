@@ -208,6 +208,24 @@ th {
   border-color: var(--accent);
 }
 
+/* Thumbnail at the top of the card. Hidden when no photo is
+   available — the card text remains usable without one. */
+.receipt-thumb {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+  background: var(--bg-tertiary);
+}
+
+.receipt-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .receipt-header {
   display: flex;
   justify-content: space-between;

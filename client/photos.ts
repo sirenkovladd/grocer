@@ -5,24 +5,39 @@
 // client-side token is needed. The GCS-served PhotoURL embedded in
 // enriched DTOs is unauthenticated and public.
 //
-// Cache strategy: LRU-bounded (PHOTO_CACHE_MAX entries). Map iteration
-// order is insertion order in JavaScript, so the oldest entry is at the
-// front. When the cache exceeds the cap, we evict the oldest entry
-// (revoking its blob URL to free memory) before adding a new one.
+// Cache strategy: LRU-bounded (PHOTO_CACHE_MAX entries per size). Map
+// iteration order is insertion order in JavaScript, so the oldest entry
+// is at the front. When the cache exceeds the cap, we evict the oldest
+// entry (revoking its blob URL to free memory) before adding a new one.
 // On a cache hit we re-insert the entry to mark it as recent.
 //
-// Worst-case memory: PHOTO_CACHE_MAX entries × ~200KB = ~10MB. Family
-// scale visits are typically < 20 unique photos per session, well
-// within the cap.
+// The cache is split by size: a full-size image and a thumbnail of the
+// same receipt are cached as separate keys, so they don't evict each
+// other unpredictably.
+//
+// Worst-case memory: PHOTO_CACHE_MAX entries × ~200KB full-size +
+// ~5KB thumb = ~10MB at default cap. Family scale visits are typically
+// < 20 unique photos per session, well within the cap.
+
+type PhotoSize = "full" | "thumb"
 
 const photoUrlCache = new Map<string, string>()
 
-// Max number of blob URLs to keep in memory. Each is a full-size JPEG
-// (~200KB). Tune based on actual photo sizes if needed.
+// Max number of blob URLs to keep in memory per size bucket. Each
+// full-size blob is ~200KB; thumbs are ~5KB. Tune if photo sizes
+// grow significantly.
 const PHOTO_CACHE_MAX = 50
 
-export const fetchPhotoUrl = async (receiptId: number | string): Promise<string> => {
-  const key = String(receiptId)
+const cacheKey = (id: string | number, size: PhotoSize): string => {
+  return `${size}:${id}`
+}
+
+export const fetchPhotoUrl = async (
+  receiptId: number | string,
+  size: PhotoSize = "full",
+): Promise<string> => {
+  const id = String(receiptId)
+  const key = cacheKey(id, size)
   const cached = photoUrlCache.get(key)
   if (cached) {
     // Mark as recent: delete + re-insert moves the entry to the back of
@@ -32,7 +47,8 @@ export const fetchPhotoUrl = async (receiptId: number | string): Promise<string>
     return cached
   }
 
-  const response = await fetch(`/api/photos/${key}`, {
+  const params = size === "thumb" ? "?size=thumb" : ""
+  const response = await fetch(`/api/photos/${id}${params}`, {
     credentials: "same-origin",
   })
   if (!response.ok) {
@@ -55,13 +71,17 @@ export const fetchPhotoUrl = async (receiptId: number | string): Promise<string>
   return url
 }
 
-// Revoke the cached blob URL for a given receipt/proposal ID. Use when
-// the photo is no longer displayed (e.g. on page unmount).
-export const revokePhotoUrl = (receiptId: number | string) => {
-  const key = String(receiptId)
-  const url = photoUrlCache.get(key)
-  if (url) {
-    URL.revokeObjectURL(url)
-    photoUrlCache.delete(key)
+// Revoke the cached blob URL for a given receipt/proposal ID. By
+// default revokes both the full-size and thumbnail variants.
+export const revokePhotoUrl = (receiptId: number | string, size?: PhotoSize) => {
+  const id = String(receiptId)
+  const sizes: PhotoSize[] = size ? [size] : ["full", "thumb"]
+  for (const s of sizes) {
+    const key = cacheKey(id, s)
+    const url = photoUrlCache.get(key)
+    if (url) {
+      URL.revokeObjectURL(url)
+      photoUrlCache.delete(key)
+    }
   }
 }
