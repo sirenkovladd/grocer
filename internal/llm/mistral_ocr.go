@@ -77,9 +77,9 @@ type mistralOCRResponse struct {
 			Content string `json:"content"`
 		} `json:"tables"`
 		ConfidenceScores *struct {
-			AveragePageConfidenceScore float64   `json:"average_page_confidence_score"`
-			MinimumPageConfidenceScore float64   `json:"minimum_page_confidence_score"`
-			WordConfidenceScores       []float64 `json:"word_confidence_scores"`
+			AveragePageConfidenceScore float64            `json:"average_page_confidence_score"`
+			MinimumPageConfidenceScore float64            `json:"minimum_page_confidence_score"`
+			WordConfidenceScores       []json.RawMessage `json:"word_confidence_scores"`
 		} `json:"confidence_scores"`
 	} `json:"pages"`
 	Model     string `json:"model"`
@@ -155,7 +155,6 @@ func parseMistralOCRResult(r *mistralOCRResponse) *OCRResult {
 	}
 
 	var pageMarkdowns []string
-	var allWordScores []float64
 	var minConf float64 = 1.0
 
 	for _, p := range r.Pages {
@@ -189,9 +188,10 @@ func parseMistralOCRResult(r *mistralOCRResponse) *OCRResult {
 			result.Tables = append(result.Tables, Table{ID: t.ID, Content: t.Content})
 		}
 		if p.ConfidenceScores != nil {
-			if p.ConfidenceScores.WordConfidenceScores != nil {
-				allWordScores = append(allWordScores, p.ConfidenceScores.WordConfidenceScores...)
-			}
+			// Per-word scores are preserved as raw JSON for future use but
+			// not decoded here: their shape varies and we don't need them
+			// since minimum_page_confidence_score already gives the page
+			// minimum. See doc comment on WordConfidenceScores.
 			if p.ConfidenceScores.MinimumPageConfidenceScore > 0 && p.ConfidenceScores.MinimumPageConfidenceScore < minConf {
 				minConf = p.ConfidenceScores.MinimumPageConfidenceScore
 			}
@@ -201,14 +201,6 @@ func parseMistralOCRResult(r *mistralOCRResponse) *OCRResult {
 	// Concatenate per-page markdown with a blank line separator.
 	result.Markdown = strings.Join(pageMarkdowns, "\n\n")
 
-	// Compute minimum word confidence across the whole document.
-	if len(allWordScores) > 0 {
-		for _, s := range allWordScores {
-			if s < minConf {
-				minConf = s
-			}
-		}
-	}
 	if minConf == 1.0 {
 		// No confidence data was returned.
 		minConf = 0

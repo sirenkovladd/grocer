@@ -39,7 +39,12 @@ func TestMistralOCR_Extract(t *testing.T) {
 					"confidence_scores": {
 						"average_page_confidence_score": 0.95,
 						"minimum_page_confidence_score": 0.82,
-						"word_confidence_scores": [0.9, 0.95, 0.82, 0.98, 0.9, 0.95, 0.97, 0.99, 0.88, 0.92, 0.85, 0.94]
+						"word_confidence_scores": [
+							{"word": "Walmart", "confidence": 0.98},
+							{"word": "BANANAS", "confidence": 0.94},
+							{"word": "ORG", "confidence": 0.88},
+							{"word": "1.78", "confidence": 0.91}
+						]
 					}
 				}
 			],
