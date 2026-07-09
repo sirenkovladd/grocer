@@ -60,7 +60,10 @@ func (d *DiscordBot) handleMessage(s *discordgo.Session, m *discordgo.MessageCre
 			externalID := fmt.Sprintf("discord:%s", m.Author.ID)
 			botUser, err := d.store.GetBotUser(externalID)
 			if err != nil {
-				s.ChannelMessageSend(m.ChannelID, "Unknown user. Link your account at the web app first.")
+				// Include the web URL in the error so the user can
+				// find the link-account flow.
+				s.ChannelMessageSend(m.ChannelID,
+					fmt.Sprintf("Unknown user. Link your account at the web app first: %s", d.webURL))
 				continue
 			}
 
@@ -84,8 +87,21 @@ func (d *DiscordBot) handleMessage(s *discordgo.Session, m *discordgo.MessageCre
 				continue
 			}
 
+			// Fetch the proposal to include item count and total in
+			// the success message.
+			var itemCount int
+			var totalCents int64
+			if p, err := d.store.GetProposal(proposalID); err == nil {
+				itemCount = len(p.Items)
+				totalCents = p.TotalCents
+			}
+			total := float64(totalCents) / 100.0
+
 			link := fmt.Sprintf("%s/#/proposals/%d", d.webURL, proposalID)
-			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Receipt parsed! [Review and approve →](%s)", link))
+			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(
+				"Receipt parsed: %d item%s, $%.2f total. Review and approve: %s",
+				itemCount, pluralS(itemCount), total, link,
+			))
 		}
 	}
 }

@@ -71,7 +71,11 @@ func (t *TelegramBot) handleUpdate(ctx context.Context, update tgbotapi.Update) 
 		externalID := fmt.Sprintf("telegram:%d", update.Message.From.ID)
 		botUser, err := t.store.GetBotUser(externalID)
 		if err != nil {
-			t.sendMessage(update.Message.Chat.ID, "Unknown user. Link your account at the web app first.")
+			// Include the web URL in the error so the user can find
+			// the link-account flow. Previous version had no link
+			// here, leaving users stuck.
+			t.sendMessage(update.Message.Chat.ID,
+				fmt.Sprintf("Unknown user. Link your account at the web app first: %s", t.webURL))
 			return
 		}
 
@@ -103,9 +107,32 @@ func (t *TelegramBot) handleUpdate(ctx context.Context, update tgbotapi.Update) 
 			return
 		}
 
+		// Fetch the proposal so we can include the item count and
+		// total in the success message — gives the user a useful
+		// one-line summary without opening the link.
+		var itemCount int
+		var totalCents int64
+		if p, err := t.store.GetProposal(proposalID); err == nil {
+			itemCount = len(p.Items)
+			totalCents = p.TotalCents
+		}
+		total := float64(totalCents) / 100.0
+
 		link := fmt.Sprintf("%s/#/proposals/%d", t.webURL, proposalID)
-		t.sendMessage(update.Message.Chat.ID, fmt.Sprintf("Receipt parsed! [Review and approve →](%s)", link))
+		t.sendMessage(update.Message.Chat.ID, fmt.Sprintf(
+			"Receipt parsed: %d item%s, $%.2f total.\n[Review and approve →](%s)",
+			itemCount, pluralS(itemCount), total, link,
+		))
 	}
+}
+
+// pluralS returns "s" if n != 1, used for "item" / "items" pluralization
+// in bot messages.
+func pluralS(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 func (t *TelegramBot) sendMessage(chatID int64, text string) {
