@@ -1373,6 +1373,42 @@ button:disabled {
   font-size: 0.95rem;
 }
 
+/* Receipt edit mode — header becomes a 3-column form. */
+.edit-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+.edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 10rem;
+}
+
+.edit-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.edit-input {
+  width: 100%;
+}
+
+.edit-input-num {
+  max-width: 7rem;
+}
+
+.page-header-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 /* Mobile responsive — tables collapse into stacked cards under 768px.
    Page must add .responsive-table to <table> and data-label to each <td>. */
 @media (max-width: 768px) {

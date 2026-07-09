@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -358,6 +359,141 @@ func (r *Router) handleGetReceipt(w http.ResponseWriter, req *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, receipt)
+}
+
+// updateReceiptRequest carries optional fields for the inline edit
+// UI on the receipt detail page. Any combination may be present;
+// nil fields leave the corresponding receipt attribute unchanged.
+type updateReceiptRequest struct {
+	MerchantID *uint64 `json:"merchantId,omitempty"`
+	Date       *int64  `json:"date,omitempty"`
+	TotalCents *int64  `json:"totalCents,omitempty"`
+}
+
+// handleUpdateReceipt applies an inline edit to a saved receipt:
+// merchant (re-link to a different merchant by id), date, and total.
+// Per-item edits are a separate endpoint below.
+func (r *Router) handleUpdateReceipt(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid receipt ID")
+		return
+	}
+
+	receipt, err := r.store.GetReceipt(id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "receipt not found")
+		return
+	}
+
+	var reqBody updateReceiptRequest
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if reqBody.MerchantID != nil {
+		// Validate the merchant exists; otherwise the receipt would
+		// dangle and the enriched handler would render "Unknown
+		// merchant" forever.
+		if _, err := r.store.GetMerchant(*reqBody.MerchantID); err != nil {
+			writeError(w, http.StatusBadRequest, "merchant not found")
+			return
+		}
+		receipt.MerchantID = *reqBody.MerchantID
+	}
+	if reqBody.Date != nil {
+		receipt.Date = *reqBody.Date
+	}
+	if reqBody.TotalCents != nil {
+		if *reqBody.TotalCents < 0 {
+			writeError(w, http.StatusBadRequest, "total cannot be negative")
+			return
+		}
+		receipt.TotalCents = *reqBody.TotalCents
+	}
+
+	if err := r.store.UpdateReceipt(receipt); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, receipt)
+}
+
+// updateReceiptItemRequest carries optional fields for a single
+// receipt line item. ItemID changes are supported (re-link to a
+// different catalog item); this covers the "wrong item matched"
+// case where the LLM picked the wrong banana.
+type updateReceiptItemRequest struct {
+	ItemID         *uint64  `json:"itemId,omitempty"`
+	Quantity       *float64 `json:"quantity,omitempty"`
+	UnitPriceCents *int64   `json:"unitPriceCents,omitempty"`
+}
+
+// handleUpdateReceiptItem edits a single line item on a saved
+// receipt. Index is the position in the receipt.Items slice, same
+// convention as the proposal item edit endpoint.
+func (r *Router) handleUpdateReceiptItem(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid receipt ID")
+		return
+	}
+
+	indexStr := req.PathValue("index")
+	index, err := strconv.Atoi(indexStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid item index")
+		return
+	}
+
+	receipt, err := r.store.GetReceipt(id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "receipt not found")
+		return
+	}
+
+	if index < 0 || index >= len(receipt.Items) {
+		writeError(w, http.StatusBadRequest, "item index out of range")
+		return
+	}
+
+	var reqBody updateReceiptItemRequest
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if reqBody.ItemID != nil {
+		// Validate the new item exists so the receipt doesn't dangle.
+		if _, err := r.store.GetItem(*reqBody.ItemID); err != nil {
+			writeError(w, http.StatusBadRequest, "item not found")
+			return
+		}
+		receipt.Items[index].ItemID = *reqBody.ItemID
+	}
+	if reqBody.Quantity != nil {
+		if *reqBody.Quantity <= 0 {
+			writeError(w, http.StatusBadRequest, "quantity must be positive")
+			return
+		}
+		receipt.Items[index].Quantity = *reqBody.Quantity
+	}
+	if reqBody.UnitPriceCents != nil {
+		if *reqBody.UnitPriceCents < 0 {
+			writeError(w, http.StatusBadRequest, "unit price cannot be negative")
+			return
+		}
+		receipt.Items[index].UnitPriceCents = *reqBody.UnitPriceCents
+	}
+
+	if err := r.store.UpdateReceipt(receipt); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, receipt.Items[index])
 }
 
 func (r *Router) handleUploadReceipt(w http.ResponseWriter, req *http.Request) {

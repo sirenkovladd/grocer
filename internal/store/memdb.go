@@ -679,6 +679,25 @@ func (s *Store) CreateReceipt(r *domain.Receipt) error {
 	return nil
 }
 
+// UpdateReceipt replaces an existing receipt record. memdb has no
+// "update" operation; Insert with the same primary key overwrites.
+// Used for inline edits on the receipt detail page (merchant, date,
+// total, per-item price/quantity).
+func (s *Store) UpdateReceipt(r *domain.Receipt) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	txn := s.db.Txn(true)
+	defer txn.Abort()
+
+	if err := txn.Insert("receipts", r); err != nil {
+		return err
+	}
+	txn.Commit()
+	s.SaveSnapshotAsync(context.Background())
+	return nil
+}
+
 func (s *Store) GetReceipt(id uint64) (*domain.Receipt, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
