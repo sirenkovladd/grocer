@@ -18,6 +18,11 @@ const pasteShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘V" : "Ctr
 const UploadPage = () => {
   const preview = van.state<string | null>(null)
   const imageHash = van.state<string>("")
+  // Keep the original File around so the Skip-Crop path can upload
+  // the raw bytes without re-asking the user to pick the file. The
+  // cropper itself only has the blob URL (for display), not the
+  // original File, so we track it here on the page.
+  const originalFile = van.state<File | null>(null)
   const uploading = van.state(false)
   const error = van.state("")
   const cropperContainer = van.state<HTMLDivElement | null>(null)
@@ -25,6 +30,7 @@ const UploadPage = () => {
   const processFile = async (file: File) => {
     preview.val = URL.createObjectURL(file)
     imageHash.val = await computeFileHash(file)
+    originalFile.val = file
     error.val = ""
   }
 
@@ -90,14 +96,41 @@ const UploadPage = () => {
     }
   }
 
+  // Skip-crop path: upload the original File as-is, with no
+  // cropping or rotation. Same server contract as handleCrop
+  // (multipart form with `photo` and `originalHash`).
+  const handleSkip = async (originalHash: string) => {
+    const file = originalFile.val
+    if (!file) return
+    uploading.val = true
+    error.val = ""
+    try {
+      const formData = new FormData()
+      formData.append("photo", file)
+      formData.append("originalHash", originalHash)
+      const data = await api.postFormData("/receipts/upload", formData)
+      navigate(`/proposals/${data.id}`)
+    } catch (err: any) {
+      if (err.message?.includes("duplicate_image") || err.message?.includes("already uploaded")) {
+        error.val = "This image was already uploaded. Please use a different photo."
+      } else {
+        error.val = err instanceof Error ? err.message : "Upload failed"
+      }
+    } finally {
+      uploading.val = false
+    }
+  }
+
   const initCropper = (imageUrl: string, hash: string) => {
     const cropper = ImageCropper({
       imageUrl,
       imageHash: hash,
       onCrop: handleCrop,
+      onSkip: handleSkip,
       onCancel: () => {
         preview.val = null
         cropperContainer.val = null
+        originalFile.val = null
       },
     })
     return cropper.getElement()

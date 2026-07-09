@@ -12,9 +12,16 @@ interface CropperOptions {
   imageHash: string
   onCrop: (blob: Blob, originalHash: string) => void
   onCancel: () => void
+  // Called when the user wants to skip cropping entirely and
+  // upload the original image. The cropper can't reconstruct the
+  // original bytes from the in-memory data URL it was given, so
+  // the page is responsible for tracking the source File. We pass
+  // back the originalHash so the page can attach it to the upload
+  // request.
+  onSkip?: (originalHash: string) => void
 }
 
-export const ImageCropper = ({ imageUrl, imageHash, onCrop, onCancel }: CropperOptions) => {
+export const ImageCropper = ({ imageUrl, imageHash, onCrop, onCancel, onSkip }: CropperOptions) => {
   const container = document.createElement("div")
   container.className = "cropper-container"
 
@@ -79,7 +86,10 @@ export const ImageCropper = ({ imageUrl, imageHash, onCrop, onCancel }: CropperO
       <input type="range" class="cropper-slider" min="-180" max="180" value="0" step="1">
       <div class="cropper-angle-display">0°</div>
     </div>
-    <button class="cropper-btn cropper-upload">Upload Cropped Image</button>
+    <div class="cropper-actions">
+      <button class="cropper-btn cropper-upload">Upload Cropped Image</button>
+      ${onSkip ? '<button class="cropper-btn cropper-skip">Skip Crop &amp; Upload Raw</button>' : ''}
+    </div>
   `
 
   const rotateLeftBtn = controls.querySelector(".rotate-left") as HTMLButtonElement
@@ -87,6 +97,7 @@ export const ImageCropper = ({ imageUrl, imageHash, onCrop, onCancel }: CropperO
   const rotateSlider = controls.querySelector(".cropper-slider") as HTMLInputElement
   const angleDisplay = controls.querySelector(".cropper-angle-display") as HTMLDivElement
   const uploadBtn = controls.querySelector(".cropper-upload") as HTMLButtonElement
+  const skipBtn = controls.querySelector(".cropper-skip") as HTMLButtonElement | null
 
   // Initialize
   const init = () => {
@@ -339,6 +350,13 @@ export const ImageCropper = ({ imageUrl, imageHash, onCrop, onCancel }: CropperO
 
     // Upload button
     uploadBtn.addEventListener("click", processAndUpload)
+
+    // Skip-crop button (only present if onSkip was provided).
+    if (skipBtn && onSkip) {
+      skipBtn.addEventListener("click", () => {
+        if (onSkip) onSkip(imageHash)
+      })
+    }
 
     // Handle window resize
     window.addEventListener("resize", () => {
