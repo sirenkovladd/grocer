@@ -57,6 +57,8 @@ Full schema: `proto/grocer.proto`
 
 ## Building and Running
 
+> ⚠️ **Never run `mise run start_server` from an agent session.** The server is a long-running process that doesn't terminate cleanly, will block the agent's tool runtime, and can leave port 8080 bound after being aborted. Use `mise run build_server && ./dist/server` in a separate, user-controlled terminal, or `go build -o ./dist/server ./cmd/server` and run the binary directly. To stop an existing server, find the PID with `lsof -nP -iTCP:8080 -sTCP:LISTEN` (or `ps -axo pid,command | grep cmd/server`) and kill it.
+
 ### Backend
 
 ```bash

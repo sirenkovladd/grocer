@@ -6,6 +6,10 @@ out
 dist
 *.tgz
 
+# compiled CLI binaries
+backup
+snapshot-dump
+
 # code coverage
 coverage
 *.lcov
