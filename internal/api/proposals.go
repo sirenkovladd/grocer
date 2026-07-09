@@ -346,3 +346,72 @@ func (r *Router) handleUpdateProposalItem(w http.ResponseWriter, req *http.Reque
 
 	writeJSON(w, http.StatusOK, proposal.Items[index])
 }
+
+// handleAddProposalItem appends a new empty ProposalItem to the proposal.
+// The frontend opens the inline editor on the new row so the user can
+// fill in the fields. The default quantity is 1 (matches what the inline
+// editor's PATCH path uses when the user types nothing).
+func (r *Router) handleAddProposalItem(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid proposal ID")
+		return
+	}
+
+	proposal, err := r.store.GetProposal(id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "proposal not found")
+		return
+	}
+
+	newItem := domain.ProposalItem{
+		Quantity: 1,
+	}
+	proposal.Items = append(proposal.Items, newItem)
+	if err := r.store.UpdateProposalItems(id, proposal.Items); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to add item")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, proposal.Items[len(proposal.Items)-1])
+}
+
+// handleDeleteProposalItem removes the item at the given index. The
+// frontend implements the 5s "Undo" snackbar by POSTing a re-create on
+// undo (the simpler model — avoids index-tracking across concurrent
+// deletes).
+func (r *Router) handleDeleteProposalItem(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid proposal ID")
+		return
+	}
+
+	indexStr := req.PathValue("index")
+	index, err := strconv.Atoi(indexStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid item index")
+		return
+	}
+
+	proposal, err := r.store.GetProposal(id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "proposal not found")
+		return
+	}
+
+	if index < 0 || index >= len(proposal.Items) {
+		writeError(w, http.StatusBadRequest, "item index out of range")
+		return
+	}
+
+	proposal.Items = append(proposal.Items[:index], proposal.Items[index+1:]...)
+	if err := r.store.UpdateProposalItems(id, proposal.Items); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete item")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]int{"deletedIndex": index})
+}
