@@ -2,10 +2,11 @@ import van from "vanjs-core"
 import { api } from "../main"
 import { Chart, registerables } from "chart.js"
 import DateRange from "../components/date-range"
+import { toCsv, downloadFile } from "../utils"
 
 Chart.register(...registerables)
 
-const { div, h1, h2, canvas, select, option } = van.tags
+const { div, h1, h2, canvas, select, option, button } = van.tags
 
 const createLineChart = (canvas: HTMLCanvasElement, data: any) => {
   return new Chart(canvas, {
@@ -164,6 +165,43 @@ const AnalysisPage = () => {
     setTimeout(initCharts, 100)
   }
 
+  // CSV export. Each button serializes the already-loaded chart data
+  // and triggers a browser download. No new API call — the data is
+  // exactly what's on screen.
+  //
+  // The data from the analysis endpoints is in dollars (not cents,
+  // unlike the receipt DTOs). We round to 2 decimals for the CSV so
+  // it matches what the user sees on the chart.
+  const exportSpendingCsv = () => {
+    if (spendingData.val.length === 0) return
+    const csv = toCsv(
+      ["Period", "Total ($)"],
+      spendingData.val.map((d: any) => [d.period, d.total.toFixed(2)]),
+    )
+    const dateTag = `${from.val || "all"}_to_${to.val || "now"}`
+    downloadFile(`grocer-spending-${dateTag}.csv`, csv, "text/csv")
+  }
+
+  const exportCategoriesCsv = () => {
+    if (categoryData.val.length === 0) return
+    const csv = toCsv(
+      ["Category ID", "Category", "Total ($)"],
+      categoryData.val.map((d: any) => [d.categoryId, d.name, d.total.toFixed(2)]),
+    )
+    const dateTag = `${from.val || "all"}_to_${to.val || "now"}`
+    downloadFile(`grocer-categories-${dateTag}.csv`, csv, "text/csv")
+  }
+
+  const exportFamilyCsv = () => {
+    if (familyData.val.length === 0) return
+    const csv = toCsv(
+      ["User ID", "Member", "Total ($)"],
+      familyData.val.map((d: any) => [d.userId, d.name, d.total.toFixed(2)]),
+    )
+    const dateTag = `${from.val || "all"}_to_${to.val || "now"}`
+    downloadFile(`grocer-family-${dateTag}.csv`, csv, "text/csv")
+  }
+
   return div({ class: "analysis-page" },
     div({ class: "page-header" },
       h1("Analysis"),
@@ -180,6 +218,27 @@ const AnalysisPage = () => {
       ),
     ),
     DateRange({ from, to, onChange: handleFilterChange }),
+
+    // Export buttons — one per chart, disabled when there's no data.
+    // A small grouped button row keeps them visually together.
+    div({ class: "export-buttons" },
+      button({
+        class: "btn-sm btn-secondary",
+        onclick: exportSpendingCsv,
+        disabled: () => spendingData.val.length === 0 || loading.val,
+      }, "Export spending CSV"),
+      button({
+        class: "btn-sm btn-secondary",
+        onclick: exportCategoriesCsv,
+        disabled: () => categoryData.val.length === 0 || loading.val,
+      }, "Export categories CSV"),
+      button({
+        class: "btn-sm btn-secondary",
+        onclick: exportFamilyCsv,
+        disabled: () => familyData.val.length === 0 || loading.val,
+      }, "Export family CSV"),
+    ),
+
     () => loading.val
       ? div({ class: "loading" }, "Loading...")
       : div({ class: "charts-grid" },

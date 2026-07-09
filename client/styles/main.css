@@ -624,6 +624,16 @@ th {
   margin-bottom: 1.5rem;
 }
 
+/* Row of CSV export buttons on the Analysis page. Sits between the
+   date range and the chart grid. Buttons are disabled individually
+   by the page when there's no data. */
+.export-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
 .date-presets {
   display: flex;
   gap: 0.5rem;

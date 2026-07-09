@@ -98,6 +98,53 @@ export const shortId = (id: number | string): string => {
 }
 
 // ---------------------------------------------------------------------------
+// CSV
+// ---------------------------------------------------------------------------
+
+// Escape a single CSV field per RFC 4180:
+//   - Always wrap in double quotes (simplest correct behavior)
+//   - Escape any embedded double quotes by doubling them
+// Always-quoting is acceptable for our use case (small CSVs); it
+// avoids the "does this field need quoting?" branch.
+export const csvField = (v: string | number | null | undefined): string => {
+  if (v === null || v === undefined) return '""'
+  return `"${String(v).replace(/"/g, '""')}"`
+}
+
+// Build a CSV string from a header row and an array of row arrays.
+// Each cell is passed through csvField automatically.
+export const toCsv = (
+  headers: string[],
+  rows: (string | number | null | undefined)[][],
+): string => {
+  const lines: string[] = []
+  lines.push(headers.map(csvField).join(","))
+  for (const row of rows) {
+    lines.push(row.map(csvField).join(","))
+  }
+  // CRLF per RFC 4180; Excel and Numbers both accept it.
+  return lines.join("\r\n") + "\r\n"
+}
+
+// Trigger a browser download of a string as a file. Creates a blob,
+// generates an object URL, clicks an invisible <a download="...">,
+// then revokes the URL. Works in all evergreen browsers.
+export const downloadFile = (filename: string, content: string, mime: string) => {
+  const blob = new Blob([content], { type: mime })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  // Defer revoke so the download has time to start. 0ms is enough
+  // in Chrome/Firefox/Safari for object URLs; the actual download
+  // reads from the blob directly.
+  setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+// ---------------------------------------------------------------------------
 // Lookups
 // ---------------------------------------------------------------------------
 
