@@ -100,4 +100,7 @@ Manual: open the app in a mobile-sized browser window (DevTools responsive mode 
 
 ## Decisions log
 
-_(Append decisions made during implementation. Format: `- YYYY-MM-DD: <decision> — <reason>`)_
+- 2026-07-09: **Only `merchants.ts` needed markup changes** (per the audit table in the ticket). Other tables were already covered in tickets 08 (receipt detail), 09 (items list), 10 (item detail).
+- 2026-07-09: **Merchants page also gets `formatDate` and `formatMoney`** (consistency win beyond the ticket's strict scope). Same dollar→cents conversion as item-detail (analysis endpoint wart).
+- 2026-07-09: **No new CSS needed.** The `.responsive-table` rules added in ticket 05 are sufficient. The `.filter-bar { flex-wrap: wrap }` rule handles stacked filter inputs on small screens.
+- 2026-07-09: **Mobile sidebar and touch target accessibility are out of scope** (known follow-ups, per the ticket's open questions).

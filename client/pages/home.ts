@@ -1,31 +1,23 @@
 import van from "vanjs-core"
 import { api, navigate } from "../main"
+import { formatMoney, formatRelativeDate } from "../utils"
+import { ReceiptCard, type EnrichedReceiptSummary } from "../components/receipt-card"
 
-const { div, h1, h2, button, span, p, h3 } = van.tags
-
-interface Receipt {
-  receiptId: number
-  merchantId: number
-  ownerId: number
-  date: number
-  photoUrl: string
-  items: { itemId: number; quantity: number; unitPriceCents: number }[]
-  totalCents: number
-}
+const { div, h1, h2, h3, button, span, p } = van.tags
 
 interface ProposalItem {
   parsedName: string
   quantity: number
   unitPriceCents: number
-  matchedItemId: number
-  categoryId: number
+  matchedItemId: string
+  categoryId: string
   isNewCategory: boolean
   userChoice: string
 }
 
 interface Proposal {
-  proposalId: number
-  ownerId: number
+  proposalId: string
+  ownerId: string
   merchant: string
   date: number
   photoUrl: string
@@ -44,21 +36,19 @@ const statusBadge = (status: string) => {
   return span({ class: `badge ${classes[status] || ""}` }, status)
 }
 
-const ReceiptCard = (receipt: Receipt) => {
-  const date = new Date(receipt.date * 1000)
-  const dateStr = date.toLocaleDateString()
-
-  return div({ class: "receipt-card card", onclick: () => navigate(`/receipts/${receipt.receiptId}`) },
-    div({ class: "receipt-header" },
-      h3(`Receipt #${receipt.receiptId}`),
-      span({ class: "receipt-date" }, dateStr),
-    ),
-    div({ class: "receipt-body" },
-      p(`${receipt.items.length} items`),
-      p({ class: "receipt-total" }, `$${(receipt.totalCents / 100).toFixed(2)}`),
-    ),
+// Skeleton card matching the proposal card footprint.
+const SkeletonProposalCard = () =>
+  div({ class: "proposal-form card" },
+    div({ class: "skeleton-line skeleton-merchant" }),
+    div({ class: "skeleton-line skeleton-date" }),
   )
-}
+
+const SkeletonReceiptRow = () =>
+  div({ class: "skeleton-row" },
+    div({ class: "skeleton-cell skeleton-cell-lg" }),
+    div({ class: "skeleton-cell skeleton-cell-md" }),
+    div({ class: "skeleton-cell skeleton-cell-sm" }),
+  )
 
 const ProposalCard = (proposal: Proposal, onAction: () => void) => {
   const deleting = van.state(false)
@@ -87,8 +77,10 @@ const ProposalCard = (proposal: Proposal, onAction: () => void) => {
 
   const items = proposal.items || []
   const itemCount = items.length
-  const total = `$${(proposal.totalCents / 100).toFixed(2)}`
-  const dateStr = proposal.date ? new Date(proposal.date * 1000).toLocaleDateString() : ""
+  // Recent dates show relative ("3 days ago"); older ones switch to
+  // absolute formatDate via formatRelativeDate's internal threshold.
+  const dateStr = proposal.date ? formatRelativeDate(proposal.date) : ""
+  const total = formatMoney(proposal.totalCents)
 
   if (proposal.status === "parsing") {
     return div({ class: "proposal-form card" },
@@ -125,13 +117,13 @@ const ProposalCard = (proposal: Proposal, onAction: () => void) => {
   // Default: pending
   return div({ class: "proposal-form card" },
     div({ class: "card-header" },
-      h3(`${proposal.merchant || "Unknown"}`),
+      h3(proposal.merchant || "Unknown"),
       statusBadge("pending"),
     ),
     div({ class: "card-meta" },
-      span(dateStr),
+      span({ class: "muted" }, dateStr),
       span(`${itemCount} items`),
-      span(total),
+      span({ class: "money" }, total),
     ),
     div({ class: "card-actions" },
       button({ onclick: () => navigate(`/proposals/${proposal.proposalId}`), class: "btn-primary" }, "View & Edit"),
@@ -142,31 +134,41 @@ const ProposalCard = (proposal: Proposal, onAction: () => void) => {
 
 const HomePage = () => {
   const proposals = van.state<Proposal[]>([])
-  const receipts = van.state<Receipt[]>([])
+  const receipts = van.state<EnrichedReceiptSummary[]>([])
   const loadingProposals = van.state(true)
   const loadingReceipts = van.state(true)
+  const errorProposals = van.state<string | null>(null)
+  const errorReceipts = van.state<string | null>(null)
 
   const loadProposals = async () => {
     loadingProposals.val = true
+    errorProposals.val = null
     try {
       const data = await api.get("/proposals")
       proposals.val = Array.isArray(data) ? data : []
     } catch (err) {
       console.error("Failed to load proposals:", err)
+      errorProposals.val = (err as Error).message || "Failed to load proposals"
       proposals.val = []
+    } finally {
+      loadingProposals.val = false
     }
-    loadingProposals.val = false
   }
 
   const loadReceipts = async () => {
     loadingReceipts.val = true
+    errorReceipts.val = null
     try {
-      const data = await api.get("/receipts")
-      receipts.val = data || []
+      // Enriched endpoint (ticket 03) — the receipt cards need
+      // merchantName to render meaningfully.
+      const data = await api.get("/receipts/enriched")
+      receipts.val = Array.isArray(data) ? data : []
     } catch (err) {
       console.error("Failed to load receipts:", err)
+      errorReceipts.val = (err as Error).message || "Failed to load receipts"
+    } finally {
+      loadingReceipts.val = false
     }
-    loadingReceipts.val = false
   }
 
   loadProposals()
@@ -175,6 +177,9 @@ const HomePage = () => {
   const handleProposalAction = () => {
     loadProposals()
   }
+
+  // Cap "Recent Receipts" at 10; matches the previous home-page limit.
+  const recentReceipts = () => receipts.val.slice(0, 10)
 
   return div({ class: "home-page" },
     div({ class: "page-header" },
@@ -190,13 +195,28 @@ const HomePage = () => {
           ? span({ class: "section-count" }, proposals.val.length)
           : span(),
       ),
-      () => loadingProposals.val
-        ? div({ class: "loading" }, "Loading...")
-        : proposals.val.length === 0
-          ? div({ class: "empty-section" }, p("No pending proposals"))
-          : div({ class: "cards-grid" },
-              ...proposals.val.map(p => ProposalCard(p, handleProposalAction))
-            ),
+      () => {
+        if (errorProposals.val) {
+          return div({ class: "empty-state" },
+            h3("Couldn't load proposals"),
+            p(errorProposals.val),
+            button({ onclick: loadProposals }, "Try Again"),
+          )
+        }
+        if (loadingProposals.val) {
+          return div({ class: "cards-grid" },
+            SkeletonProposalCard(),
+            SkeletonProposalCard(),
+            SkeletonProposalCard(),
+          )
+        }
+        if (proposals.val.length === 0) {
+          return div({ class: "empty-section" }, p("No pending proposals"))
+        }
+        return div({ class: "cards-grid" },
+          ...proposals.val.map(p => ProposalCard(p, handleProposalAction)),
+        )
+      },
     ),
 
     // Receipts section
@@ -205,13 +225,28 @@ const HomePage = () => {
         h2("Recent Receipts"),
         button({ onclick: () => navigate("/receipts"), class: "btn-secondary btn-sm" }, "View All"),
       ),
-      () => loadingReceipts.val
-        ? div({ class: "loading" }, "Loading...")
-        : receipts.val.length === 0
-          ? div({ class: "empty-section" }, p("No receipts yet"))
-          : div({ class: "cards-grid" },
-              ...receipts.val.slice(0, 10).map(r => ReceiptCard(r))
-            ),
+      () => {
+        if (errorReceipts.val) {
+          return div({ class: "empty-state" },
+            h3("Couldn't load receipts"),
+            p(errorReceipts.val),
+            button({ onclick: loadReceipts }, "Try Again"),
+          )
+        }
+        if (loadingReceipts.val) {
+          return div({ class: "cards-grid" },
+            SkeletonReceiptRow(),
+            SkeletonReceiptRow(),
+            SkeletonReceiptRow(),
+          )
+        }
+        if (receipts.val.length === 0) {
+          return div({ class: "empty-section" }, p("No receipts yet"))
+        }
+        return div({ class: "cards-grid" },
+          ...recentReceipts().map(r => ReceiptCard(r)),
+        )
+      },
     ),
   )
 }

@@ -95,4 +95,9 @@ Manual: visit `/`, verify the layout, click through to a receipt.
 
 ## Decisions log
 
-_(Append decisions made during implementation. Format: `- YYYY-MM-DD: <decision> — <reason>`)_
+- 2026-07-09: **Extracted `ReceiptCard` to `client/components/receipt-card.ts`** (Option A). Used by both `home.ts` and `receipts.ts`. The card takes a `EnrichedReceiptSummary` and a hardcoded `navigate(/receipts/{id})` onClick. No `onClick` prop — the card is a leaf.
+- 2026-07-09: **Proposal cards stay inline in `home.ts`** — unique to this page (status badges, retry/delete buttons, parsing indicator). Not worth extracting.
+- 2026-07-09: **Proposals section now uses `formatRelativeDate`** (3 skeleton rows in load state, recent dates as "3 days ago", older as absolute).
+- 2026-07-09: **Recent Receipts cap at 10** (preserved from original code).
+- 2026-07-09: **Section error states** (separate try/catch for proposals and receipts) — a failure in one doesn't blank the other.
+- 2026-07-09: **Both sections use the enriched endpoint or the existing /api/proposals endpoint** — no new backend work needed.

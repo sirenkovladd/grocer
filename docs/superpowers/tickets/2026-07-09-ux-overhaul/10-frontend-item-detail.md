@@ -180,4 +180,9 @@ Manual: visit `/items/{id}` for a few items, verify category name shows, breadcr
 
 ## Decisions log
 
-_(Append decisions made during implementation. Format: `- YYYY-MM-DD: <decision> — <reason>`)_
+- 2026-07-09: **ID fields typed as `string`.** See ticket 04 + 07 decisions logs.
+- 2026-07-09: **Analysis endpoint type-inconsistency handled at the page level** (multiply dollars by 100 for `formatMoney`; convert "2006-01-02" to Unix seconds for `formatDate`). Documented in the `PricePoint` interface comment. Backend fix is a follow-up.
+- 2026-07-09: **Chart Y-axis kept in dollars** with manual `$${value.toFixed(2)}` format. Avoids `formatMoney` overhead on every tick and keeps tick labels compact. The chart's data and Y-axis stay consistent; only the table cells and stat cards need the cents→dollars conversion.
+- 2026-07-09: **Empty chart state shows a friendly message** ("No purchases yet") instead of an empty canvas. Per ticket 10 open question.
+- 2026-07-09: **setTimeout(initChart, 100) hack left as-is.** A proper VanJS reactive integration would be a refactor; out of scope.
+- 2026-07-09: **Stat cards use `.money` class** for tabular-nums alignment (added in ticket 05).

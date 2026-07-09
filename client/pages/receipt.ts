@@ -1,6 +1,6 @@
 import van from "vanjs-core"
 import { api, navigate } from "../main"
-import { formatDate, formatMoney, formatQuantity } from "../utils"
+import { formatDate, formatMoney, formatQuantity, shortId } from "../utils"
 import { fetchPhotoUrl, revokePhotoUrl } from "../photos"
 
 const { div, h1, h2, a, span, table, tr, td, th, button, p, img } = van.tags
@@ -46,7 +46,7 @@ const Breadcrumb = (merchantName: string, receiptId: string) =>
       onclick: (e: Event) => { e.preventDefault(); navigate("/receipts") },
     }, "Receipts"),
     span({ class: "separator" }, "›"),
-    span({ class: "current" }, merchantName || `Receipt #${receiptId.slice(0, 8)}…`),
+    span({ class: "current" }, merchantName || `Receipt #${shortId(receiptId)}`),
   )
 
 const ReceiptDetailPage = () => {
@@ -56,7 +56,25 @@ const ReceiptDetailPage = () => {
   const error = van.state<string | null>(null)
   let currentReceiptId: string | null = null
 
-  const id = window.location.hash.split("/").pop() || ""
+  // Parse the receipt ID from the hash. Robust to:
+  //   - trailing slashes (`#/receipts/123/` → "123")
+  //   - the `/enriched` API suffix leaking into the URL
+  //     (`#/receipts/123/enriched` → "123")
+  //   - 404 paths returning `{"error": "..."}` JSON
+  //
+  // The hash shape we expect: `#/receipts/{numeric-id}` (optionally
+  // with trailing slash). We take the segment that parses as a uint64
+  // and ignore everything else.
+  const parseIdFromHash = (): string => {
+    const segments = window.location.hash.split("/").filter(Boolean)
+    for (const seg of segments) {
+      // Skip literal words; only accept numeric segments.
+      if (/^\d+$/.test(seg)) return seg
+    }
+    return ""
+  }
+
+  const id = parseIdFromHash()
 
   const load = async () => {
     if (!id) return
@@ -65,6 +83,9 @@ const ReceiptDetailPage = () => {
     try {
       const data = await api.get(`/receipts/${id}/enriched`)
       receipt.val = data
+      // Page is ready to render now; show it without waiting for the
+      // photo. The photo loads in the background and appears when ready.
+      loading.val = false
 
       // Revoke previous photo URL (if any) before fetching a new one to
       // avoid blob URL leaks. fetchPhotoUrl caches by ID, so the new
@@ -76,17 +97,19 @@ const ReceiptDetailPage = () => {
       currentReceiptId = data.receiptId
 
       if (data?.photoUrl) {
-        try {
-          photoSrc.val = await fetchPhotoUrl(data.receiptId)
-        } catch (err) {
-          console.warn("Failed to load photo:", err)
-          photoSrc.val = ""
-        }
+        // Fire-and-forget: don't await, so the page renders immediately.
+        // The `() => photoSrc.val` block in the JSX is reactive and
+        // will pick up the value when the fetch resolves.
+        fetchPhotoUrl(data.receiptId)
+          .then(url => { photoSrc.val = url })
+          .catch(err => {
+            console.warn("Failed to load photo:", err)
+            photoSrc.val = ""
+          })
       }
     } catch (err) {
       console.error("Failed to load receipt:", err)
       error.val = (err as Error).message || "Failed to load receipt"
-    } finally {
       loading.val = false
     }
   }
@@ -126,7 +149,7 @@ const ReceiptDetailPage = () => {
 
         div({ class: "page-header" },
           div(
-            h1(r.merchantName || `Receipt #${r.receiptId.slice(0, 8)}…`),
+            h1(r.merchantName || `Receipt #${shortId(r.receiptId)}`),
             div({ class: "page-header-meta" },
               span({ class: "muted" }, formatDate(r.date)),
               span({ class: "money" }, formatMoney(r.totalCents)),

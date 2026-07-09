@@ -177,4 +177,11 @@ Manual: visit `/items`, check that categories show names, search works.
 
 ## Decisions log
 
-_(Append decisions made during implementation. Format: `- YYYY-MM-DD: <decision> — <reason>`)_
+- 2026-07-09: **ID fields typed as `string`.** See ticket 04 + 07 decisions logs.
+- 2026-07-09: **Purchase count + total spent columns deferred.** Would require a new backend endpoint (`/api/items/with-stats`); out of scope. Tracked as a follow-up.
+- 2026-07-09: **Sort alphabetical by name** (case-insensitive via `localeCompare`). Per ticket 09 recommendation.
+- 2026-07-09: **Category dropdown filter deferred** per ticket 09 recommendation.
+- 2026-07-09: **Three empty states** (loading, no items, no matches) — each has its own CTA. Clear-search button on the no-matches state.
+- 2026-07-09: **Aliases truncated after 3 with `+N more` text**; full list available via `title` tooltip (HTML standard hover behavior).
+- 2026-07-09: **Items with deleted category show "Uncategorized"** in the badge (defensive).
+- 2026-07-09: **Click target: item name only**, not the whole row. Per ticket 09 recommendation (less surprising).

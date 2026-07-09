@@ -14,10 +14,10 @@
 | 06 | [Frontend: sidebar active state](./06-frontend-sidebar-active-state.md) | frontend | ✅ | 05 |
 | 07 | [Frontend: receipts list page](./07-frontend-receipts-list.md) | frontend | ✅ | 01, 02, 03, 04, 05 |
 | 08 | [Frontend: receipt detail page](./08-frontend-receipt-detail.md) | frontend | ✅ | 01, 02, 03, 04, 05 |
-| 09 | [Frontend: items list page](./09-frontend-items-list.md) | frontend | ⬜ | 04, 05 |
-| 10 | [Frontend: item detail page](./10-frontend-item-detail.md) | frontend | ⬜ | 04, 05 |
-| 11 | [Frontend: home page](./11-frontend-home.md) | frontend | ⬜ | 04, 05 |
-| 12 | [Frontend: mobile responsive tables](./12-frontend-mobile-responsive.md) | frontend | ⬜ | 05, 09, 10 |
+| 09 | [Frontend: items list page](./09-frontend-items-list.md) | frontend | ✅ | 04, 05 |
+| 10 | [Frontend: item detail page](./10-frontend-item-detail.md) | frontend | ✅ | 04, 05 |
+| 11 | [Frontend: home page](./11-frontend-home.md) | frontend | ✅ | 04, 05 |
+| 12 | [Frontend: mobile responsive tables](./12-frontend-mobile-responsive.md) | frontend | ✅ | 05, 09, 10 |
 
 ## Recommended order
 

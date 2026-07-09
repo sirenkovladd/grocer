@@ -47,6 +47,14 @@ export const api = {
       navigate("/login")
       throw new Error("Unauthorized")
     }
+    // Treat any non-2xx as an error so pages' try/catch blocks actually
+    // fire. Without this, 4xx/5xx responses (which have a JSON body of
+    // `{"error": "..."}`) would be returned as if they were success, and
+    // the page would silently render an empty state instead of an error.
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({} as Record<string, string>))
+      throw new Error(data.error || data.message || `HTTP ${response.status}`)
+    }
     return response.json()
   },
 

@@ -1,5 +1,6 @@
 import van from "vanjs-core"
 import { api, navigate } from "../main"
+import { formatDate, formatMoney } from "../utils"
 
 const { div, h1, h2, table, tr, td, th, select, option, button, p } = van.tags
 
@@ -77,16 +78,24 @@ const MerchantsPage = () => {
     () => comparison.val.length > 0
       ? div({ class: "comparison-results card" },
           h2("Price History"),
-          table(
-            tr(
-              th("Date"),
-              th("Price"),
-            ),
-            ...comparison.val.map((c: any) =>
+          div({ class: "items-table-wrapper" },
+            table({ class: "responsive-table" },
               tr(
-                td(new Date(c.date).toLocaleDateString()),
-                td(`$${c.price.toFixed(2)}`),
-              )
+                th("Date"),
+                th({ class: "money" }, "Price"),
+              ),
+              ...comparison.val.map((c: any) => {
+                // Analysis endpoint returns date as "2006-01-02" and
+                // price in dollars (same wart as item-detail; see
+                // client/pages/item-detail.ts for the rationale).
+                // Parse date as local midnight so the displayed date
+                // matches the user's intent.
+                const unixSecs = Math.floor(new Date(c.date + "T00:00:00").getTime() / 1000)
+                return tr(
+                  td({ "data-label": "Date" }, formatDate(unixSecs)),
+                  td({ "data-label": "Price", class: "money" }, formatMoney(c.price * 100)),
+                )
+              }),
             ),
           ),
         )

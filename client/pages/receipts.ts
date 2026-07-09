@@ -1,25 +1,9 @@
 import van from "vanjs-core"
 import { api, navigate } from "../main"
-import { formatDate, formatMoney, indexBy } from "../utils"
+import { indexBy } from "../utils"
+import { ReceiptCard, type EnrichedReceiptSummary } from "../components/receipt-card"
 
-const { div, h1, h2, h3, p, button, input, select, option, span } = van.tags
-
-// ID fields are typed as `string` because the backend serializes uint64
-// as a JSON string (json:"...,string") and the values exceed
-// Number.MAX_SAFE_INTEGER. The previous type used `number` which
-// silently loses precision for large IDs (see ticket 04 decisions log).
-// Existing pages still use `number`; migrating them is a follow-up.
-interface EnrichedReceiptSummary {
-  receiptId: string
-  merchantId: string
-  merchantName: string
-  ownerId: string
-  ownerName: string // not displayed in this view per UX overhaul plan
-  date: number
-  itemCount: number
-  totalCents: number
-  photoUrl?: string
-}
+const { div, h1, h3, p, button, input, select, option } = van.tags
 
 interface Merchant {
   merchantId: string
@@ -36,18 +20,6 @@ const SkeletonRow = () =>
     div({ class: "skeleton-cell skeleton-cell-lg" }),
     div({ class: "skeleton-cell skeleton-cell-md" }),
     div({ class: "skeleton-cell skeleton-cell-sm" }),
-  )
-
-const ReceiptCard = (r: EnrichedReceiptSummary) =>
-  div({ class: "receipt-card card", onclick: () => navigate(`/receipts/${r.receiptId}`) },
-    div({ class: "receipt-header" },
-      div({ class: "receipt-merchant" }, r.merchantName),
-      div({ class: "receipt-date muted" }, formatDate(r.date)),
-    ),
-    div({ class: "receipt-meta" },
-      span(`${r.itemCount} ${r.itemCount === 1 ? "item" : "items"}`),
-      span({ class: "money" }, formatMoney(r.totalCents)),
-    ),
   )
 
 const ReceiptsPage = () => {
@@ -92,12 +64,18 @@ const ReceiptsPage = () => {
 
   // Filter — pure function called inside the reactive render. Re-runs
   // when any of the filter states or `receipts` change.
+  //
+  // Date parsing: `new Date("2024-05-29")` is UTC midnight by JS spec,
+  // but the user picked the date in their LOCAL time. Append
+  // "T00:00:00" so the parser treats it as local midnight — the filter
+  // boundary matches what the user sees in the date input. The same
+  // pattern is used in item-detail.ts and merchants.ts for the
+  // analysis endpoint's "2006-01-02" strings.
   const filtered = (): EnrichedReceiptSummary[] => {
     const all = receipts.val
     const s = search.val.trim().toLowerCase()
-    const fromSecs = from.val ? new Date(from.val).getTime() / 1000 : null
-    // Add 86399 seconds to include the entire `to` day.
-    const toSecs = to.val ? new Date(to.val).getTime() / 1000 + 86399 : null
+    const fromSecs = from.val ? new Date(from.val + "T00:00:00").getTime() / 1000 : null
+    const toSecs = to.val ? new Date(to.val + "T23:59:59").getTime() / 1000 : null
     const ownerId = ownerFilter.val
     const merchantId = merchantFilter.val
 
@@ -152,9 +130,12 @@ const ReceiptsPage = () => {
         "aria-label": "Filter by owner",
       },
         option({ value: "" }, "All owners"),
-        ...Object.values(users.val).map((u: User) =>
-          option({ value: u.userId }, u.name),
-        ),
+        ...Object.values(users.val)
+          .slice()
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((u: User) =>
+            option({ value: u.userId }, u.name),
+          ),
       ),
       select({
         value: merchantFilter,
@@ -164,9 +145,12 @@ const ReceiptsPage = () => {
         "aria-label": "Filter by merchant",
       },
         option({ value: "" }, "All merchants"),
-        ...Object.values(merchants.val).map((m: Merchant) =>
-          option({ value: m.merchantId }, m.name),
-        ),
+        ...Object.values(merchants.val)
+          .slice()
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((m: Merchant) =>
+            option({ value: m.merchantId }, m.name),
+          ),
       ),
     ),
 

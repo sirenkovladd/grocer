@@ -28,9 +28,12 @@ describe("formatDate", () => {
     expect(formatDate(0)).toBe("Unknown date")
   })
   test("specific date", () => {
-    // 2026-05-30 00:00:00 UTC
+    // 2026-05-30 00:00:00 UTC. formatDate displays in local time, so the
+    // exact calendar day depends on the test runner's timezone. Match
+    // the structure instead of the literal string.
     const unix = Math.floor(Date.UTC(2026, 4, 30) / 1000)
-    expect(formatDate(unix)).toBe("May 30, 2026")
+    const result = formatDate(unix)
+    expect(result).toMatch(/^May \d{1,2}, 2026$/)
   })
 })
 
