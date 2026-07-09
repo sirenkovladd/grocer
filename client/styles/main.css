@@ -656,6 +656,11 @@ th {
   max-width: 12rem;
 }
 
+/* Sort dropdown used in the items list filter bar. */
+.sort-picker {
+  min-width: 12rem;
+}
+
 /* Trips section on the Analysis page. Each trip is a card; the
    receipts within are listed as small links below the meta row. */
 .trips-section {

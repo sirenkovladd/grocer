@@ -133,6 +133,70 @@ func (r *Router) handleDeleteItem(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ItemWithStats extends domain.Item with purchase statistics
+// computed by joining against all receipts. Used by the items
+// list page to render the "last bought" column and to allow
+// sorting by purchase count.
+type ItemWithStats struct {
+	ItemID          uint64   `json:"itemId,string"`
+	Name            string   `json:"name"`
+	CategoryID      uint64   `json:"categoryId,string"`
+	MerchantID      uint64   `json:"merchantId,string"`
+	Normalized      string   `json:"normalized"`
+	Aliases         []string `json:"aliases,omitempty"`
+	PurchaseCount   int      `json:"purchaseCount"`
+	LastPurchasedAt int64    `json:"lastPurchasedAt"` // Unix seconds; 0 if never
+}
+
+// handleListItemsWithStats returns the same set as /api/items but
+// joined with per-item purchase statistics. The join is O(items
+// + receipts) and runs once per page load, so at family scale
+// (handful of hundreds of items, thousands of receipts) the cost
+// is negligible.
+func (r *Router) handleListItemsWithStats(w http.ResponseWriter, req *http.Request) {
+	items, err := r.store.ListItems()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	receipts, err := r.store.ListReceipts()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Walk every receipt once, accumulating per-item stats.
+	type stat struct{ count int; lastAt int64 }
+	stats := make(map[uint64]stat, len(items))
+	for _, r := range receipts {
+		for _, ri := range r.Items {
+			s := stats[ri.ItemID]
+			s.count++
+			if r.Date > s.lastAt {
+				s.lastAt = r.Date
+			}
+			stats[ri.ItemID] = s
+		}
+	}
+
+	result := make([]ItemWithStats, 0, len(items))
+	for _, it := range items {
+		s := stats[it.ItemID]
+		result = append(result, ItemWithStats{
+			ItemID:          it.ItemID,
+			Name:            it.Name,
+			CategoryID:      it.CategoryID,
+			MerchantID:      it.MerchantID,
+			Normalized:      it.Normalized,
+			Aliases:         it.Aliases,
+			PurchaseCount:   s.count,
+			LastPurchasedAt: s.lastAt,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
 // mergeItemRequest is the body of POST /api/items/{id}/merge. The
 // {id} in the path is the source; the body's `targetId` is the item
 // to retarget references to.

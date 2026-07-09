@@ -1,6 +1,6 @@
 import van from "vanjs-core"
 import { api, navigate } from "../main"
-import { indexBy } from "../utils"
+import { indexBy, formatRelativeDate } from "../utils"
 
 const { div, h1, h2, h3, p, input, select, option, label, table, tr, td, th, button, span, a } = van.tags
 
@@ -14,6 +14,12 @@ interface Item {
   merchantId: string
   normalized: string
   aliases: string[]
+  // purchaseCount and lastPurchasedAt come from /api/items/insights.
+  // We default to 0 / 0 here so the type also works for callers
+  // that hit the bare /api/items endpoint (the merge tool, for
+  // example, only needs the bare list).
+  purchaseCount: number
+  lastPurchasedAt: number
 }
 
 interface Category {
@@ -143,11 +149,15 @@ const ItemsPage = () => {
     loading.val = true
     error.val = null
     try {
+      // Use the insights endpoint so we can render purchase stats
+      // (count + last bought) without a per-item N+1 to the
+      // analysis endpoint. Falls back to the bare list if the
+      // server is older than the insights endpoint was added.
       const [i, c] = await Promise.all([
-        api.get("/items"),
+        api.get("/items/insights"),
         api.get("/categories"),
       ])
-      items.val = Array.isArray(i) ? i : []
+      items.val = Array.isArray(i) ? i.map(normalizeItem) : []
       categories.val = indexBy(Array.isArray(c) ? c : [], (x: Category) => x.categoryId)
     } catch (err) {
       console.error("Failed to load items:", err)
@@ -157,14 +167,44 @@ const ItemsPage = () => {
     }
   }
 
+  // The insights endpoint may be missing on older servers; or the
+  // bare endpoint may already return equivalent fields. Coerce the
+  // shape so the rest of the page can treat the data uniformly.
+  const normalizeItem = (raw: any): Item => ({
+    itemId: String(raw.itemId),
+    name: raw.name,
+    categoryId: String(raw.categoryId),
+    merchantId: String(raw.merchantId),
+    normalized: raw.normalized,
+    aliases: raw.aliases ?? [],
+    purchaseCount: raw.purchaseCount ?? 0,
+    lastPurchasedAt: raw.lastPurchasedAt ?? 0,
+  })
+
   load()
 
-  // Sort alphabetically by name (case-insensitive). Predictable for
-  // scanning; matches ticket 09 recommendation.
+  // Sort selector — "alpha" (default) sorts alphabetically;
+  // "frequent" sorts by purchase count desc, with alphabetical
+  // tie-breaking. The `sort` state is read in the reactive render
+  // so changing it re-sorts without a refetch.
+  const sort = van.state<"alpha" | "frequent">("alpha")
+
+  // Sort: pure function called inside the reactive render.
   const sorted = (): Item[] => {
-    return [...items.val].sort((a, b) =>
-      a.name.toLowerCase().localeCompare(b.name.toLowerCase()),
-    )
+    const all = [...items.val]
+    if (sort.val === "frequent") {
+      all.sort((a, b) => {
+        if (b.purchaseCount !== a.purchaseCount) {
+          return b.purchaseCount - a.purchaseCount
+        }
+        return a.name.toLowerCase().localeCompare(b.name.toLowerCase())
+      })
+    } else {
+      all.sort((a, b) =>
+        a.name.toLowerCase().localeCompare(b.name.toLowerCase()),
+      )
+    }
+    return all
   }
 
   const filtered = (): Item[] => {
@@ -253,6 +293,15 @@ const ItemsPage = () => {
           search.val = (e.target as HTMLInputElement).value
         },
       }),
+      select({
+        value: sort,
+        onchange: (e: Event) => { sort.val = (e.target as HTMLSelectElement).value as "alpha" | "frequent" },
+        "aria-label": "Sort items",
+        class: "sort-picker",
+      },
+        option({ value: "alpha" }, "Alphabetical"),
+        option({ value: "frequent" }, "Most frequently bought"),
+      ),
     ),
 
     () => {
@@ -290,6 +339,8 @@ const ItemsPage = () => {
             th("Name"),
             th("Category"),
             th("Aliases"),
+            th("Last Bought"),
+            th("Purchases"),
             th("Actions"),
           ),
           ...list.map(item => {
@@ -297,7 +348,7 @@ const ItemsPage = () => {
             // instead of the normal columns.
             if (editingId.val === item.itemId) {
               return tr({ class: "editing-row" },
-                td({ colspan: 4, "data-label": "Edit" },
+                td({ colspan: 6, "data-label": "Edit" },
                   EditForm(
                     item, categories.val, editName, editCategory,
                     editAliases, editError, saving, saveEdit, cancelEdit,
@@ -321,6 +372,14 @@ const ItemsPage = () => {
                 span({ class: "category-badge" }, catName),
               ),
               td({ "data-label": "Aliases" }, formatAliases(item.aliases)),
+              td({ "data-label": "Last Bought", class: "muted" },
+                () => item.lastPurchasedAt > 0
+                  ? formatRelativeDate(item.lastPurchasedAt)
+                  : "Never",
+              ),
+              td({ "data-label": "Purchases", class: "money" },
+                () => String(item.purchaseCount),
+              ),
               td({ "data-label": "Actions", class: "row-actions" },
                 button({
                   class: "btn-sm btn-secondary",
