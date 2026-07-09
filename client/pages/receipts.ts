@@ -56,7 +56,9 @@ const ReceiptsPage = () => {
         ? div("Loading...")
         : receipts.val.length === 0
           ? div("No receipts yet")
-          : receipts.val.map(r => ReceiptCard(r)),
+          : div({ class: "receipts-grid" },
+              ...receipts.val.map(r => ReceiptCard(r)),
+            ),
     ),
   )
 }
