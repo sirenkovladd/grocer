@@ -98,4 +98,12 @@ curl -s -H "Authorization: Bearer $TOKEN" "http://localhost:8080/api/receipts/en
 
 ## Decisions log
 
-_(Append decisions made during implementation. Format: `- YYYY-MM-DD: <decision> — <reason>`)_
+- 2026-07-09: **Filter logic extracted to `filterReceipts` helper.** Both `handleListReceipts` and `handleListEnrichedReceipts` call it; eliminates drift between the two endpoints. Resolved in grilling review (see `00-grill-review.md`).
+- 2026-07-09: **Helper returns non-nil empty slice on no-match.** Fixes a pre-existing bug where `var result []*domain.Receipt` produced `null` JSON for empty filter results. Existing `/api/receipts` endpoint now also returns `[]` (slight behavior change, no client relies on `null`).
+- 2026-07-09: **Sort: date descending (newest first).** Matches the home/receipts page expectations.
+- 2026-07-09: **Batch-load via `loadMerchantMap`, `loadUserMap`, `loadCategoryMap` (new) and the existing `loadItemMap`.** No N+1; constant round trips.
+- 2026-07-09: **`TotalPriceCents` uses `math.Round`** — not float-truncation. Critical for fractional quantities (0.5 * 333 → 167, not 166).
+- 2026-07-09: **404 for missing ID on detail endpoint** — mirrors `handleGetReceipt`.
+- 2026-07-09: **Date filter parse errors silently ignored** — mirrors `handleListReceipts` for contract parity.
+- 2026-07-09: **Added `UnknownItem = "Unknown item"` constant** in `types.go`. Defensive fallback if a receipt references a deleted item ID.
+- 2026-07-09: **15 new tests in `receipts_enriched_test.go`** — list (auth, empty, shape+fallback, sort, owner filter, category filter, missing merchant), detail (auth, 404, invalid ID, full shape, missing category, missing item), plus two helper-function tests (empty summary, rounding).

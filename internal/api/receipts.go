@@ -9,7 +9,9 @@ import (
 	_ "image/png"
 	"io"
 	"log"
+	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -29,67 +31,81 @@ func (r *Router) handleListReceipts(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Apply filters
-	filtered := receipts
+	filtered := r.filterReceipts(receipts, from, to, owner, category)
+	writeJSON(w, http.StatusOK, filtered)
+}
+
+// filterReceipts applies the same query-parameter filters used by both
+// /api/receipts and /api/receipts/enriched. The filter chain is:
+//
+//	from (YYYY-MM-DD)      — receipt.Date >= fromDate
+//	to   (YYYY-MM-DD)      — receipt.Date <= toDate
+//	owner (numeric ID)     — receipt.OwnerID == ownerID
+//	category (numeric ID)  — receipt has any item with item.CategoryID == categoryID
+//
+// A malformed filter value is silently ignored, matching the existing
+// /api/receipts contract (see ticket 03, open question on date
+// validation). Filter results are always non-nil so the caller can rely
+// on a `[]` JSON array for empty results.
+func (r *Router) filterReceipts(receipts []*domain.Receipt, from, to, owner, category string) []*domain.Receipt {
+	if receipts == nil {
+		return []*domain.Receipt{}
+	}
+
 	if from != "" {
-		fromDate, err := time.Parse("2006-01-02", from)
-		if err == nil {
-			var result []*domain.Receipt
-			for _, receipt := range filtered {
-				if !time.Unix(receipt.Date, 0).Before(fromDate) {
-					result = append(result, receipt)
+		if fromDate, err := time.Parse("2006-01-02", from); err == nil {
+			result := make([]*domain.Receipt, 0, len(receipts))
+			for _, rcpt := range receipts {
+				if !time.Unix(rcpt.Date, 0).Before(fromDate) {
+					result = append(result, rcpt)
 				}
 			}
-			filtered = result
+			receipts = result
 		}
 	}
 
 	if to != "" {
-		toDate, err := time.Parse("2006-01-02", to)
-		if err == nil {
-			var result []*domain.Receipt
-			for _, receipt := range filtered {
-				if !time.Unix(receipt.Date, 0).After(toDate) {
-					result = append(result, receipt)
+		if toDate, err := time.Parse("2006-01-02", to); err == nil {
+			result := make([]*domain.Receipt, 0, len(receipts))
+			for _, rcpt := range receipts {
+				if !time.Unix(rcpt.Date, 0).After(toDate) {
+					result = append(result, rcpt)
 				}
 			}
-			filtered = result
+			receipts = result
 		}
 	}
 
 	if owner != "" {
-		ownerID, err := strconv.ParseUint(owner, 10, 64)
-		if err == nil {
-			var result []*domain.Receipt
-			for _, receipt := range filtered {
-				if receipt.OwnerID == ownerID {
-					result = append(result, receipt)
+		if ownerID, err := strconv.ParseUint(owner, 10, 64); err == nil {
+			result := make([]*domain.Receipt, 0, len(receipts))
+			for _, rcpt := range receipts {
+				if rcpt.OwnerID == ownerID {
+					result = append(result, rcpt)
 				}
 			}
-			filtered = result
+			receipts = result
 		}
 	}
 
 	if category != "" {
-		categoryID, err := strconv.ParseUint(category, 10, 64)
-		if err == nil {
-			// Batch load all items to avoid N+1 queries
-			itemMap := r.loadItemMap(filtered)
-
-			var result []*domain.Receipt
-			for _, receipt := range filtered {
-				for _, item := range receipt.Items {
+		if categoryID, err := strconv.ParseUint(category, 10, 64); err == nil {
+			// Batch-load items to avoid N+1.
+			itemMap := r.loadItemMap(receipts)
+			result := make([]*domain.Receipt, 0, len(receipts))
+			for _, rcpt := range receipts {
+				for _, item := range rcpt.Items {
 					if itemObj, ok := itemMap[item.ItemID]; ok && itemObj.CategoryID == categoryID {
-						result = append(result, receipt)
+						result = append(result, rcpt)
 						break
 					}
 				}
 			}
-			filtered = result
+			receipts = result
 		}
 	}
 
-	writeJSON(w, http.StatusOK, filtered)
+	return receipts
 }
 
 // loadItemMap batch loads all items referenced by receipts into a map for O(1) lookups
@@ -111,6 +127,220 @@ func (r *Router) loadItemMap(receipts []*domain.Receipt) map[uint64]*domain.Item
 	}
 
 	return itemMap
+}
+
+// loadMerchantMap batch-loads all merchants into a map keyed by MerchantID.
+func (r *Router) loadMerchantMap() (map[uint64]*domain.Merchant, error) {
+	merchants, err := r.store.ListMerchants()
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[uint64]*domain.Merchant, len(merchants))
+	for _, x := range merchants {
+		m[x.MerchantID] = x
+	}
+	return m, nil
+}
+
+// loadUserMap batch-loads all users into a map keyed by UserID.
+func (r *Router) loadUserMap() (map[uint64]*domain.User, error) {
+	users, err := r.store.ListUsers()
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[uint64]*domain.User, len(users))
+	for _, x := range users {
+		m[x.UserID] = x
+	}
+	return m, nil
+}
+
+// loadCategoryMap batch-loads all categories into a map keyed by CategoryID.
+func (r *Router) loadCategoryMap() (map[uint64]*domain.Category, error) {
+	categories, err := r.store.ListCategories()
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[uint64]*domain.Category, len(categories))
+	for _, x := range categories {
+		m[x.CategoryID] = x
+	}
+	return m, nil
+}
+
+// handleListEnrichedReceipts returns a list of EnrichedReceiptSummary
+// sorted by date descending (newest first). Supports the same query
+// parameters as handleListReceipts (from, to, owner, category).
+//
+// Lookup data (merchants, users) is batch-loaded in one pass; no N+1.
+func (r *Router) handleListEnrichedReceipts(w http.ResponseWriter, req *http.Request) {
+	from := req.URL.Query().Get("from")
+	to := req.URL.Query().Get("to")
+	owner := req.URL.Query().Get("owner")
+	category := req.URL.Query().Get("category")
+
+	receipts, err := r.store.ListReceipts()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	filtered := r.filterReceipts(receipts, from, to, owner, category)
+
+	// Newest first — home/receipts pages want recent activity at the top.
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].Date > filtered[j].Date
+	})
+
+	merchantMap, err := r.loadMerchantMap()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	userMap, err := r.loadUserMap()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	summaries := enrichReceiptsToSummary(filtered, merchantMap, userMap)
+	writeJSON(w, http.StatusOK, summaries)
+}
+
+// handleGetEnrichedReceipt returns one EnrichedReceipt with full
+// per-item enrichment. Returns 404 if the ID does not exist.
+func (r *Router) handleGetEnrichedReceipt(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid receipt ID")
+		return
+	}
+
+	rcpt, err := r.store.GetReceipt(id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "receipt not found")
+		return
+	}
+
+	merchantMap, err := r.loadMerchantMap()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	userMap, err := r.loadUserMap()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	itemMap := r.loadItemMap([]*domain.Receipt{rcpt})
+	categoryMap, err := r.loadCategoryMap()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	enriched := enrichReceipt(rcpt, merchantMap, userMap, itemMap, categoryMap)
+	writeJSON(w, http.StatusOK, enriched)
+}
+
+// enrichReceiptsToSummary converts a slice of domain.Receipt into
+// EnrichedReceiptSummary. Lookup maps must be pre-populated by the
+// caller. Missing entries in the maps fall back to the Unknown*
+// constants from types.go.
+func enrichReceiptsToSummary(
+	receipts []*domain.Receipt,
+	merchantMap map[uint64]*domain.Merchant,
+	userMap map[uint64]*domain.User,
+) []EnrichedReceiptSummary {
+	summaries := make([]EnrichedReceiptSummary, 0, len(receipts))
+	for _, rcpt := range receipts {
+		summaries = append(summaries, EnrichedReceiptSummary{
+			ReceiptID:    rcpt.ReceiptID,
+			MerchantID:   rcpt.MerchantID,
+			MerchantName: merchantName(merchantMap, rcpt.MerchantID),
+			OwnerID:      rcpt.OwnerID,
+			OwnerName:    ownerName(userMap, rcpt.OwnerID),
+			Date:         rcpt.Date,
+			ItemCount:    len(rcpt.Items),
+			TotalCents:   rcpt.TotalCents,
+			PhotoURL:     rcpt.PhotoURL,
+		})
+	}
+	return summaries
+}
+
+// enrichReceipt converts one domain.Receipt into a fully-enriched
+// EnrichedReceipt. All four lookup maps must be pre-populated. Item-name
+// and category-name lookups fall back to UnknownItem / UnknownCategory
+// if the referenced entity was deleted.
+func enrichReceipt(
+	rcpt *domain.Receipt,
+	merchantMap map[uint64]*domain.Merchant,
+	userMap map[uint64]*domain.User,
+	itemMap map[uint64]*domain.Item,
+	categoryMap map[uint64]*domain.Category,
+) EnrichedReceipt {
+	items := make([]EnrichedReceiptItem, 0, len(rcpt.Items))
+	for _, item := range rcpt.Items {
+		itemObj := itemMap[item.ItemID] // may be nil if the item was deleted
+		var name string
+		var catID uint64
+		var catName string
+		if itemObj != nil {
+			name = itemObj.Name
+			catID = itemObj.CategoryID
+			if cat := categoryMap[catID]; cat != nil {
+				catName = cat.Name
+			} else {
+				catName = UnknownCategory
+			}
+		} else {
+			name = UnknownItem
+			catName = UnknownCategory
+		}
+		items = append(items, EnrichedReceiptItem{
+			ItemID:          item.ItemID,
+			Name:            name,
+			CategoryID:      catID,
+			CategoryName:    catName,
+			Quantity:        item.Quantity,
+			UnitPriceCents:  item.UnitPriceCents,
+			// math.Round (not float-truncation) is critical: 0.5 * 333
+			// would truncate to 166 instead of rounding to 167.
+			TotalPriceCents: int64(math.Round(item.Quantity * float64(item.UnitPriceCents))),
+		})
+	}
+
+	return EnrichedReceipt{
+		ReceiptID:    rcpt.ReceiptID,
+		MerchantID:   rcpt.MerchantID,
+		MerchantName: merchantName(merchantMap, rcpt.MerchantID),
+		OwnerID:      rcpt.OwnerID,
+		OwnerName:    ownerName(userMap, rcpt.OwnerID),
+		Date:         rcpt.Date,
+		PhotoURL:     rcpt.PhotoURL,
+		Items:        items,
+		TotalCents:   rcpt.TotalCents,
+	}
+}
+
+// merchantName returns the merchant's name, or UnknownMerchant if the
+// lookup fails (merchant deleted, or ID never existed).
+func merchantName(m map[uint64]*domain.Merchant, id uint64) string {
+	if m, ok := m[id]; ok && m != nil {
+		return m.Name
+	}
+	return UnknownMerchant
+}
+
+// ownerName returns the user's display name, or UnknownOwner if the
+// lookup fails. See UnknownOwner for the rationale on the short string.
+func ownerName(m map[uint64]*domain.User, id uint64) string {
+	if u, ok := m[id]; ok && u != nil {
+		return u.Name
+	}
+	return UnknownOwner
 }
 
 func (r *Router) handleGetReceipt(w http.ResponseWriter, req *http.Request) {

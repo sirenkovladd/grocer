@@ -104,4 +104,10 @@ You can also write a quick scratch script in `index.html` temporarily to test th
 
 ## Decisions log
 
-_(Append decisions made during implementation. Format: `- YYYY-MM-DD: <decision> — <reason>`)_
+- 2026-07-09: **Format locale: hardcoded `"en-US"`** — per spec Risk 4, consistent across users.
+- 2026-07-09: **Relative date switch points: 7d→weeks, 30d→months, 365d→years, >365→absolute year count.** Matches spec "switch at 30 days" for the days→weeks transition. Resolved in grilling review (see `00-grill-review.md`).
+- 2026-07-09: **Future dates: fall back to absolute `formatDate`.** Prevents "−1 days ago" / "Yesterday" for timestamps ahead of now. Bug found in grill.
+- 2026-07-09: **`formatQuantity`: round to 3 decimals before stringification** — `(0.1+0.2).toString() === "0.30000000000000004"`. Clamp with `Math.round(qty*1000)/1000`. Bug found in grill.
+- 2026-07-09: **ID-accepting helpers take `string | number`, normalize to string internally.** Reason: backend returns IDs as JSON strings (`json:"...,string"`). Existing pages (tickets 07-11) must type IDs as `string` to avoid `Number.MAX_SAFE_INTEGER` precision loss. Resolved in grilling review.
+- 2026-07-09: **Add `client/utils.test.ts` with `bun test`.** Verified `bun test` runs. Tests cover all helpers including the two bug-fix edge cases (future dates, float precision).
+- 2026-07-09: **File location: `client/utils.ts` (new), as proposed.**

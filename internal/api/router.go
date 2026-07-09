@@ -63,7 +63,9 @@ func (r *Router) setupRoutes() {
 
 	// Receipts
 	r.mux.HandleFunc("GET /api/receipts", r.withCORS(r.withAuth(r.withAuditLogging("list", "receipts", r.handleListReceipts))))
+	r.mux.HandleFunc("GET /api/receipts/enriched", r.withCORS(r.withAuth(r.withAuditLogging("list", "receipts", r.handleListEnrichedReceipts))))
 	r.mux.HandleFunc("GET /api/receipts/{id}", r.withCORS(r.withAuth(r.withAuditLogging("read", "receipt", r.handleGetReceipt))))
+	r.mux.HandleFunc("GET /api/receipts/{id}/enriched", r.withCORS(r.withAuth(r.withAuditLogging("read", "receipt", r.handleGetEnrichedReceipt))))
 	r.mux.HandleFunc("POST /api/receipts/upload", r.withCORS(r.withAuth(r.withAuditLogging("upload", "receipt", r.handleUploadReceipt))))
 
 	// Proposals
@@ -90,6 +92,12 @@ func (r *Router) setupRoutes() {
 	r.mux.HandleFunc("GET /api/merchants", r.withCORS(r.withAuth(r.withAuditLogging("list", "merchants", r.handleListMerchants))))
 	r.mux.HandleFunc("POST /api/merchants", r.withCORS(r.withAuth(r.withAuditLogging("create", "merchant", r.handleCreateMerchant))))
 	r.mux.HandleFunc("PATCH /api/merchants/{id}", r.withCORS(r.withAuth(r.withAuditLogging("update", "merchant", r.handleUpdateMerchant))))
+
+	// Users
+	// Note: owner display is deferred per the UX overhaul spec. This endpoint
+	// is consumed by the client to seed a userId → name lookup map even
+	// though the UI does not display owner names yet.
+	r.mux.HandleFunc("GET /api/users", r.withCORS(r.withAuth(r.withAuditLogging("list", "users", r.handleListUsers))))
 
 	// Analysis
 	r.mux.HandleFunc("GET /api/analysis/spending", r.withCORS(r.withAuth(r.withAuditLogging("read", "analysis_spending", r.handleAnalysisSpending))))

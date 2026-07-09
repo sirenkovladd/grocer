@@ -83,4 +83,10 @@ go build ./...
 
 ## Decisions log
 
-_(Append decisions made during implementation. Format: `- YYYY-MM-DD: <decision> — <reason>`)_
+- 2026-07-09: **File location: new `internal/api/types.go`** — single file for all transport DTOs. Resolved in grilling review (see `00-grill-review.md`).
+- 2026-07-09: **Fallback strings as exported constants in `types.go`:** `UnknownMerchant = "Unknown merchant"`, `UnknownOwner = "Unknown"`, `UnknownCategory = "Uncategorized"`. Ticket 03 handlers import these.
+- 2026-07-09: **`TotalPriceCents` rounding: `int64(math.Round(quantity * unitPriceCents))`** — float truncation gives wrong answers for fractional quantities (e.g. 0.5 × 333¢ → 166¢ instead of 167¢). Documented in DTO comment, applied in ticket 03 handler.
+- 2026-07-09: **`PhotoURL` included on the list summary** — ~50 bytes per row; lets client render a placeholder if it later adds thumbnails (spec risk #8).
+- 2026-07-09: **No `currency` field** — USD-only per spec Risk 4.
+- 2026-07-09: **"Live join" semantics documented as Godoc on each DTO** — addresses spec risk #9 properly.
+- 2026-07-09: **No DTO tests** — pure data types. Ticket 03 tests exercise them via the handler round-trip.

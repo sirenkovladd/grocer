@@ -52,5 +52,9 @@ curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/users | jq
 
 ## Decisions log
 
-_(Append decisions made during implementation. Format: `- YYYY-MM-DD: <decision> — <reason>`)_
+- 2026-07-09: **Sort by `Name` ascending** — predictable for debugging, free at family scale. Resolved in grilling review (see `00-grill-review.md`).
+- 2026-07-09: **Return `domain.User` directly, no DTO wrapper** — `PasswordHash` is already tagged `json:"-"` on `internal/domain/types.go:4`. No leakage risk.
+- 2026-07-09: **Empty list must be `[]`, not `null`** — guard with `if users == nil { users = []*domain.User{} }` before `writeJSON`. Same Go pitfall will apply to ticket 03.
+- 2026-07-09: **Add three tests** — happy path (sorted, no `passwordHash` field), requires auth (401), empty returns `[]`. Pattern exists in `internal/api/api_test.go`.
+- 2026-07-09: **No pagination, no caching headers** — family scale, short-lived client cache.
 

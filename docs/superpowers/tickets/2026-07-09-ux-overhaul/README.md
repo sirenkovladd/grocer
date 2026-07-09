@@ -6,10 +6,10 @@
 
 | # | Ticket | Type | Status | Depends on |
 |---|--------|------|--------|------------|
-| 01 | [Backend: `GET /api/users`](./01-backend-users-endpoint.md) | backend | ⬜ | — |
-| 02 | [Backend: enriched receipt DTOs](./02-backend-enriched-dtos.md) | backend | ⬜ | — |
-| 03 | [Backend: enriched receipt endpoints](./03-backend-enriched-receipts-endpoint.md) | backend | ⬜ | 02 |
-| 04 | [Frontend: shared utility helpers](./04-frontend-utils.md) | frontend | ⬜ | — |
+| 01 | [Backend: `GET /api/users`](./01-backend-users-endpoint.md) | backend | ✅ | — |
+| 02 | [Backend: enriched receipt DTOs](./02-backend-enriched-dtos.md) | backend | ✅ | — |
+| 03 | [Backend: enriched receipt endpoints](./03-backend-enriched-receipts-endpoint.md) | backend | ✅ | 02 |
+| 04 | [Frontend: shared utility helpers](./04-frontend-utils.md) | frontend | ✅ | — |
 | 05 | [Frontend: new CSS](./05-frontend-css.md) | frontend | ⬜ | — |
 | 06 | [Frontend: sidebar active state](./06-frontend-sidebar-active-state.md) | frontend | ⬜ | 05 |
 | 07 | [Frontend: receipts list page](./07-frontend-receipts-list.md) | frontend | ⬜ | 01, 02, 03, 04, 05 |
