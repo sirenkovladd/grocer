@@ -234,6 +234,8 @@ const ItemDetailPage = () => {
             ? canvas({ id: "price-chart" })
             : div({ class: "empty-state" },
                 p("No purchases yet — chart will appear after the first receipt."),
+                button({ onclick: () => navigate("/receipts/upload") },
+                  "Upload a receipt"),
               ),
         ),
 

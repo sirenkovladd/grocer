@@ -336,20 +336,29 @@ const AnalysisPage = () => {
 
     () => loading.val
       ? div({ class: "loading" }, "Loading...")
-      : div({ class: "charts-grid" },
-          div({ class: "chart-container card" },
-            h2("Spending Over Time"),
-            canvas({ id: "spending-chart" }),
+      : (spendingData.val.length === 0 &&
+         categoryData.val.length === 0 &&
+         familyData.val.length === 0)
+        ? div({ class: "empty-state" },
+            h3("No data in the selected range"),
+            p("Upload a receipt, or widen the date range above."),
+            button({ onclick: () => navigate("/receipts/upload") },
+              "Upload a receipt"),
+          )
+        : div({ class: "charts-grid" },
+            div({ class: "chart-container card" },
+              h2("Spending Over Time"),
+              canvas({ id: "spending-chart" }),
+            ),
+            div({ class: "chart-container card" },
+              h2("Category Breakdown"),
+              canvas({ id: "category-chart" }),
+            ),
+            div({ class: "chart-container card" },
+              h2("Family Member Spending"),
+              canvas({ id: "family-chart" }),
+            ),
           ),
-          div({ class: "chart-container card" },
-            h2("Category Breakdown"),
-            canvas({ id: "category-chart" }),
-          ),
-          div({ class: "chart-container card" },
-            h2("Family Member Spending"),
-            canvas({ id: "family-chart" }),
-          ),
-        ),
 
     // Trips section — one card per (owner × merchant × day)
     // group, computed client-side from the enriched receipt list.
