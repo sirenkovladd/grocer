@@ -8,10 +8,16 @@ import (
 	"github.com/hashicorp/go-memdb"
 )
 
-// Transaction wraps memdb transactions and provides atomic operations
+// Transaction wraps memdb transactions and provides atomic operations.
+//
+// The wrapper takes the store write lock in BeginTransaction and releases
+// it in Commit or Abort. Callers typically pair a successful Commit with
+// a deferred Abort; the finished flag makes Abort a no-op when Commit
+// has already run, preventing the double-unlock panic.
 type Transaction struct {
-	store *Store
-	txn   *memdb.Txn
+	store    *Store
+	txn      *memdb.Txn
+	finished bool
 }
 
 // BeginTransaction starts a new transaction
@@ -23,18 +29,28 @@ func (s *Store) BeginTransaction() *Transaction {
 	}
 }
 
-// Commit commits the transaction
+// Commit commits the transaction and releases the store lock. Calling
+// Commit more than once on the same Transaction is an error.
 func (t *Transaction) Commit() error {
+	if t.finished {
+		return fmt.Errorf("transaction already finished")
+	}
+	t.finished = true
 	t.txn.Commit()
 	t.store.mu.Unlock()
-	
+
 	// Save snapshot after successful transaction
 	t.store.SaveSnapshotAsync(context.Background())
 	return nil
 }
 
-// Abort aborts the transaction
+// Abort rolls back the transaction and releases the store lock. Safe to
+// call after Commit; in that case it's a no-op.
 func (t *Transaction) Abort() {
+	if t.finished {
+		return
+	}
+	t.finished = true
 	t.txn.Abort()
 	t.store.mu.Unlock()
 }
