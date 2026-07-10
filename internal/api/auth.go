@@ -96,11 +96,6 @@ func (r *Router) handleLogin(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Cleanup all existing sessions for this user
-	if err := r.store.DeleteSessionsByUserID(user.UserID); err != nil {
-		log.Printf("Warning: Failed to cleanup sessions for user %d: %v", user.UserID, err)
-	}
-
 	// Create session token (32 random bytes)
 	token, err := generateRandomBytes(32)
 	if err != nil {

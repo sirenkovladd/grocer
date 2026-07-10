@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"cloud.google.com/go/pubsub"
@@ -39,6 +40,14 @@ type PubSubConfig struct {
 	// "snapshots/snapshot.pb.gz"). Notifications for other objects
 	// in the same bucket (e.g., photos) are ignored.
 	SnapshotObject string
+
+	// ReloadDebounce is the window during which a burst of events
+	// collapses into a single reload. A save triggers two events
+	// (OBJECT_DELETE for the old object + OBJECT_FINALIZE for the
+	// new one) within ~100ms, and Pub/Sub can also redeliver
+	// messages — without debouncing, a single user action would
+	// cause multiple reloads back-to-back. If zero, defaults to 1s.
+	ReloadDebounce time.Duration
 }
 
 // PubSubWatcher subscribes to a Pub/Sub topic and calls
@@ -88,6 +97,20 @@ type PubSubWatcher struct {
 	client       *pubsub.Client
 	objectName   string
 	subID        string
+
+	// runCtx is the long-lived context passed to Run. We keep a
+	// reference so the debounced reload timer can use it; the ctx
+	// provided to each Receive callback is bound to the message
+	// lifecycle and gets cancelled when the message is acked, so
+	// it's not safe to use for deferred work.
+	runCtx context.Context
+
+	// Debounce state for reloads. A burst of N events within the
+	// debounce window collapses into a single reload that fires
+	// after the last event. See scheduleReload.
+	reloadMu       sync.Mutex
+	reloadTimer    *time.Timer
+	reloadDebounce time.Duration
 }
 
 // NewPubSubWatcher creates a Pub/Sub subscriber wired to the given
@@ -163,12 +186,18 @@ func NewPubSubWatcher(ctx context.Context, cfg PubSubConfig, store *Store) (*Pub
 		log.Printf("PubSubWatcher: using existing subscription %q on topic %q", subID, cfg.TopicID)
 	}
 
+	debounce := cfg.ReloadDebounce
+	if debounce <= 0 {
+		debounce = 1 * time.Second
+	}
+
 	return &PubSubWatcher{
-		store:        store,
-		subscription: sub,
-		client:       client,
-		objectName:   cfg.SnapshotObject,
-		subID:        subID,
+		store:          store,
+		subscription:   sub,
+		client:         client,
+		objectName:     cfg.SnapshotObject,
+		subID:          subID,
+		reloadDebounce: debounce,
 	}, nil
 }
 
@@ -188,7 +217,8 @@ type gcsNotification struct {
 // Each delivery filters on the object name, so unrelated events
 // (e.g., photo uploads) are acked and ignored.
 func (w *PubSubWatcher) Run(ctx context.Context) error {
-	log.Printf("PubSubWatcher: started, watching object=%q (subscription=%q)", w.objectName, w.subID)
+	w.runCtx = ctx
+	log.Printf("PubSubWatcher: started, watching object=%q (subscription=%q, debounce=%s)", w.objectName, w.subID, w.reloadDebounce)
 	defer log.Printf("PubSubWatcher: stopped")
 
 	return w.subscription.Receive(ctx, func(ctx context.Context, msg *pubsub.Message) {
@@ -217,23 +247,53 @@ func (w *PubSubWatcher) Run(ctx context.Context) error {
 
 		switch eventType {
 		case "OBJECT_FINALIZE":
-			if err := w.store.ReloadSnapshot(ctx); err != nil {
-				log.Printf("PubSubWatcher: reload failed: %v", err)
-			}
+			w.scheduleReload(ctx)
 		case "OBJECT_DELETE":
-			// Snapshot was deleted in GCS. ReloadSnapshot already
-			// handles this gracefully (preserves local state).
-			log.Printf("PubSubWatcher: snapshot deleted in GCS")
-			_ = w.store.ReloadSnapshot(ctx)
+			// Snapshot was deleted in GCS. We don't reload here:
+			// the snapshot is gone, so pulling would be a no-op.
+			// If the file is re-uploaded, the matching
+			// OBJECT_FINALIZE that follows will trigger a reload.
+			log.Printf("PubSubWatcher: snapshot deleted in GCS (will reload on matching OBJECT_FINALIZE if it reappears)")
 		default:
 			// OBJECT_METADATA_UPDATE / OBJECT_ARCHIVE: not relevant.
 		}
 	})
 }
 
-// Close releases the underlying Pub/Sub client. Call this to
-// cleanly shut down; the Run goroutine exits when its context is
-// cancelled, not when Close is called.
+// scheduleReload triggers a ReloadSnapshot after the configured
+// debounce window. Multiple calls within the window collapse into
+// a single reload that runs after the last call. This absorbs
+// the natural burst that comes with a single GCS write (one
+// OBJECT_DELETE for the old object + one OBJECT_FINALIZE for the
+// new) and any Pub/Sub at-least-once redeliveries.
+func (w *PubSubWatcher) scheduleReload(ctx context.Context) {
+	w.reloadMu.Lock()
+	defer w.reloadMu.Unlock()
+
+	if w.reloadTimer != nil {
+		w.reloadTimer.Stop()
+	}
+	w.reloadTimer = time.AfterFunc(w.reloadDebounce, func() {
+		// Use the long-lived runCtx, not the callback's ctx —
+		// the callback's ctx is cancelled when the message is
+		// acked, which happens before this timer fires.
+		if err := w.store.ReloadSnapshot(w.runCtx); err != nil {
+			log.Printf("PubSubWatcher: reload failed: %v", err)
+		}
+	})
+	log.Printf("PubSubWatcher: reload scheduled in %s", w.reloadDebounce)
+}
+
+// Close releases the underlying Pub/Sub client and cancels any
+// pending debounced reload. Call this to cleanly shut down; the
+// Run goroutine exits when its context is cancelled, not when
+// Close is called.
 func (w *PubSubWatcher) Close() error {
+	w.reloadMu.Lock()
+	if w.reloadTimer != nil {
+		w.reloadTimer.Stop()
+		w.reloadTimer = nil
+	}
+	w.reloadMu.Unlock()
 	return w.client.Close()
 }

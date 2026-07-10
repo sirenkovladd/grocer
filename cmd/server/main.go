@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"cloud.google.com/go/storage"
 	"code.sirenko.ca/grocer/internal/api"
@@ -88,12 +89,22 @@ func main() {
 		// fails — it just falls back to the old "sync on restart"
 		// behavior.
 		if pubsubTopic := os.Getenv("GCS_PUBSUB_TOPIC"); pubsubTopic != "" {
+			reloadDebounce := time.Second // default
+			if d := os.Getenv("GCS_PUBSUB_RELOAD_DEBOUNCE"); d != "" {
+				if parsed, err := time.ParseDuration(d); err == nil && parsed > 0 {
+					reloadDebounce = parsed
+				} else {
+					log.Printf("Warning: invalid GCS_PUBSUB_RELOAD_DEBOUNCE=%q (want Go duration like 1s, 500ms); using default %s", d, reloadDebounce)
+				}
+			}
+
 			watcher, err := store.NewPubSubWatcher(ctx, store.PubSubConfig{
 				ProjectID:       os.Getenv("GCP_PROJECT_ID"),
 				CredentialsFile: gcsCredsFile,
 				TopicID:         pubsubTopic,
 				SubscriptionID:  os.Getenv("GCS_PUBSUB_SUBSCRIPTION"),
 				SnapshotObject:  gcs.ObjectName(),
+				ReloadDebounce:  reloadDebounce,
 			}, s)
 			if err != nil {
 				log.Printf("Warning: failed to create Pub/Sub snapshot watcher: %v (server will only sync on restart)", err)
