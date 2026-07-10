@@ -262,21 +262,37 @@ const MerchantsPage = () => {
                     // child so reading merchants.val is scoped
                     // here, not the surrounding App function-child
                     // (VanJS dep-tracking gotcha).
-                    () => select({
-                      value: () => mergeTarget.val[m.merchantId] ?? "",
-                      onchange: (e: Event) => {
-                        const v = (e.target as HTMLSelectElement).value
-                        mergeTarget.val = { ...mergeTarget.val, [m.merchantId]: v }
+                    //
+                    // The matching <option> is marked selected at
+                    // render time: setting select.value before the
+                    // <option> children are appended doesn't work,
+                    // because the browser records the value at
+                    // element-creation time and doesn't re-check it
+                    // when options are added. Marking the matching
+                    // option as selected makes the browser respect
+                    // the choice regardless of child-append order.
+                    // Same fix as the receipt edit-mode select.
+                    () => {
+                      const currentValue = mergeTarget.val[m.merchantId] ?? ""
+                      return select({
+                        value: currentValue,
+                        onchange: (e: Event) => {
+                          const v = (e.target as HTMLSelectElement).value
+                          mergeTarget.val = { ...mergeTarget.val, [m.merchantId]: v }
+                        },
+                        disabled: () => deletingId.val === m.merchantId || mergingKey.val !== "",
+                        class: "merge-target-picker",
+                        "aria-label": `Merge target for ${m.name}`,
                       },
-                      disabled: () => deletingId.val === m.merchantId || mergingKey.val !== "",
-                      class: "merge-target-picker",
-                      "aria-label": `Merge target for ${m.name}`,
+                        option({ value: "", selected: currentValue === "" }, "Merge into…"),
+                        ...otherMerchants.map(other =>
+                          option({
+                            value: other.merchantId,
+                            selected: other.merchantId === currentValue,
+                          }, other.name),
+                        ),
+                      )
                     },
-                      option({ value: "" }, "Merge into…"),
-                      ...otherMerchants.map(other =>
-                        option({ value: other.merchantId }, other.name),
-                      ),
-                    ),
                     button({
                       class: "btn-sm btn-secondary",
                       onclick: () => handleMerge(m, mergeTarget.val[m.merchantId] ?? ""),
