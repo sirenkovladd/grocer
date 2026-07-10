@@ -192,11 +192,31 @@ func parseDateInTimezone(s string, tz *time.Location) (time.Time, error) {
 		tz = time.UTC
 	}
 
-	// Full datetimes first — they include their own timezone offset
-	// when present (RFC 3339), so tz is ignored for these.
-	fullFormats := []string{time.RFC3339, time.RFC3339Nano, "2006-01-02T15:04:05"}
-	for _, f := range fullFormats {
+	// Full datetimes first. RFC 3339 / RFC 3339 Nano carry their own
+	// timezone offset, so tz is ignored for these (the LLM might
+	// include "Z" or "+07:00" if it knows the offset). Receipts more
+	// commonly print the transaction time in the store's local
+	// timezone without any offset ("07/08/2026 20:42:30"), so for
+	// non-RFC3339 formats we interpret the time in tz (the user's
+	// local timezone, which for a family in one tz is the same as
+	// the store's). Using time.Parse (without a location) would
+	// silently treat these as UTC, shifting the displayed time by
+	// the user's UTC offset.
+	offsetFormats := []string{time.RFC3339, time.RFC3339Nano}
+	for _, f := range offsetFormats {
 		if t, err := time.Parse(f, s); err == nil {
+			return t, nil
+		}
+	}
+	localFormats := []string{
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05",
+		"01/02/2006 15:04:05",
+		"01/02/2006 3:04:05 PM",
+		"2006-01-02 3:04:05 PM",
+	}
+	for _, f := range localFormats {
+		if t, err := time.ParseInLocation(f, s, tz); err == nil {
 			return t, nil
 		}
 	}
@@ -287,6 +307,11 @@ EXCLUDE entirely (these are not items, not prices, do not emit them):
 GENERAL:
 - quantity can be a decimal for weighted items (e.g. 0.875 for 875g).
 - If unsure about a line, skip it rather than guess.
+
+DATE/TIME EXTRACTION:
+- Extract the date AND time from the receipt if a time is printed (e.g. "DATE/TIME: 07/08/2026 20:42:30", "2026-08-07 8:42 PM"). The time is usually on the transaction record line at the bottom. Output as "YYYY-MM-DDTHH:MM:SS" (24-hour, zero-padded). Example: 07/08/2026 20:42:30 → "2026-08-07T20:42:30".
+- If the receipt only shows a date (no time anywhere), output "YYYY-MM-DD" with no time component. The backend will anchor it to noon in the user's local timezone to keep the calendar date correct.
+- Do NOT invent a time if the receipt doesn't print one. Omit the time component instead of guessing.
 - Return ONLY the JSON, no other text.`
 
 // buildReceiptPrompt builds the prompt for receipt parsing
@@ -294,7 +319,7 @@ func buildReceiptPrompt() string {
 	return `Analyze this grocery receipt photo and extract the following information in JSON format:
 {
   "merchant": "store name",
-  "date": "YYYY-MM-DD",
+  "date": "YYYY-MM-DDTHH:MM:SS",
   "items": [
     {
       "name": "item name as shown on receipt",
@@ -342,7 +367,7 @@ func buildReceiptFromTextPrompt(ocr *OCRResult) string {
 	sb.WriteString("Extract the structured receipt data as JSON:\n")
 	sb.WriteString("{\n")
 	sb.WriteString(`  "merchant": "store name",` + "\n")
-	sb.WriteString(`  "date": "YYYY-MM-DD",` + "\n")
+	sb.WriteString(`  "date": "YYYY-MM-DDTHH:MM:SS",` + "\n")
 	sb.WriteString(`  "items": [` + "\n")
 	sb.WriteString("    {\n")
 	sb.WriteString(`      "name": "item name as shown on receipt",` + "\n")

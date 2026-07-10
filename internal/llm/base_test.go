@@ -3,6 +3,7 @@ package llm
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestBuildReceiptFromTextPrompt_WithAnnotation verifies that when the
@@ -168,5 +169,85 @@ func TestReceiptPromptsContainCriticalRules(t *testing.T) {
 		if !strings.Contains(imagePrompt, rule) {
 			t.Errorf("image prompt missing rule %q", rule)
 		}
+	}
+}
+
+// TestParseDateInTimezone_FullDatetimeInUserTZ verifies that a full
+// datetime without a timezone offset (the common case for LLM
+// responses and OCR text) is interpreted in the user's local
+// timezone, not silently in UTC. The receipt's printed transaction
+// time is the store's local wall-clock time; for a family in one
+// timezone that's the same as the user's tz, so anchoring the bare
+// datetime to tz preserves the visible time on screen.
+//
+// Regression test for the case where "2026-08-07 20:42:30" was
+// being parsed as UTC and then displayed as 13:42:30 PDT (7 hours
+// off) because time.Parse defaults to UTC for formats without an
+// offset.
+func TestParseDateInTimezone_FullDatetimeInUserTZ(t *testing.T) {
+	pdt, err := time.LoadLocation("America/Los_Angeles")
+	if err != nil {
+		t.Skipf("can't load PDT tz: %v", err)
+	}
+
+	// "2026-08-07T20:42:30" (no offset) in PDT → 20:42:30 PDT
+	got, err := parseDateInTimezone("2026-08-07T20:42:30", pdt)
+	if err != nil {
+		t.Fatalf("parseDateInTimezone: %v", err)
+	}
+	if got.Hour() != 20 || got.Minute() != 42 || got.Second() != 30 {
+		t.Errorf("wall clock: got %02d:%02d:%02d, want 20:42:30", got.Hour(), got.Minute(), got.Second())
+	}
+	// Unix: 2026-08-07 20:42:30 PDT = 2026-08-08 03:42:30 UTC
+	if got.Unix() != 1786160550 {
+		t.Errorf("Unix: got %d, want 1786160550", got.Unix())
+	}
+
+	// Same wall clock time in UTC tz should give a different Unix
+	// instant (interpreted as UTC, not PDT). This proves the tz
+	// parameter is being honored.
+	utc := time.UTC
+	gotUTC, err := parseDateInTimezone("2026-08-07T20:42:30", utc)
+	if err != nil {
+		t.Fatalf("parseDateInTimezone UTC: %v", err)
+	}
+	if gotUTC.Unix() == got.Unix() {
+		t.Errorf("tz ignored: PDT and UTC produced same Unix %d", got.Unix())
+	}
+	if gotUTC.Unix() != 1786135350 {
+		t.Errorf("UTC Unix: got %d, want 1786135350", gotUTC.Unix())
+	}
+}
+
+// TestParseDateInTimezone_RFC3339CarriesItsOwnOffset verifies that
+// RFC 3339 datetimes (which include their own timezone offset) are
+// parsed as-is, ignoring the tz parameter.
+func TestParseDateInTimezone_RFC3339CarriesItsOwnOffset(t *testing.T) {
+	pdt, _ := time.LoadLocation("America/Los_Angeles")
+	utc := time.UTC
+
+	// "2026-08-07T20:42:30Z" → 20:42:30 UTC regardless of tz arg
+	for _, tz := range []*time.Location{pdt, utc, nil} {
+		got, err := parseDateInTimezone("2026-08-07T20:42:30Z", tz)
+		if err != nil {
+			t.Fatalf("parseDateInTimezone: %v", err)
+		}
+		if got.UTC().Hour() != 20 || got.UTC().Minute() != 42 {
+			t.Errorf("RFC 3339 UTC: got %02d:%02d, want 20:42", got.UTC().Hour(), got.UTC().Minute())
+		}
+	}
+}
+
+// TestParseDateInTimezone_DateOnlyAnchoredToNoon verifies the
+// original day-shift fix: a date-only string is anchored to noon
+// in tz so the calendar date is correct in every timezone.
+func TestParseDateInTimezone_DateOnlyAnchoredToNoon(t *testing.T) {
+	pdt, _ := time.LoadLocation("America/Los_Angeles")
+	got, err := parseDateInTimezone("2026-08-07", pdt)
+	if err != nil {
+		t.Fatalf("parseDateInTimezone: %v", err)
+	}
+	if got.Hour() != 12 || got.Minute() != 0 {
+		t.Errorf("date-only anchor: got %02d:%02d, want 12:00", got.Hour(), got.Minute())
 	}
 }
