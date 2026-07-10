@@ -219,6 +219,12 @@ func buildReceiptPrompt() string {
 // buildReceiptFromTextPrompt is the second-stage prompt used after OCR has
 // already extracted text. The model receives the OCR markdown and produces
 // the same JSON shape as buildReceiptPrompt.
+//
+// When the OCR engine provides a pre-extracted AnnotatedReceipt (Mistral's
+// document_annotation_format), it is rendered as a readable block above
+// the full OCR text so the LLM can use it as a primary source and
+// cross-check against the markdown. Falls back to markdown-only if no
+// annotation is present.
 func buildReceiptFromTextPrompt(ocr *OCRResult) string {
 	var sb strings.Builder
 	sb.WriteString("Below is OCR-extracted text from a grocery receipt.\n\n")
@@ -231,6 +237,11 @@ func buildReceiptFromTextPrompt(ocr *OCRResult) string {
 		sb.WriteString("FOOTER (likely totals/tax):\n")
 		sb.WriteString(ocr.Footer)
 		sb.WriteString("\n\n")
+	}
+	if ocr.Annotated != nil {
+		sb.WriteString("PRE-EXTRACTED STRUCTURE (use as primary source; cross-check against the full OCR text below):\n")
+		sb.WriteString(formatAnnotatedReceipt(ocr.Annotated))
+		sb.WriteString("\n")
 	}
 	sb.WriteString("FULL OCR TEXT:\n")
 	sb.WriteString(ocr.Markdown)
@@ -250,6 +261,51 @@ func buildReceiptFromTextPrompt(ocr *OCRResult) string {
 	sb.WriteString(`  "total": 25.99` + "\n")
 	sb.WriteString("}\n\n")
 	sb.WriteString(receiptParsingRules)
+	return sb.String()
+}
+
+// formatAnnotatedReceipt renders the pre-extracted structure as a
+// readable text block. Natural-language format (not JSON) because LLMs
+// parse embedded JSON-in-prose less reliably than natural-language
+// descriptions with explicit item references.
+func formatAnnotatedReceipt(ann *AnnotatedReceipt) string {
+	var sb strings.Builder
+	if ann.Merchant != "" {
+		fmt.Fprintf(&sb, "Merchant: %s\n", ann.Merchant)
+	}
+	if ann.Date != "" {
+		fmt.Fprintf(&sb, "Date: %s\n", ann.Date)
+	}
+	if len(ann.LineItems) > 0 {
+		sb.WriteString("\nLine items (in order they appear on the receipt):\n")
+		for i, item := range ann.LineItems {
+			fmt.Fprintf(&sb, "  %d. %s — printed price: %s\n", i+1, item.Name, item.PriceText)
+		}
+	} else {
+		sb.WriteString("\nLine items: (none detected)\n")
+	}
+	if len(ann.Modifiers) > 0 {
+		sb.WriteString("\nModifier lines (apply to a specific item above; do NOT output as separate items):\n")
+		for _, m := range ann.Modifiers {
+			if m.AppliesToIndex >= 0 {
+				fmt.Fprintf(&sb, "  - Item %d: %q [kind: %s]\n", m.AppliesToIndex+1, m.Text, m.Kind)
+			} else {
+				fmt.Fprintf(&sb, "  - (unattached): %q [kind: %s]\n", m.Text, m.Kind)
+			}
+		}
+	}
+	if ann.Totals.SubtotalText != "" || ann.Totals.TaxText != "" || ann.Totals.TotalText != "" {
+		sb.WriteString("\nTotals:\n")
+		if ann.Totals.SubtotalText != "" {
+			fmt.Fprintf(&sb, "  Subtotal: %s\n", ann.Totals.SubtotalText)
+		}
+		if ann.Totals.TaxText != "" {
+			fmt.Fprintf(&sb, "  Tax: %s\n", ann.Totals.TaxText)
+		}
+		if ann.Totals.TotalText != "" {
+			fmt.Fprintf(&sb, "  Total: %s\n", ann.Totals.TotalText)
+		}
+	}
 	return sb.String()
 }
 

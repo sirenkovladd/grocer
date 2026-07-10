@@ -17,7 +17,10 @@ type OCREngine interface {
 
 // OCRResult is the structured output of an OCREngine. Markdown is the canonical
 // text used as input to the downstream LLM extraction step. Pages preserves
-// per-page metadata for clients that want it.
+// per-page metadata for clients that want it. Annotated, when non-nil, is a
+// pre-structured view of the receipt (line items, modifier lines, totals)
+// produced by Mistral's document_annotation_format — the downstream LLM
+// receives this alongside the markdown to reduce re-parsing work.
 type OCRResult struct {
 	Markdown      string
 	Pages         []OCRPage
@@ -27,6 +30,48 @@ type OCRResult struct {
 	Footer        string
 	MinConfidence float64
 	Model         string
+	Annotated     *AnnotatedReceipt
+}
+
+// AnnotatedReceipt is the structured extraction from Mistral's
+// document_annotation_format. It pre-segments the receipt into line items,
+// modifier lines, and totals so the downstream LLM doesn't have to
+// re-derive this structure from markdown.
+//
+// All price/date fields are intentionally raw strings (printed price,
+// printed total) rather than parsed values. Parsing is the LLM's job —
+// OCR can misread "$1.78" as "1.78" or "1,78" or "I.78" and we want the
+// LLM to apply the same "copy exactly as printed" rule it already uses
+// for the markdown path. Empty strings mean "not present on this receipt".
+type AnnotatedReceipt struct {
+	Merchant  string              `json:"merchant"`
+	Date      string              `json:"transaction_date"`
+	LineItems []AnnotatedLineItem `json:"line_items"`
+	Modifiers []AnnotatedModifier `json:"modifiers"`
+	Totals    AnnotatedTotals     `json:"totals"`
+}
+
+// AnnotatedLineItem is a single purchased item, segmented by Mistral.
+type AnnotatedLineItem struct {
+	Name      string `json:"name"`
+	PriceText string `json:"price_text"`
+}
+
+// AnnotatedModifier is a non-item line that attaches to a previous line
+// item (discounts, deposits, weight/unit price info). The Kind taxonomy
+// mirrors the rules in receiptParsingRules.
+type AnnotatedModifier struct {
+	Text           string `json:"text"`
+	Kind           string `json:"kind"` // "discount", "deposit", "recycle_fee", "weight_unit_price", "unknown"
+	AppliesToIndex int    `json:"applies_to_index"` // -1 if unattached
+}
+
+// AnnotatedTotals is the totals block at the bottom of the receipt.
+// All fields are raw, printed strings; empty means "not present".
+type AnnotatedTotals struct {
+	SubtotalText string `json:"subtotal_text"`
+	TaxText      string `json:"tax_text"`
+	TotalText    string `json:"total_text"`
 }
 
 type OCRPage struct {

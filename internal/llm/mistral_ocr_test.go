@@ -49,6 +49,20 @@ func TestMistralOCR_Extract(t *testing.T) {
 				}
 			],
 			"model": "mistral-ocr-4-0",
+			"document_annotation": {
+				"merchant": "Walmart",
+				"transaction_date": "2026-07-10",
+				"line_items": [
+					{"name": "BANANAS ORG", "price_text": "1.78"},
+					{"name": "MILK 2%", "price_text": "4.49"}
+				],
+				"modifiers": [],
+				"totals": {
+					"subtotal_text": "6.27",
+					"tax_text": "",
+					"total_text": "6.27"
+				}
+			},
 			"usage_info": {"pages_processed": 1}
 		}`))
 	}))
@@ -74,13 +88,22 @@ func TestMistralOCR_Extract(t *testing.T) {
 	// Verify required flags are in the request
 	for _, want := range []string{
 		`"include_blocks":true`,
-		`"table_format":"markdown"`,
+		`"table_format":"null"`,
 		`"extract_header":true`,
 		`"extract_footer":true`,
 		`"confidence_scores_granularity":"word"`,
 		`"model":"mistral-ocr-4-0"`,
 		`"type":"image_url"`,
 		`"image_url":"data:image/jpeg;base64,ZmFrZS1qcGVnLWJ5dGVz"`,
+		// document_annotation_format is sent so the API also returns
+		// pre-segmented line items, modifiers, and totals.
+		`"document_annotation_format":{`,
+		`"type":"json_schema"`,
+		`"name":"receipt_annotation"`,
+		`"strict":true`,
+		`"line_items"`,
+		`"price_text"`,
+		`"applies_to_index"`,
 	} {
 		if !strings.Contains(gotBody, want) {
 			t.Errorf("request body missing %s\nbody: %s", want, gotBody)
@@ -113,6 +136,29 @@ func TestMistralOCR_Extract(t *testing.T) {
 	if result.MinConfidence < 0.81 || result.MinConfidence > 0.83 {
 		t.Errorf("MinConfidence: got %f, want ~0.82", result.MinConfidence)
 	}
+
+	// Verify document_annotation was parsed into the typed AnnotatedReceipt
+	if result.Annotated == nil {
+		t.Fatal("Annotated: got nil, want non-nil")
+	}
+	if result.Annotated.Merchant != "Walmart" {
+		t.Errorf("Annotated.Merchant: got %q, want %q", result.Annotated.Merchant, "Walmart")
+	}
+	if result.Annotated.Date != "2026-07-10" {
+		t.Errorf("Annotated.Date: got %q, want %q", result.Annotated.Date, "2026-07-10")
+	}
+	if len(result.Annotated.LineItems) != 2 {
+		t.Fatalf("Annotated.LineItems: got %d, want 2", len(result.Annotated.LineItems))
+	}
+	if result.Annotated.LineItems[0].Name != "BANANAS ORG" || result.Annotated.LineItems[0].PriceText != "1.78" {
+		t.Errorf("Annotated.LineItems[0]: got %+v", result.Annotated.LineItems[0])
+	}
+	if result.Annotated.LineItems[1].Name != "MILK 2%" || result.Annotated.LineItems[1].PriceText != "4.49" {
+		t.Errorf("Annotated.LineItems[1]: got %+v", result.Annotated.LineItems[1])
+	}
+	if result.Annotated.Totals.TotalText != "6.27" {
+		t.Errorf("Annotated.Totals.TotalText: got %q, want %q", result.Annotated.Totals.TotalText, "6.27")
+	}
 }
 
 // TestMistralOCR_EmptyPhoto verifies that empty input is rejected.
@@ -121,6 +167,70 @@ func TestMistralOCR_EmptyPhoto(t *testing.T) {
 	_, err := ocr.Extract(context.Background(), nil, "image/jpeg")
 	if err == nil {
 		t.Fatal("expected error for empty photo")
+	}
+}
+
+// TestMistralOCR_NoAnnotationInResponse verifies graceful degradation when
+// the API doesn't return a document_annotation field (older models, or
+// when the model returns null). The result should still be usable; just
+// without the pre-extracted structure.
+func TestMistralOCR_NoAnnotationInResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// No document_annotation field in response.
+		_, _ = w.Write([]byte(`{
+			"pages": [{"index": 0, "markdown": "Walmart\nBANANAS  1.78\nTOTAL 1.78"}],
+			"model": "mistral-ocr-4-0",
+			"usage_info": {"pages_processed": 1}
+		}`))
+	}))
+	defer srv.Close()
+
+	ocr := &MistralOCR{
+		apiKey:  "test-key",
+		model:   "mistral-ocr-4-0",
+		baseURL: srv.URL,
+		client:  srv.Client(),
+	}
+
+	result, err := ocr.Extract(context.Background(), []byte("fake-jpeg"), "image/jpeg")
+	if err != nil {
+		t.Fatalf("Extract failed: %v", err)
+	}
+	if result.Annotated != nil {
+		t.Errorf("Annotated: got %+v, want nil (no annotation in response)", result.Annotated)
+	}
+	if !strings.Contains(result.Markdown, "BANANAS") {
+		t.Errorf("Markdown should still be populated, got %q", result.Markdown)
+	}
+}
+
+// TestMistralOCR_NullAnnotationInResponse verifies that an explicit null
+// document_annotation (rather than absent) is treated the same as absent.
+func TestMistralOCR_NullAnnotationInResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"pages": [{"index": 0, "markdown": "x"}],
+			"model": "mistral-ocr-4-0",
+			"document_annotation": null,
+			"usage_info": {"pages_processed": 1}
+		}`))
+	}))
+	defer srv.Close()
+
+	ocr := &MistralOCR{
+		apiKey:  "test-key",
+		model:   "mistral-ocr-4-0",
+		baseURL: srv.URL,
+		client:  srv.Client(),
+	}
+	result, err := ocr.Extract(context.Background(), []byte("fake-jpeg"), "image/jpeg")
+	if err != nil {
+		t.Fatalf("Extract failed: %v", err)
+	}
+	if result.Annotated != nil {
+		t.Errorf("Annotated: got %+v, want nil (null annotation in response)", result.Annotated)
 	}
 }
 
