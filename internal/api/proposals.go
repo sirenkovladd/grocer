@@ -125,12 +125,18 @@ func (r *Router) handleProposalStream(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	// Clear replay buffer — snapshot already includes all persisted items
-	r.eventHub.ClearReplay(id)
-
-	// Subscribe to live events
+	// Subscribe FIRST, then clear the replay buffer. The race we're
+	// avoiding: the parser can finish (publishing the "done" event
+	// to the replay buffer) between our GetProposal above and our
+	// Subscribe here. If we cleared the buffer before subscribing,
+	// the "done" event would be silently dropped and the client would
+	// be stuck on the loading state forever. Subscribe replays the
+	// buffer to the new subscriber, so clearing afterwards is safe
+	// (and prevents future events from being buffered for a parse
+	// that already completed).
 	ch := r.eventHub.Subscribe(id)
 	defer r.eventHub.Unsubscribe(id, ch)
+	r.eventHub.ClearReplay(id)
 
 	ctx := req.Context()
 	for {
