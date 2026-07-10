@@ -25,7 +25,17 @@ import (
 	"google.golang.org/api/option"
 )
 
+// Build metadata. Overridden at build time via -ldflags:
+//   -X 'main.GitCommit=...' -X 'main.BuildTime=...'
+// See deploy.sh.
+var (
+	GitCommit = "unknown"
+	BuildTime = "unknown"
+)
+
 func main() {
+	log.Printf("grocer %s (built %s)", GitCommit, BuildTime)
+
 	// Flags
 	createUser := flag.Bool("create-user", false, "Create a new user")
 	name := flag.String("name", "", "User's display name")
