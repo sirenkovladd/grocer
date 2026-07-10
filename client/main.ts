@@ -284,17 +284,23 @@ const routeName = (path: string): string => {
 }
 
 const PageContent = (path: string) => {
-  if (path === "/receipts") return ReceiptsPage()
-  if (path === "/receipts/upload") return UploadPage()
-  if (path === "/receipts/manual") return ManualReceiptPage()
-  if (path.startsWith("/receipts/")) return ReceiptDetailPage()
-  if (path.startsWith("/proposals/")) return ProposalDetailPage()
-  if (path === "/items") return ItemsPage()
-  if (path === "/items/merge") return MergeItemsPage()
-  if (path.startsWith("/items/")) return ItemDetailPage()
-  if (path === "/merchants") return MerchantsPage()
-  if (path === "/categories") return CategoriesPage()
-  if (path === "/analysis") return AnalysisPage()
+  // Strip the query string for route matching. Pages that care about
+  // query params (e.g. the receipts page reading ?item=) read them
+  // from the raw `path` / window.location.hash themselves. The router
+  // only needs the path portion to pick the component.
+  const routePath = path.split("?")[0]
+
+  if (routePath === "/receipts") return ReceiptsPage()
+  if (routePath === "/receipts/upload") return UploadPage()
+  if (routePath === "/receipts/manual") return ManualReceiptPage()
+  if (routePath.startsWith("/receipts/")) return ReceiptDetailPage()
+  if (routePath.startsWith("/proposals/")) return ProposalDetailPage()
+  if (routePath === "/items") return ItemsPage()
+  if (routePath === "/items/merge") return MergeItemsPage()
+  if (routePath.startsWith("/items/")) return ItemDetailPage()
+  if (routePath === "/merchants") return MerchantsPage()
+  if (routePath === "/categories") return CategoriesPage()
+  if (routePath === "/analysis") return AnalysisPage()
   return div("404 - Page not found")
 }
 

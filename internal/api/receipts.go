@@ -25,6 +25,7 @@ func (r *Router) handleListReceipts(w http.ResponseWriter, req *http.Request) {
 	to := req.URL.Query().Get("to")
 	owner := req.URL.Query().Get("owner")
 	category := req.URL.Query().Get("category")
+	item := req.URL.Query().Get("item")
 
 	receipts, err := r.store.ListReceipts()
 	if err != nil {
@@ -32,7 +33,7 @@ func (r *Router) handleListReceipts(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	filtered := r.filterReceipts(receipts, from, to, owner, category)
+	filtered := r.filterReceipts(receipts, from, to, owner, category, item)
 	writeJSON(w, http.StatusOK, filtered)
 }
 
@@ -43,12 +44,13 @@ func (r *Router) handleListReceipts(w http.ResponseWriter, req *http.Request) {
 //	to   (YYYY-MM-DD)      — receipt.Date <= toDate
 //	owner (numeric ID)     — receipt.OwnerID == ownerID
 //	category (numeric ID)  — receipt has any item with item.CategoryID == categoryID
+//	item    (numeric ID)   — receipt has any line item with item.ItemID == itemID
 //
 // A malformed filter value is silently ignored, matching the existing
 // /api/receipts contract (see ticket 03, open question on date
 // validation). Filter results are always non-nil so the caller can rely
 // on a `[]` JSON array for empty results.
-func (r *Router) filterReceipts(receipts []*domain.Receipt, from, to, owner, category string) []*domain.Receipt {
+func (r *Router) filterReceipts(receipts []*domain.Receipt, from, to, owner, category, item string) []*domain.Receipt {
 	if receipts == nil {
 		return []*domain.Receipt{}
 	}
@@ -97,6 +99,30 @@ func (r *Router) filterReceipts(receipts []*domain.Receipt, from, to, owner, cat
 			for _, rcpt := range receipts {
 				for _, item := range rcpt.Items {
 					if itemObj, ok := itemMap[item.ItemID]; ok && itemObj.CategoryID == categoryID {
+						result = append(result, rcpt)
+						break
+					}
+				}
+			}
+			receipts = result
+		}
+	}
+
+	if item != "" {
+		if itemID, err := strconv.ParseUint(item, 10, 64); err == nil {
+			// The item filter only needs to check the line items on each
+			// receipt — no need to batch-load the item catalog the way
+			// the category filter does. A receipt matches if any of its
+			// line items references the target item, regardless of
+			// whether the item still exists in the catalog (an item
+			// could have been deleted via a merge but its line items
+			// retargeted to a different item; if the catalog entry
+			// disappears entirely, the line items keep their last-known
+			// ID and this filter still finds them).
+			result := make([]*domain.Receipt, 0, len(receipts))
+			for _, rcpt := range receipts {
+				for _, lineItem := range rcpt.Items {
+					if lineItem.ItemID == itemID {
 						result = append(result, rcpt)
 						break
 					}
@@ -171,7 +197,7 @@ func (r *Router) loadCategoryMap() (map[uint64]*domain.Category, error) {
 
 // handleListEnrichedReceipts returns a list of EnrichedReceiptSummary
 // sorted by date descending (newest first). Supports the same query
-// parameters as handleListReceipts (from, to, owner, category).
+// parameters as handleListReceipts (from, to, owner, category, item).
 //
 // Lookup data (merchants, users) is batch-loaded in one pass; no N+1.
 func (r *Router) handleListEnrichedReceipts(w http.ResponseWriter, req *http.Request) {
@@ -179,6 +205,7 @@ func (r *Router) handleListEnrichedReceipts(w http.ResponseWriter, req *http.Req
 	to := req.URL.Query().Get("to")
 	owner := req.URL.Query().Get("owner")
 	category := req.URL.Query().Get("category")
+	item := req.URL.Query().Get("item")
 
 	receipts, err := r.store.ListReceipts()
 	if err != nil {
@@ -186,7 +213,7 @@ func (r *Router) handleListEnrichedReceipts(w http.ResponseWriter, req *http.Req
 		return
 	}
 
-	filtered := r.filterReceipts(receipts, from, to, owner, category)
+	filtered := r.filterReceipts(receipts, from, to, owner, category, item)
 
 	// Newest first — home/receipts pages want recent activity at the top.
 	sort.Slice(filtered, func(i, j int) bool {

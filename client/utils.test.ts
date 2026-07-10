@@ -8,6 +8,8 @@ import {
   shortId,
   indexBy,
   getUserTimezone,
+  splitHashPath,
+  parseHashQuery,
 } from "./utils"
 
 describe("formatMoney", () => {
@@ -168,5 +170,57 @@ describe("getUserTimezone", () => {
     // "UTC" (the fallback). Anything else would mean Intl isn't
     // behaving as expected.
     expect(tz === "UTC" || tz.includes("/")).toBe(true)
+  })
+})
+
+describe("splitHashPath", () => {
+  test("no query string", () => {
+    expect(splitHashPath("/receipts")).toEqual({ path: "/receipts", query: "" })
+  })
+  test("with single param", () => {
+    expect(splitHashPath("/receipts?item=123")).toEqual({
+      path: "/receipts", query: "item=123",
+    })
+  })
+  test("with multiple params", () => {
+    expect(splitHashPath("/receipts?item=123&from=2026-01-01")).toEqual({
+      path: "/receipts", query: "item=123&from=2026-01-01",
+    })
+  })
+  test("path with sub-segment", () => {
+    expect(splitHashPath("/items/935158742452273155")).toEqual({
+      path: "/items/935158742452273155", query: "",
+    })
+  })
+  test("path with sub-segment AND query", () => {
+    expect(splitHashPath("/items/123?filter=foo")).toEqual({
+      path: "/items/123", query: "filter=foo",
+    })
+  })
+  test("empty string", () => {
+    expect(splitHashPath("")).toEqual({ path: "", query: "" })
+  })
+})
+
+describe("parseHashQuery", () => {
+  test("no query", () => {
+    expect(parseHashQuery("/receipts")).toEqual({})
+  })
+  test("single param", () => {
+    expect(parseHashQuery("/receipts?item=123")).toEqual({ item: "123" })
+  })
+  test("multiple params", () => {
+    expect(parseHashQuery("/receipts?item=123&from=2026-01-01")).toEqual({
+      item: "123", from: "2026-01-01",
+    })
+  })
+  test("empty value", () => {
+    expect(parseHashQuery("/receipts?item=")).toEqual({ item: "" })
+  })
+  test("URL-encoded value", () => {
+    expect(parseHashQuery("/items?name=Whole%20Milk")).toEqual({ name: "Whole Milk" })
+  })
+  test("empty string", () => {
+    expect(parseHashQuery("")).toEqual({})
   })
 })

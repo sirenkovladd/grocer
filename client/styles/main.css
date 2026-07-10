@@ -1674,6 +1674,36 @@ button:disabled {
   font-size: 0.85rem;
 }
 
+/* Active-filter banner (e.g. receipts page when ?item= is set).
+   Visually distinct from the filter bar so the user can see the
+   page is showing a subset of data, not the full list. */
+.filter-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 1rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.875rem;
+}
+
+.filter-banner-value {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* Quick-action row on the item detail page (e.g. "View receipts
+   using this item"). Sits between the page header and the info
+   card so it's the first thing the user sees after the title. */
+.item-quick-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
 /* Category badge */
 .category-badge {
   display: inline-block;

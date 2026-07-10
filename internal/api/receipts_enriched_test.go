@@ -336,6 +336,116 @@ func TestListEnrichedReceiptsCategoryFilter(t *testing.T) {
 	}
 }
 
+func TestListEnrichedReceiptsItemFilter(t *testing.T) {
+	f := newEnrichedFixture(t)
+	s := f.store
+
+	// Add a second item (same Produce category so the category filter
+	// would also match it — this test specifically validates the item
+	// filter, not the category one) plus a receipt using only the
+	// second item. Then filter by the original item ID and verify
+	// only the original receipt comes back.
+	otherItem := &domain.Item{
+		ItemID:     s.ItemID.Gen(),
+		Name:       "Apples",
+		CategoryID: f.category.CategoryID,
+		MerchantID: f.merchant.MerchantID,
+		Normalized: "apples",
+	}
+	if err := s.CreateItem(otherItem); err != nil {
+		t.Fatalf("create other item: %v", err)
+	}
+	if err := s.CreateReceipt(&domain.Receipt{
+		ReceiptID: s.ReceiptID.Gen(), MerchantID: f.merchant.MerchantID,
+		OwnerID: f.user.UserID, Date: 1700000000,
+		Items: []domain.ReceiptItem{
+			{ItemID: otherItem.ItemID, Quantity: 1, UnitPriceCents: 500},
+		},
+		TotalCents: 500,
+	}); err != nil {
+		t.Fatalf("create other receipt: %v", err)
+	}
+
+	url := "/api/receipts/enriched?item=" + strconv.FormatUint(f.item.ItemID, 10)
+	req := httptest.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", "Bearer "+f.token)
+	w := httptest.NewRecorder()
+	f.router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	var got []EnrichedReceiptSummary
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("Expected 1 receipt (Bananas item), got %d", len(got))
+	}
+	if got[0].ReceiptID != f.receipt.ReceiptID {
+		t.Errorf("Wrong receipt returned")
+	}
+}
+
+func TestListEnrichedReceiptsItemFilterNoMatch(t *testing.T) {
+	f := newEnrichedFixture(t)
+	s := f.store
+
+	// A valid-looking item ID that doesn't exist in any receipt.
+	unusedItem := &domain.Item{
+		ItemID:     s.ItemID.Gen(),
+		Name:       "Unused",
+		CategoryID: f.category.CategoryID,
+		MerchantID: f.merchant.MerchantID,
+		Normalized: "unused",
+	}
+	if err := s.CreateItem(unusedItem); err != nil {
+		t.Fatalf("create unused item: %v", err)
+	}
+
+	url := "/api/receipts/enriched?item=" + strconv.FormatUint(unusedItem.ItemID, 10)
+	req := httptest.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", "Bearer "+f.token)
+	w := httptest.NewRecorder()
+	f.router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", w.Code)
+	}
+
+	var got []EnrichedReceiptSummary
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("Expected 0 receipts, got %d", len(got))
+	}
+}
+
+func TestListEnrichedReceiptsItemFilterMalformedID(t *testing.T) {
+	f := newEnrichedFixture(t)
+
+	// A non-numeric item ID should be silently ignored, matching the
+	// contract of the other filter params (from/to/owner/category).
+	req := httptest.NewRequest("GET", "/api/receipts/enriched?item=not-a-number", nil)
+	req.Header.Set("Authorization", "Bearer "+f.token)
+	w := httptest.NewRecorder()
+	f.router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", w.Code)
+	}
+
+	var got []EnrichedReceiptSummary
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got) != 1 {
+		t.Errorf("Expected 1 receipt (malformed filter ignored), got %d", len(got))
+	}
+}
+
 func TestListEnrichedReceiptsMissingMerchantFallback(t *testing.T) {
 	router, s := setupTestRouter(t)
 	user := &domain.User{UserID: s.UserID.Gen(), Username: "u", Name: "U", PasswordHash: "x"}

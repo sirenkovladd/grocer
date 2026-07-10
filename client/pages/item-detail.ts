@@ -188,6 +188,17 @@ const ItemDetailPage = () => {
           button({ onclick: () => navigate("/items") }, "Back"),
         ),
 
+        // Quick-action link: jump to the receipts page pre-filtered to
+        // this item. The receipts page reads ?item= from the hash and
+        // passes it as a server-side filter, so the user lands on a
+        // list of just the receipts containing this item.
+        div({ class: "item-quick-actions" },
+          button({
+            class: "btn-secondary",
+            onclick: () => navigate(`/receipts?item=${it.itemId}`),
+          }, "View receipts using this item"),
+        ),
+
         // Info card with category badge
         div({ class: "item-info card" },
           p({},

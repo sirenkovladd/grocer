@@ -1,7 +1,7 @@
 import van from "vanjs-core"
 import { ReceiptCard, type EnrichedReceiptSummary } from "../components/receipt-card"
 import { api, navigate } from "../main"
-import { indexBy } from "../utils"
+import { indexBy, parseHashQuery } from "../utils"
 
 const { div, h1, h3, p, button, input, select, option } = van.tags
 
@@ -36,12 +36,32 @@ const ReceiptsPage = () => {
   const ownerFilter = van.state("")
   const merchantFilter = van.state("")
 
+  // The item filter is a deep-link filter: it can only be set via the
+  // URL (?item=...) and is read on mount. There is no UI to set it
+  // (the only entry point is the item detail page). The server filters
+  // by item ID, so we don't need to pass itemIds down with each
+  // receipt. We do, however, need the item's name to render the
+  // banner — fetched lazily from /api/items/{id} when the filter is
+  // active.
+  const itemFilter = van.state<string>("")
+  const itemFilterName = van.state<string>("")
+
   const loadData = async () => {
     loading.val = true
     error.val = null
     try {
+      // If the URL has ?item=..., pass it to the server. The client-
+      // side filters (search, from, to, owner, merchant) apply on top
+      // of the server-filtered list. Server-side filtering is used
+      // here so the client doesn't have to download every receipt
+      // just to find the few that contain a specific item.
+      const params = new URLSearchParams()
+      if (itemFilter.val) params.set("item", itemFilter.val)
+      const query = params.toString()
+      const url = "/receipts/enriched" + (query ? `?${query}` : "")
+
       const [r, m, u] = await Promise.all([
-        api.get("/receipts/enriched"),
+        api.get(url),
         api.get("/merchants"),
         api.get("/users"),
       ])
@@ -54,6 +74,19 @@ const ReceiptsPage = () => {
     } finally {
       loading.val = false
     }
+  }
+
+  // Read the item filter from the URL on mount. parseHashQuery
+  // returns a plain object from the query string portion of the hash
+  // route. The item ID is sent as a string (uint64 precision safety).
+  const urlItem = parseHashQuery(window.location.hash.slice(1) || "/").item
+  if (urlItem) {
+    itemFilter.val = urlItem
+    // Fetch the item name for the banner. Fire-and-forget; the
+    // banner shows just the ID until the name arrives.
+    api.get(`/items/${urlItem}`)
+      .then((it: any) => { if (it?.name) itemFilterName.val = it.name })
+      .catch(() => { /* leave name empty, banner falls back to ID */ })
   }
 
   loadData()
@@ -90,6 +123,25 @@ const ReceiptsPage = () => {
       h1("Receipts"),
       button({ onclick: () => navigate("/receipts/upload") }, "Upload Receipt"),
     ),
+
+    // "Filtered by item" banner. Shown when the URL has ?item=...
+    // (e.g. when the user clicked "View receipts" on the item detail
+    // page). The clear button strips the query param from the URL
+    // and reloads the page so the server filter is dropped.
+    () => itemFilter.val
+      ? div({ class: "filter-banner" },
+          span({},
+            "Showing receipts containing ",
+            span({ class: "filter-banner-value" },
+              itemFilterName.val || `#${itemFilter.val}`,
+            ),
+          ),
+          button({
+            class: "btn-sm btn-secondary",
+            onclick: () => navigate("/receipts"),
+          }, "Clear filter"),
+        )
+      : "",
 
     // Filter bar — with dynamic options
     div({ class: "filter-bar" },

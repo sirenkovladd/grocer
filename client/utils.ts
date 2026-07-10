@@ -206,3 +206,41 @@ export const indexBy = <T>(
   }
   return result
 }
+
+// ---------------------------------------------------------------------------
+// URL / hash query parsing
+// ---------------------------------------------------------------------------
+
+// splitHashPath splits a hash route like "/receipts?item=123&from=2026-01-01"
+// into the path portion ("/receipts") and the query string
+// ("item=123&from=2026-01-01"). If there's no query, the second value is "".
+//
+// Used by the receipts page to read filter params from the URL so we can
+// deep-link to a pre-filtered view (e.g. from the item detail page's
+// "View receipts" link). The browser's location.hash is the part after
+// the leading '#', and the SPA router in main.ts stores the whole thing
+// (path + query) in `currentPath`.
+export const splitHashPath = (path: string): { path: string; query: string } => {
+  const qIdx = path.indexOf("?")
+  if (qIdx === -1) return { path, query: "" }
+  return { path: path.slice(0, qIdx), query: path.slice(qIdx + 1) }
+}
+
+// parseHashQuery returns the query parameters from a hash route as a
+// plain object. Empty params, duplicate keys (last one wins), and
+// missing values are all handled by the URLSearchParams constructor.
+// Values are URL-decoded automatically.
+//
+//   parseHashQuery("/receipts?item=123")  // → { item: "123" }
+//   parseHashQuery("/receipts?item=")     // → { item: "" }
+//   parseHashQuery("/receipts")           // → {}
+export const parseHashQuery = (path: string): Record<string, string> => {
+  const { query } = splitHashPath(path)
+  if (!query) return {}
+  const params = new URLSearchParams(query)
+  const result: Record<string, string> = {}
+  for (const [k, v] of params) {
+    result[k] = v
+  }
+  return result
+}
