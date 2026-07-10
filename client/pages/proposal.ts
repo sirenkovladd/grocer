@@ -505,11 +505,20 @@ const ProposalDetailPage = () => {
   const renderItemRow = (item: ProposalItem, index: number) => {
     // If this row is being edited
     if (editingIndex.val === index) {
+      // IMPORTANT: bind each input's value to the State object itself
+      // (`value: editName`), NOT to `editName.val`. Reading `.val` here
+      // would register the surrounding function-child as a dependency
+      // of editName, so every keystroke (which updates `editName.val`
+      // via oninput) would re-run the function-child, destroying the
+      // <input> and stealing focus. Passing the State object lets
+      // VanJS set up a proper two-way binding: the input's value is
+      // kept in sync without recreating the element. See
+      // vanjs_skill.md "Controlled inputs" and AGENTS.md "VanJS Gotchas".
       return tr({ class: "editing-row" },
         td({ class: "item-name-cell" },
           input({
             type: "text",
-            value: editName.val,
+            value: editName,
             oninput: (e: Event) => { editName.val = (e.target as HTMLInputElement).value },
             class: "edit-input",
           }),
@@ -528,14 +537,14 @@ const ProposalDetailPage = () => {
         ),
         td(input({
           type: "number",
-          value: editQty.val,
+          value: editQty,
           oninput: (e: Event) => { editQty.val = (e.target as HTMLInputElement).value },
           class: "edit-input edit-qty",
           min: "1",
         })),
         td(input({
           type: "number",
-          value: editPrice.val,
+          value: editPrice,
           oninput: (e: Event) => { editPrice.val = (e.target as HTMLInputElement).value },
           class: "edit-input edit-price",
           min: "0",
@@ -618,7 +627,10 @@ const ProposalDetailPage = () => {
           ),
           button({
             class: "btn-secondary add-item-btn",
-            disabled: addingItem.val,
+            // Pass the State object, not `.val` — see renderItemRow
+            // above for why reading `.val` here would re-run the
+            // App-level function-child and recreate the whole page.
+            disabled: addingItem,
             onclick: handleAddItem,
           }, () => addingItem.val ? "Adding…" : "+ Add item"),
           div({ class: "proposal-summary" },
@@ -759,7 +771,10 @@ const ProposalDetailPage = () => {
         textarea({
           class: "external-llm-input",
           placeholder: "Paste TOML or JSON here…",
-          value: tomlInput.val,
+          // Bind to the State object, not `tomlInput.val` — see
+          // renderItemRow above for why this prevents the
+          // function-child from re-running on every keystroke.
+          value: tomlInput,
           oninput: (e: Event) => { tomlInput.val = (e.target as HTMLTextAreaElement).value },
         }),
         () => applyError.val
@@ -767,7 +782,10 @@ const ProposalDetailPage = () => {
           : "",
         button({
           class: "btn-primary",
-          disabled: applyingExternal.val,
+          // Pass the State object, not `.val` — see renderItemRow
+          // above for why reading `.val` here would re-run the
+          // App-level function-child and recreate the whole page.
+          disabled: applyingExternal,
           onclick: handleApplyExternal,
         }, () => applyingExternal.val ? "Applying…" : "Apply response"),
       ),

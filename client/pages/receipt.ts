@@ -514,7 +514,17 @@ const ReceiptDetailPage = () => {
                           type: "number",
                           step: "0.001",
                           min: "0",
-                          value: editItemQty.val[index] ?? "",
+                          // Use rawVal (peek) rather than .val: this
+                          // input is a direct child of the tr, NOT
+                          // wrapped in its own function-child, so a
+                          // reactive read here would register the
+                          // surrounding row-level function-child as a
+                          // dependency and re-create this <input> on
+                          // every keystroke (stealing focus). The
+                          // "Total" cell below IS a function-child and
+                          // intentionally reads .val so it updates
+                          // live as the user types.
+                          value: editItemQty.rawVal[index] ?? "",
                           oninput: (e: Event) => {
                             const v = (e.target as HTMLInputElement).value
                             editItemQty.val = { ...editItemQty.val, [index]: v }
@@ -529,7 +539,7 @@ const ReceiptDetailPage = () => {
                           type: "number",
                           step: "0.01",
                           min: "0",
-                          value: editItemPriceDollars.val[index] ?? "",
+                          value: editItemPriceDollars.rawVal[index] ?? "",
                           oninput: (e: Event) => {
                             const v = (e.target as HTMLInputElement).value
                             editItemPriceDollars.val = { ...editItemPriceDollars.val, [index]: v }

@@ -240,6 +240,41 @@ This bug only manifests when the state read in the dynamic children is later *wr
 
 The minimal repro: a page component that calls `van.state(...)` and then asynchronously sets those states (e.g. from an API call), combined with a non-function-child render that reads those same states.
 
+**Controlled inputs must bind to the State object, not `.val`.** For `<input>`, `<textarea>`, and `<select>`, pass the `State` directly to `value`:
+
+```ts
+// RIGHT — VanJS sets up a two-way binding. The element is created once;
+// only the `value` property is updated as the user types. Focus is preserved.
+input({ value: editName, oninput: e => editName.val = e.target.value })
+
+// WRONG — `editName.val` registers the surrounding function-child as a
+// dependency. Every keystroke (which updates editName.val via oninput)
+// re-runs the function-child, destroys the <input>, and steals focus.
+input({ value: editName.val, oninput: e => editName.val = e.target.value })
+```
+
+For object states (`van.state<Record<number, string>>({...})`) the value is a string at a specific index, so we can't pass the State object directly. Use `rawVal` to peek without registering a dependency, or read the value into a local variable at the top of the function-child:
+
+```ts
+// RIGHT — rawVal peeks without registering a dependency. The <input> is
+// created with the current value and the browser maintains it. On submit
+// we read editItemQty.val[index] to get the latest value.
+input({ value: editItemQty.rawVal[index] ?? "", oninput: e => {
+  const v = (e.target as HTMLInputElement).value
+  editItemQty.val = { ...editItemQty.val, [index]: v }
+}})
+
+// ALSO RIGHT — same idea, different style: read into a local variable
+// once at the top of the function-child so subsequent references in the
+// same render don't re-register the dependency.
+const currentQty = editItemQty.val[index] ?? ""
+input({ value: currentQty, oninput: ... })
+```
+
+The "live total" preview cell that re-renders on every keystroke IS a function-child that reads `.val` — that's the correct pattern there because we *want* it to re-run. Only the `<input>` itself should be bound with `rawVal` (or a local variable) to avoid focus loss.
+
+See `vanjs_skill.md` §4 ("Controlled inputs") for the full pattern, §5 ("rawVal") for the peek semantics, and `client/pages/proposal.ts` `renderItemRow` for a worked example.
+
 ## Design Spec
 
 Full design document: `docs/superpowers/specs/2026-06-01-grocer-design.md`

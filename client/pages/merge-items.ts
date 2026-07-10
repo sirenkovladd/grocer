@@ -1,7 +1,7 @@
 import van from "vanjs-core"
 import { api, idStr, navigate } from "../main"
 
-const { div, h1, h3, p, button, input, span } = van.tags
+const { div, h1, h3, p, button, input, a } = van.tags
 
 // ID fields are `string` (uint64 precision safety). See ticket 04.
 interface Item {
@@ -177,7 +177,19 @@ const MergeItemsPage = () => {
           const isMerging = (k: string) => mergingKey.val === k
           return div({ class: "merge-pair card" },
             div({ class: "merge-side" },
-              span({ class: "merge-name" }, pair.a.name),
+              // Link the name to the item detail page so the user
+              // can verify the catalog entry (category, price
+              // history, aliases) before deciding which direction
+              // to merge. Opens in a new tab so the merge page stays
+              // in context — same pattern as the proposal review
+              // page. Reuses .item-name-link for visual consistency.
+              a({
+                href: `#/items/${pair.a.itemId}`,
+                target: "_blank",
+                rel: "noopener",
+                class: "merge-name item-name-link",
+                title: `Opens "${pair.a.name}" in a new tab`,
+              }, pair.a.name),
               button({
                 class: "btn-sm btn-secondary",
                 disabled: () => mergingKey.val !== "",
@@ -186,7 +198,13 @@ const MergeItemsPage = () => {
             ),
             div({ class: "merge-arrow" }, "⇄"),
             div({ class: "merge-side" },
-              span({ class: "merge-name" }, pair.b.name),
+              a({
+                href: `#/items/${pair.b.itemId}`,
+                target: "_blank",
+                rel: "noopener",
+                class: "merge-name item-name-link",
+                title: `Opens "${pair.b.name}" in a new tab`,
+              }, pair.b.name),
               button({
                 class: "btn-sm btn-secondary",
                 disabled: () => mergingKey.val !== "",
