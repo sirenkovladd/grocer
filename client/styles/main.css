@@ -676,6 +676,15 @@ th {
     grid-template-columns: 1fr;
   }
 
+  /* Bump primary action buttons to the 44px touch-target minimum on
+     narrow viewports. Desktop layout is unchanged. */
+  .approve-btn,
+  .btn-primary {
+    min-height: 44px;
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+  }
+
   /* Hamburger button — visible only on narrow viewports. */
   .sidebar-hamburger {
     display: inline-flex;
