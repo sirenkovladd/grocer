@@ -370,10 +370,27 @@ func parseMistralOCRResult(r *mistralOCRResponse) *OCRResult {
 	// Annotated is nil. Common causes of failure: API didn't include the
 	// field (older models), model returned a shape that doesn't match
 	// the schema, or the response was empty/null.
+	//
+	// Mistral's API sometimes returns document_annotation as a JSON
+	// string (containing the annotation object as a string-encoded JSON
+	// payload) rather than as the object directly. We try the direct
+	// unmarshal first; if that fails with a "cannot unmarshal string"
+	// error, we fall back to unmarshaling as a string and then parsing
+	// the inner JSON.
 	if len(r.DocumentAnnotation) > 0 && !bytes.Equal(r.DocumentAnnotation, []byte("null")) {
 		var ann AnnotatedReceipt
 		if err := json.Unmarshal(r.DocumentAnnotation, &ann); err != nil {
-			log.Printf("MISTRAL_OCR: failed to parse document_annotation: %v (payload: %s)", err, truncate(string(r.DocumentAnnotation), 200))
+			// Retry: the payload might be a JSON-encoded string.
+			var asString string
+			if err2 := json.Unmarshal(r.DocumentAnnotation, &asString); err2 == nil && asString != "" {
+				if err3 := json.Unmarshal([]byte(asString), &ann); err3 != nil {
+					log.Printf("MISTRAL_OCR: failed to parse document_annotation: %v (payload: %s)", err3, truncate(asString, 200))
+				} else {
+					result.Annotated = &ann
+				}
+			} else {
+				log.Printf("MISTRAL_OCR: failed to parse document_annotation: %v (payload: %s)", err, truncate(string(r.DocumentAnnotation), 200))
+			}
 		} else {
 			result.Annotated = &ann
 		}
