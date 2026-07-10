@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -16,11 +17,22 @@ import (
 // MistralOCR implements OCREngine against Mistral's /v1/ocr endpoint.
 // Default model: "mistral-ocr-4-0". Requires blocks, tables, header/footer,
 // and per-word confidence to be returned.
+//
+// Pages, if non-empty, restricts OCR to the given page indices
+// (0-based). When empty, the API processes all pages.
+//
+// TableFormat controls how tables are returned:
+//   - "markdown" (default): tables are returned as a separate `tables`
+//     array on each page, with placeholders like [tbl-3](tbl-3) in the
+//     page markdown. We replace those placeholders with the table
+//     content so the LLM sees the actual structure inline.
+//   - "null": tables are returned inline in the markdown only.
 type MistralOCR struct {
 	apiKey  string
 	model   string
 	baseURL string
 	client  *http.Client
+	pages   []int
 }
 
 func NewMistralOCR(apiKey, model string) *MistralOCR {
@@ -37,6 +49,18 @@ func NewMistralOCR(apiKey, model string) *MistralOCR {
 	}
 }
 
+// WithPages returns a copy of m that restricts OCR to the given 0-based
+// page indices. Useful for skipping blank back pages of long receipts.
+// Returns m unchanged if pages is empty.
+func (m *MistralOCR) WithPages(pages ...int) *MistralOCR {
+	if len(pages) == 0 {
+		return m
+	}
+	cp := *m
+	cp.pages = append([]int(nil), pages...)
+	return &cp
+}
+
 type mistralOCRRequest struct {
 	Model                       string                    `json:"model"`
 	Document                    mistralDoc                `json:"document"`
@@ -45,7 +69,9 @@ type mistralOCRRequest struct {
 	ExtractHeader               bool                      `json:"extract_header"`
 	ExtractFooter               bool                      `json:"extract_footer"`
 	ConfidenceScoresGranularity string                    `json:"confidence_scores_granularity"`
+	Pages                       []int                     `json:"pages,omitempty"`
 	DocumentAnnotationFormat    *documentAnnotationFormat `json:"document_annotation_format,omitempty"`
+	DocumentAnnotationPrompt    string                    `json:"document_annotation_prompt,omitempty"`
 }
 
 // documentAnnotationFormat asks Mistral to also produce a structured
@@ -60,6 +86,13 @@ type documentAnnotationFormat struct {
 		Strict bool            `json:"strict"`
 	} `json:"json_schema"`
 }
+
+// receiptAnnotationPrompt is a high-level hint that accompanies the
+// annotation schema. The schema's property descriptions cover the
+// field-level guidance, but a top-level prompt helps with edge cases
+// (e.g., "this is a grocery receipt" focuses the model on items, prices,
+// and discounts and away from loyalty programs and payment info).
+const receiptAnnotationPrompt = `This is a printed grocery store receipt. Focus on identifying purchased items with their printed prices, modifier lines (discounts, bottle deposits, weight/unit price info attached to a previous item), and the totals block. Skip loyalty programs, points, transaction IDs, card numbers, and payment info. Do not invent items that aren't printed on the receipt.`
 
 // receiptAnnotationSchema is the JSON schema sent to Mistral to
 // pre-segment the receipt into line items, modifier lines, and totals.
@@ -172,15 +205,16 @@ type mistralOCRResponse struct {
 			Content string `json:"content"`
 		} `json:"tables"`
 		ConfidenceScores *struct {
-			AveragePageConfidenceScore float64           `json:"average_page_confidence_score"`
-			MinimumPageConfidenceScore float64           `json:"minimum_page_confidence_score"`
-			WordConfidenceScores       []json.RawMessage `json:"word_confidence_scores"`
+			AveragePageConfidenceScore float64      `json:"average_page_confidence_score"`
+			MinimumPageConfidenceScore float64      `json:"minimum_page_confidence_score"`
+			WordConfidenceScores       []WordScore  `json:"word_confidence_scores"`
 		} `json:"confidence_scores"`
 	} `json:"pages"`
 	Model              string          `json:"model"`
 	DocumentAnnotation json.RawMessage `json:"document_annotation"`
 	UsageInfo          struct {
-		PagesProcessed int `json:"pages_processed"`
+		PagesProcessed int  `json:"pages_processed"`
+		DocSizeBytes   *int `json:"doc_size_bytes"`
 	} `json:"usage_info"`
 }
 
@@ -199,10 +233,11 @@ func (m *MistralOCR) Extract(ctx context.Context, photo []byte, mime string) (*O
 			ImageURL: fmt.Sprintf("data:%s;base64,%s", mime, base64.StdEncoding.EncodeToString(photo)),
 		},
 		IncludeBlocks:               true,
-		TableFormat:                 "null",
+		TableFormat:                 "markdown",
 		ExtractHeader:               true,
 		ExtractFooter:               true,
 		ConfidenceScoresGranularity: "word",
+		Pages:                       m.pages,
 	}
 
 	// Ask Mistral to also produce a structured extraction matching
@@ -215,6 +250,7 @@ func (m *MistralOCR) Extract(ctx context.Context, photo []byte, mime string) (*O
 	af.JSONSchema.Schema = json.RawMessage(receiptAnnotationSchema)
 	af.JSONSchema.Strict = true
 	req.DocumentAnnotationFormat = af
+	req.DocumentAnnotationPrompt = receiptAnnotationPrompt
 
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -261,6 +297,11 @@ func parseMistralOCRResult(r *mistralOCRResponse) *OCRResult {
 		Model: r.Model,
 	}
 
+	// Log usage for cost / page-count visibility. A single receipt photo
+	// being processed as 2+ pages means we paid for OCR we didn't expect.
+	log.Printf("MISTRAL_OCR: model=%s pages_processed=%d doc_size_bytes=%v",
+		r.Model, r.UsageInfo.PagesProcessed, r.UsageInfo.DocSizeBytes)
+
 	var pageMarkdowns []string
 	var minConf float64 = 1.0
 
@@ -284,29 +325,39 @@ func parseMistralOCRResult(r *mistralOCRResponse) *OCRResult {
 			result.Footer = *p.Footer
 		}
 
-		for _, b := range p.Blocks {
-			result.Blocks = append(result.Blocks, Block{
-				Type:    b.Type,
-				Content: b.Content,
-				BBox:    [4]int{b.TopLeftX, b.TopLeftY, b.BottomRightX, b.BottomRightY},
-			})
-		}
-		for _, t := range p.Tables {
-			result.Tables = append(result.Tables, Table{ID: t.ID, Content: t.Content})
-		}
+		// Build per-block confidence from the page's word scores, then
+		// append the block. The per-block signal is used by
+		// ConfidenceForLine in the auto-match gating path.
+		var wordScores []WordScore
 		if p.ConfidenceScores != nil {
-			// Per-word scores are preserved as raw JSON for future use but
-			// not decoded here: their shape varies and we don't need them
-			// since minimum_page_confidence_score already gives the page
-			// minimum. See doc comment on WordConfidenceScores.
+			wordScores = p.ConfidenceScores.WordConfidenceScores
 			if p.ConfidenceScores.MinimumPageConfidenceScore > 0 && p.ConfidenceScores.MinimumPageConfidenceScore < minConf {
 				minConf = p.ConfidenceScores.MinimumPageConfidenceScore
 			}
 		}
+		for _, b := range p.Blocks {
+			block := Block{
+				Type:       b.Type,
+				Content:    b.Content,
+				BBox:       [4]int{b.TopLeftX, b.TopLeftY, b.BottomRightX, b.BottomRightY},
+				Confidence: computeBlockConfidence(b.Content, wordScores),
+			}
+			result.Blocks = append(result.Blocks, block)
+		}
+
+		// Collect tables; placeholders in the markdown are replaced with
+		// the actual table content after per-page markdown is joined.
+		for _, t := range p.Tables {
+			result.Tables = append(result.Tables, Table{ID: t.ID, Content: t.Content})
+		}
 	}
 
-	// Concatenate per-page markdown with a blank line separator.
-	result.Markdown = strings.Join(pageMarkdowns, "\n\n")
+	// Concatenate per-page markdown with a blank line separator, then
+	// replace [tbl-X](tbl-X) placeholders with the actual table content
+	// so the downstream LLM sees tables inline (not as opaque IDs).
+	joined := strings.Join(pageMarkdowns, "\n\n")
+	joined = replaceTablePlaceholders(joined, result.Tables)
+	result.Markdown = joined
 
 	if minConf == 1.0 {
 		// No confidence data was returned.
@@ -331,6 +382,144 @@ func parseMistralOCRResult(r *mistralOCRResponse) *OCRResult {
 	return result
 }
 
+// computeBlockConfidence returns the minimum word-confidence score for
+// any per-word score whose text appears in the block's content. Returns
+// 0 when no words can be matched (e.g., the OCR didn't return word
+// scores, or the block content has no word-like tokens).
+//
+// The match is case-insensitive and ignores whitespace/punctuation
+// differences between the block content and the word scores. We
+// deliberately use the min over the matched words (not the avg) so a
+// single low-confidence word — e.g., a misread price — drags the
+// block down, which matches the auto-match gate's intent of
+// "uncertain words → don't auto-match".
+func computeBlockConfidence(blockContent string, words []WordScore) float32 {
+	if len(words) == 0 {
+		return 0
+	}
+
+	// Build a word → confidence map. If a word appears multiple times
+	// (e.g., a repeated label), keep the minimum so the block can't
+	// hide a low-confidence occurrence.
+	wordConf := make(map[string]float64, len(words))
+	for _, w := range words {
+		key := strings.ToLower(strings.TrimSpace(w.Word))
+		if key == "" {
+			continue
+		}
+		if existing, ok := wordConf[key]; !ok || w.Confidence < existing {
+			wordConf[key] = w.Confidence
+		}
+	}
+
+	// Tokenize the block content the same way (lowercased, split on
+	// whitespace/punctuation) and look up each token.
+	tokens := tokenizeForConfidence(blockContent)
+	if len(tokens) == 0 {
+		return 0
+	}
+
+	var minConf float64 = 1.0
+	found := false
+	for _, tok := range tokens {
+		if c, ok := wordConf[tok]; ok {
+			found = true
+			if c < minConf {
+				minConf = c
+			}
+		}
+	}
+	if !found {
+		return 0
+	}
+	return float32(minConf)
+}
+
+// tokenizeForConfidence lowercases s and splits it into word-like
+// tokens, dropping whitespace and punctuation. Mirrors how Mistral
+// appears to tokenize the per-word scores in practice.
+func tokenizeForConfidence(s string) []string {
+	s = strings.ToLower(s)
+	var tokens []string
+	var current strings.Builder
+	for _, r := range s {
+		if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
+			if current.Len() > 0 {
+				tokens = append(tokens, current.String())
+				current.Reset()
+			}
+			continue
+		}
+		// Treat most non-alphanumeric runes as separators; this
+		// handles prices like "1.78", "1,78", "$4.49", and
+		// "1.78A" (weighted) by splitting on the non-digit chars.
+		// Keep digits and letters together so prices like "1.78"
+		// stay as one token matching the word score "1.78".
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			current.WriteRune(r)
+		} else {
+			if current.Len() > 0 {
+				tokens = append(tokens, current.String())
+				current.Reset()
+			}
+		}
+	}
+	if current.Len() > 0 {
+		tokens = append(tokens, current.String())
+	}
+	return tokens
+}
+
+// tablePlaceholderRe matches Mistral's [tbl-X](tbl-X) placeholders that
+// replace tables in the page markdown when table_format is not "null".
+// The ID may include an extension (".html" for HTML format, ".md" for
+// markdown) or be bare.
+var tablePlaceholderRe = regexp.MustCompile(`\[(tbl-[^\]]+)\]\([^)]+\)`)
+
+// replaceTablePlaceholders substitutes each [tbl-X](tbl-X) placeholder in
+// markdown with the corresponding table's markdown content. Tables
+// whose ID doesn't match any placeholder are dropped (they weren't
+// referenced). Unresolved placeholders are left in place so we don't
+// silently lose information.
+func replaceTablePlaceholders(markdown string, tables []Table) string {
+	if len(tables) == 0 || !strings.Contains(markdown, "[tbl-") {
+		return markdown
+	}
+	// Build a lookup keyed by the ID with any file extension stripped
+	// (so placeholders match regardless of whether Mistral includes
+	// ".html" / ".md" in the placeholder text).
+	byID := make(map[string]string, len(tables))
+	for _, t := range tables {
+		if t.ID == "" {
+			continue
+		}
+		byID[stripTableExtension(t.ID)] = t.Content
+	}
+	return tablePlaceholderRe.ReplaceAllStringFunc(markdown, func(match string) string {
+		sm := tablePlaceholderRe.FindStringSubmatch(match)
+		if len(sm) < 2 {
+			return match
+		}
+		key := stripTableExtension(sm[1])
+		if content, ok := byID[key]; ok {
+			return content
+		}
+		return match // leave placeholder if no matching table
+	})
+}
+
+// stripTableExtension removes a trailing file extension (".html", ".md")
+// from a table ID. Only strips if the part after the dot is a known
+// extension — leaves other dotted IDs alone (e.g. "tbl-2.v2").
+func stripTableExtension(id string) string {
+	if idx := strings.LastIndex(id, "."); idx > 0 {
+		ext := id[idx+1:]
+		if ext == "html" || ext == "md" {
+			return id[:idx]
+		}
+	}
+	return id
+}
 func (m *MistralOCR) doRequest(ctx context.Context, body []byte) ([]byte, error) {
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", m.baseURL+"/ocr", bytes.NewReader(body))
 	if err != nil {

@@ -88,7 +88,7 @@ func TestMistralOCR_Extract(t *testing.T) {
 	// Verify required flags are in the request
 	for _, want := range []string{
 		`"include_blocks":true`,
-		`"table_format":"null"`,
+		`"table_format":"markdown"`,
 		`"extract_header":true`,
 		`"extract_footer":true`,
 		`"confidence_scores_granularity":"word"`,
@@ -285,5 +285,290 @@ func TestBlockTypeForLine(t *testing.T) {
 	}
 	if got := BlockTypeForLine(nil, "BANANAS"); got != "" {
 		t.Errorf("nil ocr: got %q, want \"\"", got)
+	}
+}
+
+// TestComputeBlockConfidence covers the per-block confidence rollup from
+// per-word scores: takes the min over matched tokens, is case-insensitive,
+// strips punctuation, and returns 0 when no words match.
+func TestComputeBlockConfidence(t *testing.T) {
+	words := []WordScore{
+		{Word: "BANANAS", Confidence: 0.94},
+		{Word: "ORG", Confidence: 0.88},
+		{Word: "1.78", Confidence: 0.91},
+		{Word: "MILK", Confidence: 0.97},
+	}
+	cases := []struct {
+		name    string
+		content string
+		wantMin float32 // expected min confidence
+		want0   bool    // expected 0 (no match)
+	}{
+		{"all words present, take min", "BANANAS ORG  1.78", 0.88, false},
+		{"case-insensitive", "bananas org  1.78", 0.88, false},
+		{"punctuation differences", "BANANAS, ORG -- 1.78", 0.88, false},
+		{"partial match: 1 of 3", "BANANAS", 0.94, false},
+		{"no matching words", "TOTAL  6.27", 0, true},
+		{"empty content", "", 0, true},
+	}
+	for _, c := range cases {
+		got := computeBlockConfidence(c.content, words)
+		if c.want0 {
+			if got != 0 {
+				t.Errorf("%s: got %f, want 0", c.name, got)
+			}
+			continue
+		}
+		if got < c.wantMin-0.001 || got > c.wantMin+0.001 {
+			t.Errorf("%s: got %f, want ~%f", c.name, got, c.wantMin)
+		}
+	}
+	// Empty word list → 0.
+	if got := computeBlockConfidence("anything", nil); got != 0 {
+		t.Errorf("empty words: got %f, want 0", got)
+	}
+}
+
+// TestComputeBlockConfidence_WordAppearsMultipleTimes verifies the
+// implementation keeps the worst confidence when the same word appears
+// more than once in the word list (e.g., a label and an item).
+func TestComputeBlockConfidence_WordAppearsMultipleTimes(t *testing.T) {
+	words := []WordScore{
+		{Word: "Total", Confidence: 0.95},
+		{Word: "Total", Confidence: 0.60}, // same word, lower confidence
+	}
+	got := computeBlockConfidence("Total  13.53", words)
+	if got < 0.59 || got > 0.61 {
+		t.Errorf("expected min of repeated word (~0.60), got %f", got)
+	}
+}
+
+// TestMistralOCR_ExtractsUsageInfo verifies that the parsed OCRResult
+// preserves usage info (consumed only for logging today, but the field
+// is part of the response so it's worth checking the round-trip).
+func TestMistralOCR_ExtractsUsageInfo(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"pages": [{"index": 0, "markdown": "x"}],
+			"model": "mistral-ocr-4-0",
+			"usage_info": {"pages_processed": 2, "doc_size_bytes": 12345}
+		}`))
+	}))
+	defer srv.Close()
+
+	ocr := &MistralOCR{apiKey: "k", model: "m", baseURL: srv.URL, client: srv.Client()}
+	// We just want to make sure the request doesn't error and the
+	// pages_processed count doesn't blow up; the actual log line is
+	// exercised in integration testing.
+	if _, err := ocr.Extract(context.Background(), []byte("img"), "image/jpeg"); err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+}
+
+// TestMistralOCR_RequestIncludesAnnotationPrompt verifies the
+// document_annotation_prompt is sent alongside the schema so the
+// annotation step has the grocery-receipt framing context.
+func TestMistralOCR_RequestIncludesAnnotationPrompt(t *testing.T) {
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		buf := make([]byte, r.ContentLength)
+		_, _ = r.Body.Read(buf)
+		gotBody = string(buf)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"pages":[{"index":0,"markdown":"x"}],"model":"m","usage_info":{"pages_processed":1}}`))
+	}))
+	defer srv.Close()
+
+	ocr := &MistralOCR{apiKey: "k", model: "m", baseURL: srv.URL, client: srv.Client()}
+	if _, err := ocr.Extract(context.Background(), []byte("img"), "image/jpeg"); err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+
+	if !strings.Contains(gotBody, `"document_annotation_prompt":"`) {
+		t.Errorf("request missing document_annotation_prompt\nbody: %s", gotBody)
+	}
+	// The prompt should mention "grocery" so Mistral knows the domain.
+	if !strings.Contains(gotBody, "grocery") {
+		t.Errorf("document_annotation_prompt should mention grocery domain\nbody: %s", gotBody)
+	}
+}
+
+// TestMistralOCR_ReplacesTablePlaceholders verifies that when the API
+// returns tables as a separate field with placeholders in the markdown,
+// the placeholders are replaced with the actual table content so the
+// LLM sees tables inline (not as opaque [tbl-3](tbl-3) IDs).
+func TestMistralOCR_ReplacesTablePlaceholders(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"pages": [{
+				"index": 0,
+				"markdown": "Header text\n\n[tbl-1](tbl-1)\n\nFooter text",
+				"tables": [
+					{"id": "tbl-1", "content": "| Item | Price |\n|------|-------|\n| Apple | 1.00 |"}
+				]
+			}],
+			"model": "m",
+			"usage_info": {"pages_processed": 1}
+		}`))
+	}))
+	defer srv.Close()
+
+	ocr := &MistralOCR{apiKey: "k", model: "m", baseURL: srv.URL, client: srv.Client()}
+	result, err := ocr.Extract(context.Background(), []byte("img"), "image/jpeg")
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+
+	if strings.Contains(result.Markdown, "[tbl-1]") {
+		t.Errorf("markdown still contains placeholder: %q", result.Markdown)
+	}
+	if !strings.Contains(result.Markdown, "| Apple | 1.00 |") {
+		t.Errorf("markdown missing table content: %q", result.Markdown)
+	}
+	if len(result.Tables) != 1 || result.Tables[0].ID != "tbl-1" {
+		t.Errorf("Tables: got %+v, want one entry with ID tbl-1", result.Tables)
+	}
+}
+
+// TestMistralOCR_ReplacesTablePlaceholders_ExtensionSuffix verifies the
+// replacement works when the placeholder includes the file extension
+// (e.g. "[tbl-1.html](tbl-1.html)" for HTML table_format) even though
+// the table's id field is just "tbl-1".
+func TestMistralOCR_ReplacesTablePlaceholders_ExtensionSuffix(t *testing.T) {
+	result := replaceTablePlaceholders(
+		"Before [tbl-2.html](tbl-2.html) after",
+		[]Table{{ID: "tbl-2", Content: "TABLE CONTENT"}},
+	)
+	if !strings.Contains(result, "TABLE CONTENT") {
+		t.Errorf("placeholder with .html suffix not replaced: %q", result)
+	}
+	if strings.Contains(result, "[tbl-2") {
+		t.Errorf("placeholder still present: %q", result)
+	}
+}
+
+// TestMistralOCR_LeavesUnresolvedPlaceholders verifies that placeholders
+// without a matching table are left alone (we don't want to silently
+// lose data the LLM might still be able to interpret).
+func TestMistralOCR_LeavesUnresolvedPlaceholders(t *testing.T) {
+	result := replaceTablePlaceholders(
+		"Before [tbl-99](tbl-99) after",
+		[]Table{{ID: "tbl-1", Content: "OTHER"}},
+	)
+	if !strings.Contains(result, "[tbl-99](tbl-99)") {
+		t.Errorf("unresolved placeholder should be left in place: %q", result)
+	}
+}
+
+// TestMistralOCR_PagesParam verifies the optional pages parameter is
+// included in the request when set, and omitted otherwise.
+func TestMistralOCR_PagesParam(t *testing.T) {
+	cases := []struct {
+		name     string
+		pages    []int
+		wantIn   []string
+		wantNotIn []string
+	}{
+		{
+			name:    "no pages restriction: omitted from request",
+			pages:   nil,
+			wantNotIn: []string{`"pages":`},
+		},
+		{
+			name:  "single page",
+			pages: []int{0},
+			wantIn: []string{`"pages":[0]`},
+		},
+		{
+			name:  "multiple pages, non-contiguous",
+			pages: []int{0, 2, 4},
+			wantIn: []string{`"pages":[0,2,4]`},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var gotBody string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				buf := make([]byte, r.ContentLength)
+				_, _ = r.Body.Read(buf)
+				gotBody = string(buf)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"pages":[{"index":0,"markdown":"x"}],"model":"m","usage_info":{"pages_processed":1}}`))
+			}))
+			defer srv.Close()
+
+			ocr := (&MistralOCR{apiKey: "k", model: "m", baseURL: srv.URL, client: srv.Client()}).WithPages(c.pages...)
+			if _, err := ocr.Extract(context.Background(), []byte("img"), "image/jpeg"); err != nil {
+				t.Fatalf("Extract: %v", err)
+			}
+			for _, want := range c.wantIn {
+				if !strings.Contains(gotBody, want) {
+					t.Errorf("body missing %s\nbody: %s", want, gotBody)
+				}
+			}
+			for _, wantNot := range c.wantNotIn {
+				if strings.Contains(gotBody, wantNot) {
+					t.Errorf("body should not contain %s\nbody: %s", wantNot, gotBody)
+				}
+			}
+		})
+	}
+}
+
+// TestMistralOCR_PerBlockConfidenceInResult verifies that the parsed
+// OCRResult has per-block confidence populated when the API returns
+// word scores.
+func TestMistralOCR_PerBlockConfidenceInResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"pages": [{
+				"index": 0,
+				"markdown": "BANANAS ORG  1.78\nTOTAL  1.78",
+				"blocks": [
+					{"type": "text", "content": "BANANAS ORG  1.78", "top_left_x": 0, "top_left_y": 0, "bottom_right_x": 100, "bottom_right_y": 20},
+					{"type": "footer", "content": "TOTAL  1.78", "top_left_x": 0, "top_left_y": 100, "bottom_right_x": 100, "bottom_right_y": 120}
+				],
+				"confidence_scores": {
+					"minimum_page_confidence_score": 0.50,
+					"word_confidence_scores": [
+						{"word": "BANANAS", "confidence": 0.94},
+						{"word": "ORG", "confidence": 0.70},
+						{"word": "1.78", "confidence": 0.91}
+					]
+				}
+			}],
+			"model": "m",
+			"usage_info": {"pages_processed": 1}
+		}`))
+	}))
+	defer srv.Close()
+
+	ocr := &MistralOCR{apiKey: "k", model: "m", baseURL: srv.URL, client: srv.Client()}
+	result, err := ocr.Extract(context.Background(), []byte("img"), "image/jpeg")
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	if len(result.Blocks) != 2 {
+		t.Fatalf("Blocks: got %d, want 2", len(result.Blocks))
+	}
+	// The text block has 3 matching words; the min is 0.70 (ORG).
+	if got := result.Blocks[0].Confidence; got < 0.69 || got > 0.71 {
+		t.Errorf("text block confidence: got %f, want ~0.70", got)
+	}
+	// The footer block has no matching words; confidence is 0 (no signal).
+	if got := result.Blocks[1].Confidence; got != 0 {
+		t.Errorf("footer block confidence: got %f, want 0 (no matching words)", got)
+	}
+
+	// ConfidenceForLine uses per-block signal when available, falls
+	// back to MinConfidence (0.50 here) otherwise.
+	if got := ConfidenceForLine(result, "BANANAS ORG"); got < 0.69 || got > 0.71 {
+		t.Errorf("ConfidenceForLine BANANAS ORG: got %f, want ~0.70", got)
+	}
+	if got := ConfidenceForLine(result, "TOTAL"); got < 0.49 || got > 0.51 {
+		t.Errorf("ConfidenceForLine TOTAL: got %f, want ~0.50 (page min fallback)", got)
 	}
 }

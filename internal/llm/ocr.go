@@ -87,10 +87,21 @@ type OCRPage struct {
 // "text", "title", "list", "table", "image", "equation", "caption", "code",
 // "references", "aside_text", "header", "footer", "signature".
 // BBox is [top_left_x, top_left_y, bottom_right_x, bottom_right_y] in pixels.
+// Confidence is the minimum per-word OCR confidence for words within the
+// block (decoded from word_confidence_scores); 0 if not computable.
 type Block struct {
-	Type    string
-	Content string
-	BBox    [4]int
+	Type       string
+	Content    string
+	BBox       [4]int
+	Confidence float32
+}
+
+// WordScore is a single per-word confidence entry from Mistral's
+// word_confidence_scores array. Words are returned in reading order
+// per page.
+type WordScore struct {
+	Word       string  `json:"word"`
+	Confidence float64 `json:"confidence"`
 }
 
 type Table struct {
@@ -103,8 +114,14 @@ var ErrOCRFailure = errors.New("ocr failure")
 
 // confidenceForLine returns the minimum word-confidence score for any block
 // whose Content contains the given item name (case-insensitive substring).
-// Falls back to ocr.MinConfidence if no block matches. Returns 1.0 if the
-// OCR result has no confidence information.
+// Falls back to ocr.MinConfidence if no block has a per-block confidence.
+// Returns 0 if the OCR result has no confidence information.
+//
+// A block's Confidence is 0 when word scores weren't returned (older
+// models) or when the block content has no matching words in the
+// per-word scores (e.g. a footer line not in the OCR's word list).
+// In both cases we treat it as "no signal" and use the page minimum
+// as a conservative proxy.
 func ConfidenceForLine(ocr *OCRResult, itemName string) float32 {
 	if ocr == nil {
 		return 0
@@ -122,27 +139,16 @@ func ConfidenceForLine(ocr *OCRResult, itemName string) float32 {
 		if !strings.Contains(hay, needle) {
 			continue
 		}
-		// Heuristic: if this block has its own confidence embedded, use it.
-		// Otherwise fall back to the receipt-level min confidence.
-		conf := blockConfidence(b)
-		if conf > best {
-			best = conf
+		// 0 means "no per-block signal available"; skip and let the
+		// loop fall through to the MinConfidence fallback below.
+		if b.Confidence > 0 && b.Confidence > best {
+			best = b.Confidence
 		}
 	}
 	if best < 0 {
 		return float32(ocr.MinConfidence)
 	}
 	return best
-}
-
-// blockConfidence extracts a confidence from a Block. Mistral OCR 4 returns
-// per-page word-level scores; the per-block rollup isn't directly provided,
-// so we use the receipt-level MinConfidence as a conservative proxy when we
-// can't compute a tighter bound. A future implementation could maintain a
-// parallel block → word-score index.
-func blockConfidence(b Block) float32 {
-	_ = b
-	return -1 // sentinel: "no per-block score, fall back to receipt-level"
 }
 
 // blockTypeForLine returns the Block.Type for the first block whose Content
