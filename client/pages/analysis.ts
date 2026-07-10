@@ -149,6 +149,12 @@ const AnalysisPage = () => {
   const spendingData = van.state<any[]>([])
   const categoryData = van.state<any[]>([])
   const familyData = van.state<any[]>([])
+  // Full category list (with parentId). The /analysis/categories
+  // endpoint only returns categoryId/name/total, so we need a
+  // separate fetch to know which categories are root-level (have
+  // no parent). The Category Breakdown pie chart is filtered to
+  // root categories only.
+  const categories = van.state<{ categoryId: string; parentId: string | null }[]>([])
   // Trips are computed from the enriched receipt list. The fetch
   // is independent of the analysis endpoints; we just reuse the
   // same date range filter so the trips section stays in sync.
@@ -197,8 +203,46 @@ const AnalysisPage = () => {
     }
   }
 
+  // Full category list — fetched separately so a failure here
+  // doesn't block the main analysis data. If it fails, the
+  // Category Breakdown falls back to showing every category.
+  const loadCategories = async () => {
+    try {
+      const data = await api.get(`/categories`)
+      categories.val = Array.isArray(data) ? data : []
+    } catch (err) {
+      console.error("Failed to load categories:", err)
+      categories.val = []
+    }
+  }
+
   loadData()
   loadReceipts()
+  loadCategories()
+
+  // Derived state for the Category Breakdown data. Re-evaluates
+  // whenever categoryData or categories change. The category chart
+  // subscribes to this via a function-child in the render, so the
+  // chart is always in sync — even if the /categories fetch lands
+  // AFTER the chart was first drawn.
+  //
+  // IDs are normalized to strings before comparison: the
+  // /analysis/categories endpoint serializes categoryId as a JSON
+  // number, while /categories serializes it as a JSON string.
+  // Without normalization, the Set lookup never matches and the
+  // filter removes every category.
+  //
+  // While the full category list hasn't loaded yet, we return the
+  // unfiltered data so the chart still renders during the initial
+  // load — the function-child will re-run and re-filter as soon as
+  // categories arrives.
+  const filteredCategories = van.derive(() => {
+    if (categories.val.length === 0) return categoryData.val
+    const rootIds = new Set(
+      categories.val.filter(c => !c.parentId).map(c => String(c.categoryId)),
+    )
+    return categoryData.val.filter(d => rootIds.has(String(d.categoryId)))
+  })
 
   let spendingChart: Chart | null = null
   let categoryChart: Chart | null = null
@@ -223,20 +267,23 @@ const AnalysisPage = () => {
       })
     }
 
-    if (categoryCanvas && categoryData.val.length > 0) {
-      if (categoryChart) categoryChart.destroy()
-      categoryChart = createPieChart(categoryCanvas, {
-        labels: categoryData.val.map((d: any) => d.name),
-        datasets: [{
-          label: "Spending by Category",
-          data: categoryData.val.map((d: any) => d.total),
-          backgroundColor: [
-            "#3b82f6", "#22c55e", "#eab308", "#ef4444",
-            "#8b5cf6", "#ec4899", "#14b8a6", "#f97316",
-            "#6366f1", "#84cc16", "#14b8a6", "#f43f5e",
-          ],
-        }],
-      })
+    if (categoryCanvas) {
+      const filtered = filteredCategories.val
+      if (filtered.length > 0) {
+        if (categoryChart) categoryChart.destroy()
+        categoryChart = createPieChart(categoryCanvas, {
+          labels: filtered.map((d: any) => d.name),
+          datasets: [{
+            label: "Spending by Category",
+            data: filtered.map((d: any) => d.total),
+            backgroundColor: [
+              "#3b82f6", "#22c55e", "#eab308", "#ef4444",
+              "#8b5cf6", "#ec4899", "#14b8a6", "#f97316",
+              "#6366f1", "#84cc16", "#14b8a6", "#f43f5e",
+            ],
+          }],
+        })
+      }
     }
 
     if (familyCanvas && familyData.val.length > 0) {
@@ -257,6 +304,7 @@ const AnalysisPage = () => {
   const handleFilterChange = () => {
     loadData()
     loadReceipts()
+    loadCategories()
     setTimeout(initCharts, 100)
   }
 
@@ -278,10 +326,11 @@ const AnalysisPage = () => {
   }
 
   const exportCategoriesCsv = () => {
-    if (categoryData.val.length === 0) return
+    const data = filteredCategories.val
+    if (data.length === 0) return
     const csv = toCsv(
       ["Category ID", "Category", "Total ($)"],
-      categoryData.val.map((d: any) => [d.categoryId, d.name, d.total.toFixed(2)]),
+      data.map((d: any) => [d.categoryId, d.name, d.total.toFixed(2)]),
     )
     const dateTag = `${from.val || "all"}_to_${to.val || "now"}`
     downloadFile(`grocer-categories-${dateTag}.csv`, csv, "text/csv")
@@ -325,7 +374,7 @@ const AnalysisPage = () => {
       button({
         class: "btn-sm btn-secondary",
         onclick: exportCategoriesCsv,
-        disabled: () => categoryData.val.length === 0 || loading.val,
+        disabled: () => filteredCategories.val.length === 0 || loading.val,
       }, "Export categories CSV"),
       button({
         class: "btn-sm btn-secondary",
@@ -353,6 +402,20 @@ const AnalysisPage = () => {
             div({ class: "chart-container card" },
               h2("Category Breakdown"),
               canvas({ id: "category-chart" }),
+              // Reactive updater for the category pie chart. The
+              // function-child re-evaluates whenever filteredCategories
+              // changes, so the chart picks up the root-only filter as
+              // soon as /categories finishes loading — even if that
+              // happens after the initial setTimeout(initCharts).
+              // Returns an empty text node so it doesn't affect layout.
+              () => {
+                if (categoryChart && filteredCategories.val.length > 0) {
+                  categoryChart.data.labels = filteredCategories.val.map((d: any) => d.name)
+                  categoryChart.data.datasets[0].data = filteredCategories.val.map((d: any) => d.total)
+                  categoryChart.update()
+                }
+                return ""
+              },
             ),
             div({ class: "chart-container card" },
               h2("Family Member Spending"),

@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -82,6 +83,14 @@ func (r *Router) handleAnalysisSpending(w http.ResponseWriter, req *http.Request
 	for period, total := range periodMap {
 		result = append(result, SpendingPeriod{Period: period, Total: total})
 	}
+	// Sort by period so the spending line chart renders in
+	// chronological order. Go's map iteration order is randomized,
+	// so without this the chart would shuffle on every refresh.
+	// Period strings are zero-padded ("2006-01-02", "2024-W05",
+	// "2006-01"), so lexicographic sort == chronological sort.
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Period < result[j].Period
+	})
 
 	writeJSON(w, http.StatusOK, result)
 }
@@ -132,7 +141,7 @@ func (r *Router) handleAnalysisCategories(w http.ResponseWriter, req *http.Reque
 
 	// Aggregate by category
 	type CategoryTotal struct {
-		CategoryID uint64  `json:"categoryId"`
+		CategoryID uint64  `json:"categoryId,string"`
 		Name       string  `json:"name"`
 		Total      float64 `json:"total"`
 	}
@@ -148,8 +157,34 @@ func (r *Router) handleAnalysisCategories(w http.ResponseWriter, req *http.Reque
 		}
 	}
 
-	var result []CategoryTotal
+	// Roll up child-category spending into the parent. If "Beef"
+	// (child of "Meat") has $5 of spending, we want "Meat" to
+	// display $5 and "Beef" to be hidden — otherwise a parent
+	// with no direct items of its own never appears in the chart.
+	// Repeat until no more rollups can happen, so multi-level
+	// hierarchies (Beef → Meat → Food) collapse to the root.
+	rolledUp := make(map[uint64]float64)
 	for catID, total := range categoryMap {
+		rolledUp[catID] = total
+	}
+	for {
+		changed := false
+		for catID, total := range rolledUp {
+			cat, err := r.store.GetCategory(catID)
+			if err != nil || cat.ParentID == nil {
+				continue
+			}
+			rolledUp[*cat.ParentID] += total
+			delete(rolledUp, catID)
+			changed = true
+		}
+		if !changed {
+			break
+		}
+	}
+
+	var result []CategoryTotal
+	for catID, total := range rolledUp {
 		cat, err := r.store.GetCategory(catID)
 		name := "Unknown"
 		if err == nil {
@@ -157,6 +192,12 @@ func (r *Router) handleAnalysisCategories(w http.ResponseWriter, req *http.Reque
 		}
 		result = append(result, CategoryTotal{CategoryID: catID, Name: name, Total: total})
 	}
+	// Sort by name for stable ordering — Go's map iteration is
+	// randomized, so without this the pie chart legend/slice order
+	// would shuffle on every refresh.
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name < result[j].Name
+	})
 
 	writeJSON(w, http.StatusOK, result)
 }
@@ -224,6 +265,10 @@ func (r *Router) handleAnalysisFamily(w http.ResponseWriter, req *http.Request) 
 		}
 		result = append(result, FamilyMember{UserID: userID, Name: name, Total: total})
 	}
+	// Sort by name for stable ordering — see handleAnalysisCategories.
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name < result[j].Name
+	})
 
 	writeJSON(w, http.StatusOK, result)
 }
