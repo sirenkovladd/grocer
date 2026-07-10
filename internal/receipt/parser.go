@@ -350,6 +350,21 @@ func (p *Parser) ParseReceiptAsync(ctx context.Context, proposalID uint64, photo
 		return
 	}
 
+	// Save the snapshot synchronously after the final proposal update.
+	// UpdateProposalParseResult already scheduled a debounced save, but
+	// the debounce (default 5s) is too slow: the OCR snapshot's PubSub
+	// event delivers ~1s after the OCR save, and the resulting reload
+	// can clobber the just-written "pending" state in memory with the
+	// stale "parsed_ocr" snapshot. A synchronous save here pushes the
+	// final state to GCS immediately, so the reload (which fires 1s
+	// after the OCR save) sees the correct data when it pulls.
+	if err := p.store.SaveSnapshot(ctx); err != nil {
+		// Non-fatal: the debounced save will retry in a few seconds,
+		// and the worst case is a brief window where the proposal
+		// shows the old state.
+		log.Printf("PARSE_ASYNC: synchronous snapshot save failed for proposal %d: %v", proposalID, err)
+	}
+
 	proposal := &domain.Proposal{
 		ProposalID: proposalID,
 		OwnerID:    ownerID,
@@ -402,6 +417,14 @@ func (p *Parser) ApplyUserInput(ctx context.Context, proposalID uint64, parsed *
 
 	if err := p.store.UpdateProposalParseResult(proposalID, merchant.MerchantID, merchant.Name, parsed.Date.Unix(), dollarsToCents(parsed.Total), proposalItems); err != nil {
 		return nil, fmt.Errorf("save result: %w", err)
+	}
+
+	// Same race-condition fix as in ParseReceiptAsync: save the
+	// snapshot synchronously so the final state hits GCS before
+	// the OCR-snapshot PubSub reload can clobber it. See the comment
+	// in ParseReceiptAsync for the full timing.
+	if err := p.store.SaveSnapshot(ctx); err != nil {
+		log.Printf("APPLY_USER_INPUT: synchronous snapshot save failed for proposal %d: %v", proposalID, err)
 	}
 
 	return p.store.GetProposal(proposalID)
