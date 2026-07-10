@@ -215,7 +215,14 @@ func (r *Router) handleReparseProposal(w http.ResponseWriter, req *http.Request)
 	}
 
 	llmData := resizeImageForLLM(photoData)
-	go r.parser.ParseReceiptAsync(context.Background(), id, llmData, proposal.OwnerID, engine)
+	// Detach from the request context (so the HTTP response completing
+	// doesn't cancel the background parse) but preserve the user's
+	// timezone. Without this, parseDateInTimezone falls back to UTC and
+	// anchors the date to noon UTC, which renders as the wrong time-of-
+	// day in negative-UTC zones (every receipt shows the same wall
+	// clock time, e.g. 5 AM PDT for noon UTC).
+	tz := llm.TimezoneFromContext(req.Context())
+	go r.parser.ParseReceiptAsync(llm.WithTimezone(context.Background(), tz), id, llmData, proposal.OwnerID, engine)
 
 	writeJSON(w, http.StatusOK, map[string]string{"id": fmt.Sprintf("%d", id)})
 }

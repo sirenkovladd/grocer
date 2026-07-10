@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"code.sirenko.ca/grocer/internal/domain"
+	"code.sirenko.ca/grocer/internal/llm"
 	"golang.org/x/image/draw"
 )
 
@@ -771,8 +772,13 @@ func (r *Router) handleUploadReceipt(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Spawn background parse goroutine with detached context
-	go r.parser.ParseReceiptAsync(context.Background(), proposal.ProposalID, llmData, userID, "full")
+	// Spawn background parse goroutine with detached context.
+	// Preserve the user's timezone on the new context (the request
+	// context is cancelled when the HTTP response completes, but we
+	// still want the parse to anchor the date to noon in the user's
+	// local tz, not UTC).
+	tz := llm.TimezoneFromContext(req.Context())
+	go r.parser.ParseReceiptAsync(llm.WithTimezone(context.Background(), tz), proposal.ProposalID, llmData, userID, "full")
 
 	writeJSON(w, http.StatusOK, map[string]string{"id": fmt.Sprintf("%d", proposal.ProposalID)})
 }
