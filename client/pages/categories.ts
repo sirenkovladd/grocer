@@ -210,17 +210,25 @@ const CategoriesPage = () => {
       }),
       // Parent picker — empty value means "root level". Reads from
       // the categories state; function-child ensures the options
-      // re-render when categories change.
-      () => select({
-        value: newParent,
-        onchange: (e: Event) => { newParent.val = (e.target as HTMLSelectElement).value },
-        disabled: creating,
-        "aria-label": "Parent category",
-        class: "parent-picker",
+      // re-render when categories change. Note: we cannot use
+      // `value: newParent` as a VanJS prop binding, because VanJS
+      // applies props to the <select> BEFORE appending the <option>
+      // children, and the browser silently discards a select.value
+      // that doesn't match any existing option. We set the value
+      // manually after the options are appended.
+      () => {
+        const sel = select({
+          onchange: (e: Event) => { newParent.val = (e.target as HTMLSelectElement).value },
+          disabled: creating,
+          "aria-label": "Parent category",
+          class: "parent-picker",
+        },
+          option({ value: "" }, "(no parent)"),
+          ...parentOptions("").map(o => option({ value: o.value }, o.name)),
+        )
+        sel.value = newParent.val
+        return sel
       },
-        option({ value: "" }, "(no parent)"),
-        ...parentOptions("").map(o => option({ value: o.value }, o.name)),
-      ),
       button({ type: "submit", disabled: creating || !newName.val.trim() },
         () => creating.val ? "Adding…" : "Add"),
     ),
@@ -237,16 +245,24 @@ const CategoriesPage = () => {
             oninput: (e: Event) => editName.val = (e.target as HTMLInputElement).value,
             disabled: savingEdit,
           }),
-          () => select({
-            value: editParent,
-            onchange: (e: Event) => { editParent.val = (e.target as HTMLSelectElement).value },
-            disabled: savingEdit,
-            "aria-label": "Parent category",
-            class: "parent-picker",
+          // See comment on the create-form select: we set the
+          // value manually after the options are appended, because
+          // VanJS applies props before children and the browser
+          // discards a select.value with no matching option. This
+          // is the cause of the "edit shows (no parent)" bug.
+          () => {
+            const sel = select({
+              onchange: (e: Event) => { editParent.val = (e.target as HTMLSelectElement).value },
+              disabled: savingEdit,
+              "aria-label": "Parent category",
+              class: "parent-picker",
+            },
+              option({ value: "" }, "(no parent)"),
+              ...parentOptions(editingId.val).map(o => option({ value: o.value }, o.name)),
+            )
+            sel.value = editParent.val
+            return sel
           },
-            option({ value: "" }, "(no parent)"),
-            ...parentOptions(editingId.val).map(o => option({ value: o.value }, o.name)),
-          ),
           button({ type: "submit", disabled: savingEdit || !editName.val.trim() },
             () => savingEdit.val ? "Saving…" : "Save"),
           button({ type: "button", onclick: cancelEdit, disabled: savingEdit }, "Cancel"),
