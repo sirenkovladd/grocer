@@ -1,5 +1,5 @@
 import van from "vanjs-core"
-import { api } from "../main"
+import { api, idStr } from "../main"
 import { indexBy } from "../utils"
 
 const { div, h1, h3, p, input, select, option, form, span, button, ul, li, label } = van.tags
@@ -115,7 +115,8 @@ const CategoriesPage = () => {
       const body: { name: string; parentId?: string } = {
         name: newName.val.trim(),
       }
-      if (newParent.val) body.parentId = newParent.val
+      const newParentId = idStr(newParent.val)
+      if (newParentId) body.parentId = newParentId
       await api.post("/categories", body)
       newName.val = ""
       newParent.val = ""
@@ -155,7 +156,7 @@ const CategoriesPage = () => {
         // Leaving the value unchanged by selecting the same parent is
         // a no-op at the server. To unlink, we don't support that yet
         // (no clear UI affordance for "make this a root category").
-        parentId: editParent.val || null,
+        parentId: idStr(editParent.val),
       }
       await api.patch(`/categories/${id}`, body)
       cancelEdit()

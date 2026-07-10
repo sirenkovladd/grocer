@@ -7,6 +7,55 @@
 // receipt DTOs below).
 package api
 
+import (
+	"encoding/json"
+	"strconv"
+)
+
+// FlexibleID is a uint64 that JSON-decodes from either a quoted string
+// ("123") or a bare number (123). It is used in request DTOs to accept
+// both forms from clients.
+//
+// Rationale: Go's `,string` struct tag is asymmetric — it makes
+// encoding emit a string, but only accepts strings when decoding. Our
+// response DTOs use `,string` on uint64 ID fields to preserve
+// precision through JavaScript's 53-bit safe-integer limit (the IDs
+// are timestamp-based and exceed 2^53), so round-tripping the same
+// value back as a request body must accept strings too. Accepting
+// bare numbers in addition is a small convenience for hand-crafted
+// requests that haven't been string-quoted.
+type FlexibleID uint64
+
+// Uint64 returns the underlying uint64 value. Use this at the boundary
+// where the request DTO is consumed (e.g. when passing the ID to the
+// store) so call sites don't need to know about the wrapper type.
+func (f FlexibleID) Uint64() uint64 { return uint64(f) }
+
+func (f *FlexibleID) UnmarshalJSON(data []byte) error {
+	if len(data) == 0 || string(data) == "null" {
+		return nil
+	}
+	if data[0] == '"' {
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		n, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			return err
+		}
+		*f = FlexibleID(n)
+		return nil
+	}
+	n, err := strconv.ParseUint(string(data), 10, 64)
+	if err != nil {
+		return err
+	}
+	*f = FlexibleID(n)
+	return nil
+}
+
+
 // Fallback strings used by enriched endpoints when a referenced entity
 // (merchant, owner, category, item) cannot be found. Centralized here so
 // the list and detail handlers in receipts.go stay in sync.

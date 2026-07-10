@@ -33,9 +33,9 @@ func (r *Router) handleGetItem(w http.ResponseWriter, req *http.Request) {
 }
 
 type updateItemRequest struct {
-	Name       *string  `json:"name,omitempty"`
-	CategoryID *uint64  `json:"categoryId,omitempty"`
-	Aliases    []string `json:"aliases,omitempty"`
+	Name       *string     `json:"name,omitempty"`
+	CategoryID *FlexibleID `json:"categoryId,omitempty"`
+	Aliases    []string    `json:"aliases,omitempty"`
 }
 
 func (r *Router) handleUpdateItem(w http.ResponseWriter, req *http.Request) {
@@ -66,7 +66,7 @@ func (r *Router) handleUpdateItem(w http.ResponseWriter, req *http.Request) {
 		item.Name = *reqBody.Name
 	}
 	if reqBody.CategoryID != nil {
-		item.CategoryID = *reqBody.CategoryID
+		item.CategoryID = reqBody.CategoryID.Uint64()
 	}
 	if reqBody.Aliases != nil {
 		if err := validateAliases(reqBody.Aliases); err != nil {

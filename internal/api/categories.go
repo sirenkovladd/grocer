@@ -18,8 +18,8 @@ func (r *Router) handleListCategories(w http.ResponseWriter, req *http.Request) 
 }
 
 type createCategoryRequest struct {
-	Name     string  `json:"name"`
-	ParentID *uint64 `json:"parentId,omitempty"`
+	Name     string      `json:"name"`
+	ParentID *FlexibleID `json:"parentId,omitempty"`
 }
 
 func (r *Router) handleCreateCategory(w http.ResponseWriter, req *http.Request) {
@@ -38,7 +38,10 @@ func (r *Router) handleCreateCategory(w http.ResponseWriter, req *http.Request) 
 	category := &domain.Category{
 		CategoryID: r.store.CategoryID.Gen(),
 		Name:       reqBody.Name,
-		ParentID:   reqBody.ParentID,
+	}
+	if reqBody.ParentID != nil {
+		pid := reqBody.ParentID.Uint64()
+		category.ParentID = &pid
 	}
 
 	if err := r.store.CreateCategory(category); err != nil {
@@ -49,9 +52,9 @@ func (r *Router) handleCreateCategory(w http.ResponseWriter, req *http.Request) 
 }
 
 type updateCategoryRequest struct {
-	Name      *string `json:"name,omitempty"`
-	ParentID  *uint64 `json:"parentId,omitempty"`
-	SortOrder *int32  `json:"sortOrder,omitempty"`
+	Name      *string     `json:"name,omitempty"`
+	ParentID  *FlexibleID `json:"parentId,omitempty"`
+	SortOrder *int32      `json:"sortOrder,omitempty"`
 }
 
 func (r *Router) handleUpdateCategory(w http.ResponseWriter, req *http.Request) {
@@ -82,7 +85,8 @@ func (r *Router) handleUpdateCategory(w http.ResponseWriter, req *http.Request) 
 		category.Name = *reqBody.Name
 	}
 	if reqBody.ParentID != nil {
-		category.ParentID = reqBody.ParentID
+		pid := reqBody.ParentID.Uint64()
+		category.ParentID = &pid
 	}
 	if reqBody.SortOrder != nil {
 		category.SortOrder = *reqBody.SortOrder

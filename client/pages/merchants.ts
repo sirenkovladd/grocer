@@ -1,5 +1,5 @@
 import van from "vanjs-core"
-import { api } from "../main"
+import { api, idStr } from "../main"
 
 const { div, h1, h3, p, input, button, form, span, table, tr, td, th, select, option } = van.tags
 
@@ -137,7 +137,7 @@ const MerchantsPage = () => {
     mergingKey.val = key
     try {
       const result = await api.post(`/merchants/${source.merchantId}/merge`, {
-        targetId: target.merchantId,
+        targetId: idStr(target.merchantId),
       })
       // Clear the per-row target picker.
       const next = { ...mergeTarget.val }

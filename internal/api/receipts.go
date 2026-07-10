@@ -365,9 +365,9 @@ func (r *Router) handleGetReceipt(w http.ResponseWriter, req *http.Request) {
 // UI on the receipt detail page. Any combination may be present;
 // nil fields leave the corresponding receipt attribute unchanged.
 type updateReceiptRequest struct {
-	MerchantID *uint64 `json:"merchantId,omitempty"`
-	Date       *int64  `json:"date,omitempty"`
-	TotalCents *int64  `json:"totalCents,omitempty"`
+	MerchantID *FlexibleID `json:"merchantId,omitempty"`
+	Date       *int64      `json:"date,omitempty"`
+	TotalCents *int64      `json:"totalCents,omitempty"`
 }
 
 // handleUpdateReceipt applies an inline edit to a saved receipt:
@@ -397,11 +397,12 @@ func (r *Router) handleUpdateReceipt(w http.ResponseWriter, req *http.Request) {
 		// Validate the merchant exists; otherwise the receipt would
 		// dangle and the enriched handler would render "Unknown
 		// merchant" forever.
-		if _, err := r.store.GetMerchant(*reqBody.MerchantID); err != nil {
+		mid := reqBody.MerchantID.Uint64()
+		if _, err := r.store.GetMerchant(mid); err != nil {
 			writeError(w, http.StatusBadRequest, "merchant not found")
 			return
 		}
-		receipt.MerchantID = *reqBody.MerchantID
+		receipt.MerchantID = mid
 	}
 	if reqBody.Date != nil {
 		receipt.Date = *reqBody.Date
@@ -426,9 +427,9 @@ func (r *Router) handleUpdateReceipt(w http.ResponseWriter, req *http.Request) {
 // different catalog item); this covers the "wrong item matched"
 // case where the LLM picked the wrong banana.
 type updateReceiptItemRequest struct {
-	ItemID         *uint64  `json:"itemId,omitempty"`
-	Quantity       *float64 `json:"quantity,omitempty"`
-	UnitPriceCents *int64   `json:"unitPriceCents,omitempty"`
+	ItemID         *FlexibleID `json:"itemId,omitempty"`
+	Quantity       *float64    `json:"quantity,omitempty"`
+	UnitPriceCents *int64      `json:"unitPriceCents,omitempty"`
 }
 
 // handleUpdateReceiptItem edits a single line item on a saved
@@ -468,11 +469,12 @@ func (r *Router) handleUpdateReceiptItem(w http.ResponseWriter, req *http.Reques
 
 	if reqBody.ItemID != nil {
 		// Validate the new item exists so the receipt doesn't dangle.
-		if _, err := r.store.GetItem(*reqBody.ItemID); err != nil {
+		newID := reqBody.ItemID.Uint64()
+		if _, err := r.store.GetItem(newID); err != nil {
 			writeError(w, http.StatusBadRequest, "item not found")
 			return
 		}
-		receipt.Items[index].ItemID = *reqBody.ItemID
+		receipt.Items[index].ItemID = newID
 	}
 	if reqBody.Quantity != nil {
 		if *reqBody.Quantity <= 0 {
@@ -594,13 +596,13 @@ func (r *Router) handleReopenReceipt(w http.ResponseWriter, req *http.Request) {
 // Used by the "Create receipt manually" form on the upload page when
 // the LLM can't parse a photo (or for entering historic receipts).
 type createManualReceiptRequest struct {
-	MerchantID uint64        `json:"merchantId"`
+	MerchantID FlexibleID    `json:"merchantId"`
 	Date       int64         `json:"date"`
 	TotalCents int64         `json:"totalCents"`
 	Items      []struct {
-		ItemID         uint64  `json:"itemId"`
-		Quantity       float64 `json:"quantity"`
-		UnitPriceCents int64   `json:"unitPriceCents"`
+		ItemID         FlexibleID `json:"itemId"`
+		Quantity       float64    `json:"quantity"`
+		UnitPriceCents int64      `json:"unitPriceCents"`
 	} `json:"items"`
 }
 
@@ -633,7 +635,8 @@ func (r *Router) handleCreateManualReceipt(w http.ResponseWriter, req *http.Requ
 		return
 	}
 
-	if _, err := r.store.GetMerchant(reqBody.MerchantID); err != nil {
+	merchantID := reqBody.MerchantID.Uint64()
+	if _, err := r.store.GetMerchant(merchantID); err != nil {
 		writeError(w, http.StatusBadRequest, "merchant not found")
 		return
 	}
@@ -653,12 +656,13 @@ func (r *Router) handleCreateManualReceipt(w http.ResponseWriter, req *http.Requ
 			writeError(w, http.StatusBadRequest, fmt.Sprintf("item %d: unit price cannot be negative", i))
 			return
 		}
-		if _, err := r.store.GetItem(it.ItemID); err != nil {
+		itemID := it.ItemID.Uint64()
+		if _, err := r.store.GetItem(itemID); err != nil {
 			writeError(w, http.StatusBadRequest, fmt.Sprintf("item %d: item not found", i))
 			return
 		}
 		receiptItems = append(receiptItems, domain.ReceiptItem{
-			ItemID:         it.ItemID,
+			ItemID:         itemID,
 			Quantity:       it.Quantity,
 			UnitPriceCents: it.UnitPriceCents,
 		})
@@ -666,7 +670,7 @@ func (r *Router) handleCreateManualReceipt(w http.ResponseWriter, req *http.Requ
 
 	receipt := &domain.Receipt{
 		ReceiptID:  r.store.ReceiptID.Gen(),
-		MerchantID: reqBody.MerchantID,
+		MerchantID: merchantID,
 		OwnerID:    r.getUserID(req),
 		Date:       reqBody.Date,
 		Items:      receiptItems,

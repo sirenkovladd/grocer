@@ -1,5 +1,5 @@
 import van from "vanjs-core"
-import { api, navigate } from "../main"
+import { api, idStr, navigate } from "../main"
 import { indexBy, formatRelativeDate } from "../utils"
 
 const { div, h1, h2, h3, p, input, select, option, label, table, tr, td, th, button, span, a } = van.tags
@@ -247,7 +247,7 @@ const ItemsPage = () => {
         .filter(a => a.length > 0)
       await api.patch(`/items/${id}`, {
         name: editName.val.trim(),
-        categoryId: editCategory.val || null,
+        categoryId: idStr(editCategory.val),
         aliases,
       })
       await load()

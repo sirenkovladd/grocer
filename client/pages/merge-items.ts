@@ -1,5 +1,5 @@
 import van from "vanjs-core"
-import { api, navigate } from "../main"
+import { api, idStr, navigate } from "../main"
 
 const { div, h1, h3, p, button, input, span } = van.tags
 
@@ -114,7 +114,7 @@ const MergeItemsPage = () => {
     mergingKey.val = key
     try {
       const result = await api.post(`/items/${source.itemId}/merge`, {
-        targetId: target.itemId,
+        targetId: idStr(target.itemId),
       })
       await load()
       const n = (result as any).retargeted ?? 0
