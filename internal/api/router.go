@@ -3,14 +3,14 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"io/fs"
 	"net"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"code.sirenko.ca/grocer"
 	"code.sirenko.ca/grocer/internal/events"
 	"code.sirenko.ca/grocer/internal/photo"
 	"code.sirenko.ca/grocer/internal/receipt"
@@ -282,44 +282,34 @@ func (r *Router) handleHealth(w http.ResponseWriter, req *http.Request) {
 	})
 }
 
-// serveSPA serves static files from dist/ with SPA fallback to index.html.
+// serveSPA serves the embedded frontend (webcontent.WebContent)
+// with SPA fallback to index.html. The assets are compiled into
+// the binary via //go:embed in webcontent.go, so no on-disk
+// dist/ directory is required in production.
 func (r *Router) serveSPA() http.Handler {
-	distDir := "dist"
-
-	// Check if dist/ exists, try common locations
-	for _, dir := range []string{"dist", "../dist", "../../dist"} {
-		if info, err := os.Stat(dir); err == nil && info.IsDir() {
-			distDir = dir
-			break
-		}
+	sub, err := fs.Sub(webcontent.WebContent, "dist")
+	if err != nil {
+		// Embed is broken at compile time if this fails; surface
+		// a clear error so we notice immediately.
+		panic("webcontent: missing dist/ in embedded FS: " + err.Error())
 	}
-
-	fs := http.Dir(distDir)
+	fileServer := http.FileServer(http.FS(sub))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		// Try to serve the requested file
-		path := req.URL.Path
-		if path == "/" {
+		// Clean the path (drop the leading slash for fs.Open).
+		path := strings.TrimPrefix(req.URL.Path, "/")
+		if path == "" {
 			path = "index.html"
 		}
 
-		// Clean the path
-		path = filepath.Clean(path)
-		if path == "." {
-			path = "index.html"
-		}
-
-		// Try opening the file
-		f, err := fs.Open(path)
-		if err != nil {
-			// File not found — serve index.html (SPA fallback)
+		// Try opening the file. If it doesn't exist (SPA route
+		// like /receipts/123), fall back to index.html.
+		if _, err := sub.Open(path); err != nil {
 			req.URL.Path = "/"
-			http.FileServer(fs).ServeHTTP(w, req)
+			fileServer.ServeHTTP(w, req)
 			return
 		}
-		f.Close()
 
-		// File exists — serve it directly
-		http.FileServer(fs).ServeHTTP(w, req)
+		fileServer.ServeHTTP(w, req)
 	})
 }
