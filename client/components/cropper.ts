@@ -41,6 +41,11 @@ export const ImageCropper = ({ imageUrl, imageHash, onCrop, onCancel, onSkip }: 
   let dragStartCrop: CropRect = { x: 0, y: 0, width: 0, height: 0 }
   let isMoving = false
 
+  // Touch hit area is larger than the 12px desktop hit area so a finger
+  // can grab a corner reliably. Mouse hit area stays at 12px because
+  // pointer precision is much higher.
+  const touchHandleSize = 32
+
   // DOM elements
   const imageContainer = document.createElement("div")
   imageContainer.className = "cropper-image-container"
@@ -312,7 +317,27 @@ export const ImageCropper = ({ imageUrl, imageHash, onCrop, onCancel, onSkip }: 
       const x = touch.clientX - rect.left
       const y = touch.clientY - rect.top
 
-      // Default to moving if inside crop box
+      // Check if near a handle (corners). Same logic as mousedown
+      // but with the larger touch hit area.
+      const handles = [
+        { name: "nw", x: cropRect.x, y: cropRect.y },
+        { name: "ne", x: cropRect.x + cropRect.width, y: cropRect.y },
+        { name: "sw", x: cropRect.x, y: cropRect.y + cropRect.height },
+        { name: "se", x: cropRect.x + cropRect.width, y: cropRect.y + cropRect.height },
+      ]
+
+      for (const handle of handles) {
+        if (Math.abs(x - handle.x) < touchHandleSize && Math.abs(y - handle.y) < touchHandleSize) {
+          isDragging = true
+          dragHandle = handle.name
+          dragStartX = x
+          dragStartY = y
+          dragStartCrop = { ...cropRect }
+          return
+        }
+      }
+
+      // Check if inside crop box for moving
       if (x >= cropRect.x && x <= cropRect.x + cropRect.width &&
           y >= cropRect.y && y <= cropRect.y + cropRect.height) {
         isDragging = true
@@ -338,8 +363,34 @@ export const ImageCropper = ({ imageUrl, imageHash, onCrop, onCancel, onSkip }: 
       if (isMoving) {
         cropRect.x = Math.max(0, Math.min(canvas.width - dragStartCrop.width, dragStartCrop.x + dx))
         cropRect.y = Math.max(0, Math.min(canvas.height - dragStartCrop.height, dragStartCrop.y + dy))
-        updateCropBox()
+      } else if (dragHandle) {
+        const minSize = 20
+
+        switch (dragHandle) {
+          case "nw":
+            cropRect.x = Math.max(0, dragStartCrop.x + dx)
+            cropRect.y = Math.max(0, dragStartCrop.y + dy)
+            cropRect.width = Math.max(minSize, dragStartCrop.width - (cropRect.x - dragStartCrop.x))
+            cropRect.height = Math.max(minSize, dragStartCrop.height - (cropRect.y - dragStartCrop.y))
+            break
+          case "ne":
+            cropRect.width = Math.max(minSize, Math.min(canvas.width - dragStartCrop.x, dragStartCrop.width + dx))
+            cropRect.y = Math.max(0, dragStartCrop.y + dy)
+            cropRect.height = Math.max(minSize, dragStartCrop.height - (cropRect.y - dragStartCrop.y))
+            break
+          case "sw":
+            cropRect.x = Math.max(0, dragStartCrop.x + dx)
+            cropRect.width = Math.max(minSize, dragStartCrop.width - (cropRect.x - dragStartCrop.x))
+            cropRect.height = Math.max(minSize, Math.min(canvas.height - dragStartCrop.y, dragStartCrop.height + dy))
+            break
+          case "se":
+            cropRect.width = Math.max(minSize, Math.min(canvas.width - dragStartCrop.x, dragStartCrop.width + dx))
+            cropRect.height = Math.max(minSize, Math.min(canvas.height - dragStartCrop.y, dragStartCrop.height + dy))
+            break
+        }
       }
+
+      updateCropBox()
     })
 
     document.addEventListener("touchend", () => {
