@@ -1,4 +1,4 @@
-import { test, expect, describe } from "bun:test"
+import { test, expect, describe, beforeEach, afterEach } from "bun:test"
 import {
   formatMoney,
   formatDate,
@@ -10,6 +10,7 @@ import {
   getUserTimezone,
   splitHashPath,
   parseHashQuery,
+  setPageTitle,
 } from "./utils"
 
 describe("formatMoney", () => {
@@ -222,5 +223,32 @@ describe("parseHashQuery", () => {
   })
   test("empty string", () => {
     expect(parseHashQuery("")).toEqual({})
+  })
+})
+
+describe("setPageTitle", () => {
+  // setPageTitle writes to document.title. bun:test doesn't expose a
+  // global `document`, so we install a minimal stub for the duration
+  // of these tests. The stub is restored in afterEach so any later
+  // test in the same file (or a sibling file) isn't affected.
+  const originalDoc = (globalThis as any).document
+  beforeEach(() => {
+    ;(globalThis as any).document = { title: "" }
+  })
+  afterEach(() => {
+    ;(globalThis as any).document = originalDoc
+  })
+
+  test("empty title resets to just the app name", () => {
+    setPageTitle("")
+    expect((globalThis as any).document.title).toBe("Grocer")
+  })
+  test("non-empty title is suffixed with the app name", () => {
+    setPageTitle("Receipts")
+    expect((globalThis as any).document.title).toBe("Receipts · Grocer")
+  })
+  test("dynamic content (item name) flows through unchanged", () => {
+    setPageTitle("Whole Milk 2%")
+    expect((globalThis as any).document.title).toBe("Whole Milk 2% · Grocer")
   })
 })

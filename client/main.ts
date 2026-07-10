@@ -1,5 +1,5 @@
 import van from "vanjs-core"
-import { getUserTimezone } from "./utils"
+import { getUserTimezone, setPageTitle } from "./utils"
 
 const { div, nav, a, button } = van.tags
 
@@ -254,6 +254,13 @@ const App = () => {
   return div({ id: "app" },
     () => {
       const path = currentPath.val
+      // Set a route-derived default tab title on every navigation.
+      // Pages with dynamic content (item / receipt / proposal
+      // detail) override this in their own reactive render, which
+      // runs after this function-child returns the child component.
+      // setPageTitle is idempotent and cheap (single DOM write), so
+      // the double-set on detail pages is fine.
+      setPageTitle(defaultTitleFor(path))
       if (path === "/login") {
         return Login()
       }
@@ -281,6 +288,29 @@ const routeName = (path: string): string => {
   if (path === "/categories") return "Categories"
   if (path === "/analysis") return "Analysis"
   return path
+}
+
+// defaultTitleFor returns the browser-tab title for a given route.
+// Pages with dynamic content (item detail, receipt detail, proposal
+// detail) override this in their own reactive render so the tab
+// reflects the data on screen, not just the route shape. The empty
+// string for "/" lets the home page title be just "Grocer".
+const defaultTitleFor = (path: string): string => {
+  const routePath = path.split("?")[0]
+  if (routePath === "/") return ""
+  if (routePath === "/login") return "Login"
+  if (routePath === "/receipts") return "Receipts"
+  if (routePath === "/receipts/upload") return "Upload Receipt"
+  if (routePath === "/receipts/manual") return "Manual Receipt"
+  if (routePath === "/items") return "Items"
+  if (routePath === "/items/merge") return "Merge Items"
+  if (routePath === "/merchants") return "Merchants"
+  if (routePath === "/categories") return "Categories"
+  if (routePath === "/analysis") return "Analysis"
+  if (routePath.startsWith("/receipts/")) return "Receipt"
+  if (routePath.startsWith("/proposals/")) return "Proposal"
+  if (routePath.startsWith("/items/")) return "Item"
+  return ""
 }
 
 const PageContent = (path: string) => {

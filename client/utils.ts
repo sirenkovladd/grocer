@@ -244,3 +244,20 @@ export const parseHashQuery = (path: string): Record<string, string> => {
   }
   return result
 }
+
+// ---------------------------------------------------------------------------
+// Page title
+// ---------------------------------------------------------------------------
+
+// setPageTitle updates document.title to reflect the current page.
+// An empty title resets to just "Grocer" (used for the home page);
+// any other value is formatted as "{title} · Grocer".
+//
+// Pages that show dynamic content (item detail, receipt detail,
+// proposal detail) call this from inside their reactive render so
+// the browser tab title stays in sync with the data on screen.
+// The router in main.ts also calls this with a route-derived default,
+// which is what the tab shows for pages that don't override it.
+export const setPageTitle = (title: string): void => {
+  document.title = title ? `${title} · Grocer` : "Grocer"
+}

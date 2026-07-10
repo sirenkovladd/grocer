@@ -1,5 +1,6 @@
 import van from "vanjs-core"
 import { api, navigate } from "../main"
+import { setPageTitle } from "../utils"
 
 // TOML template the "Copy schema" button copies. Field names match the
 // backend's userInputReceipt struct 1:1 (see internal/llm/llm_user_input.go).
@@ -794,6 +795,24 @@ const ProposalDetailPage = () => {
 
   return div({ class: "proposal-detail-wrapper" },
     () => {
+      // Tab title tracks the proposal state. Pending shows the
+      // merchant (the same name shown in the h1 below), parsing /
+      // approved / failed use a static label. Reading status.val
+      // and proposal.val.merchant here wires this function-child
+      // to those states so the title re-runs as the SSE stream
+      // pushes updates.
+      const pr = proposal.val
+      if (status.val === "pending" && pr) {
+        setPageTitle(pr.merchant || "Proposal")
+      } else if (status.val === "failed") {
+        setPageTitle("Parse failed")
+      } else if (status.val === "approved") {
+        setPageTitle("Proposal approved")
+      } else if (status.val === "loading") {
+        setPageTitle("Loading proposal…")
+      } else {
+        setPageTitle("Parsing receipt…")
+      }
       switch (status.val) {
         case "loading":
           return div("Loading...")

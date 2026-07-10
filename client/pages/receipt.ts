@@ -1,6 +1,6 @@
 import van from "vanjs-core"
 import { api, idStr, navigate } from "../main"
-import { formatDateTime, formatMoney, formatQuantity, shortId } from "../utils"
+import { formatDateTime, formatMoney, formatQuantity, setPageTitle, shortId } from "../utils"
 import { fetchPhotoUrl, revokePhotoUrl } from "../photos"
 import { ZoomableImage } from "../components/zoomable-image"
 
@@ -304,6 +304,17 @@ const ReceiptDetailPage = () => {
 
   return div({ class: "receipt-detail-page" },
     () => {
+      // Keep the tab title in sync with the merchant on screen.
+      // Falls back to the receipt ID for old/missing merchant names
+      // and to a loading state while the data is in flight.
+      if (receipt.val) {
+        const name = receipt.val.merchantName || `Receipt #${shortId(receipt.val.receiptId)}`
+        setPageTitle(name)
+      } else if (error.val) {
+        setPageTitle("Receipt not found")
+      } else {
+        setPageTitle("Loading receipt…")
+      }
       if (loading.val) {
         return div(
           div({ class: "skeleton-header" },

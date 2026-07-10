@@ -1,6 +1,6 @@
 import van from "vanjs-core"
 import { api, navigate } from "../main"
-import { formatDateTime, formatMoney, indexBy } from "../utils"
+import { formatDateTime, formatMoney, indexBy, setPageTitle } from "../utils"
 import { Chart, registerables } from "chart.js"
 
 Chart.register(...registerables)
@@ -144,6 +144,19 @@ const ItemDetailPage = () => {
 
   return div({ class: "item-detail-page" },
     () => {
+      // Keep the tab title in sync with what's on screen. The router
+      // already set a default "Item" title on navigation; we override
+      // it here as soon as the item data (or its absence) is known.
+      // Reading item.val / error.val / loading.val here also wires
+      // this function-child to those states, so the title re-runs
+      // automatically when loading finishes or an error appears.
+      if (item.val) {
+        setPageTitle(item.val.name)
+      } else if (error.val) {
+        setPageTitle("Item not found")
+      } else {
+        setPageTitle("Loading item…")
+      }
       if (loading.val) {
         return div(
           div({ class: "skeleton-header" },
