@@ -53,6 +53,13 @@ body {
   color: var(--text-primary);
 }
 
+/* Hamburger button is hidden on wide viewports. The drawer is the
+   inline nav on desktop, so positioning rules inside @media don't
+   apply and the drawer is just a normal flex item. */
+.sidebar-hamburger {
+  display: none;
+}
+
 /* Sidebar footer — holds the Sign-out button. `margin-top: auto` on the
    inner div pushes it to the bottom of the flex column, mirroring the
    visual convention of nav footers in desktop apps. */
@@ -667,6 +674,81 @@ th {
 @media (max-width: 768px) {
   .proposal-layout {
     grid-template-columns: 1fr;
+  }
+
+  /* Hamburger button — visible only on narrow viewports. */
+  .sidebar-hamburger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    font-size: 1.5rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    margin-right: 0.5rem;
+  }
+
+  /* On wide viewports the drawer is just a normal flex item inside
+     the .sidebar nav. On narrow viewports it's positioned off-screen
+     and slides in when .sidebar-drawer-open is set. */
+  .sidebar-drawer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 260px;
+    height: 100vh;
+    background: var(--color-surface, #fff);
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+    transform: translateX(-100%);
+    transition: transform 0.2s ease-out;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+    overflow-y: auto;
+  }
+
+  .sidebar-drawer-open {
+    transform: translateX(0);
+  }
+
+  .sidebar-close {
+    align-self: flex-end;
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .sidebar-drawer a {
+    display: block;
+    padding: 0.75rem 0.5rem;
+    min-height: 44px;
+    border-radius: 4px;
+  }
+
+  .sidebar-drawer a[aria-current="page"] {
+    background: var(--color-primary-bg, rgba(76, 154, 255, 0.1));
+    font-weight: 600;
+  }
+
+  /* Backdrop — visible only when the drawer is open. */
+  .sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 999;
+  }
+
+  .sidebar-backdrop-open {
+    display: block;
   }
 }
 

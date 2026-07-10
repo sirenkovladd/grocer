@@ -9,9 +9,22 @@ window.addEventListener("hashchange", () => {
   currentPath.val = window.location.hash.slice(1)
 })
 
+// navOpen controls the mobile hamburger drawer. It's read by the
+// Sidebar component on narrow viewports to toggle the drawer; the
+// inline (desktop) nav ignores it entirely. The state is local to
+// this module — there's no need to share it with pages.
+const navOpen = van.state(false)
+
 export const navigate = (path: string) => {
   window.location.hash = path
 }
+
+// Close the mobile drawer on Esc.
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && navOpen.val) {
+    navOpen.val = false
+  }
+})
 
 // API helper
 //
@@ -98,52 +111,80 @@ const handleLogout = async () => {
 // handler stops the browser from updating the hash twice (once via the
 // default anchor behavior, once via the explicit navigate() call).
 const Sidebar = () => nav({ class: "sidebar" },
-  a({
-    href: "#/",
-    "aria-current": () => currentPath.val === "/" ? "page" : null,
-    onclick: (e: Event) => { e.preventDefault(); navigate("/") },
-  }, "Home"),
-  a({
-    href: "#/receipts",
-    "aria-current": () => {
-      const p = currentPath.val
-      return p === "/receipts" || p.startsWith("/receipts/") ? "page" : null
-    },
-    onclick: (e: Event) => { e.preventDefault(); navigate("/receipts") },
-  }, "Receipts"),
-  a({
-    href: "#/items",
-    "aria-current": () => {
-      const p = currentPath.val
-      return p === "/items" || p.startsWith("/items/") ? "page" : null
-    },
-    onclick: (e: Event) => { e.preventDefault(); navigate("/items") },
-  }, "Items"),
-  a({
-    href: "#/merchants",
-    "aria-current": () => currentPath.val === "/merchants" ? "page" : null,
-    onclick: (e: Event) => { e.preventDefault(); navigate("/merchants") },
-  }, "Merchants"),
-  a({
-    href: "#/categories",
-    "aria-current": () => currentPath.val === "/categories" ? "page" : null,
-    onclick: (e: Event) => { e.preventDefault(); navigate("/categories") },
-  }, "Categories"),
-  a({
-    href: "#/analysis",
-    "aria-current": () => currentPath.val === "/analysis" ? "page" : null,
-    onclick: (e: Event) => { e.preventDefault(); navigate("/analysis") },
-  }, "Analysis"),
-  // Footer pushed to the bottom of the flex column via `margin-top: auto`
-  // (set in CSS). Holds the Sign-out button so it sits below the nav
-  // links without disrupting the existing layout.
-  div({ class: "sidebar-footer" },
+  // Hamburger button — visible only on narrow viewports via CSS.
+  button({
+    class: "sidebar-hamburger",
+    type: "button",
+    "aria-label": "Open navigation",
+    "aria-expanded": () => navOpen.val ? "true" : "false",
+    onclick: () => { navOpen.val = true },
+  }, "☰"),
+
+  // Drawer — positioned over the page on narrow viewports. On
+  // desktop it's a normal flow element (no positioning).
+  div({
+    class: () => "sidebar-drawer" + (navOpen.val ? " sidebar-drawer-open" : ""),
+  },
     button({
-      class: "sidebar-logout",
+      class: "sidebar-close",
       type: "button",
-      onclick: handleLogout,
-    }, "Sign out"),
+      "aria-label": "Close navigation",
+      onclick: () => { navOpen.val = false },
+    }, "✕"),
+    a({
+      href: "#/",
+      "aria-current": () => currentPath.val === "/" ? "page" : null,
+      onclick: (e: Event) => { e.preventDefault(); navOpen.val = false; navigate("/") },
+    }, "Home"),
+    a({
+      href: "#/receipts",
+      "aria-current": () => {
+        const p = currentPath.val
+        return p === "/receipts" || p.startsWith("/receipts/") ? "page" : null
+      },
+      onclick: (e: Event) => { e.preventDefault(); navOpen.val = false; navigate("/receipts") },
+    }, "Receipts"),
+    a({
+      href: "#/items",
+      "aria-current": () => {
+        const p = currentPath.val
+        return p === "/items" || p.startsWith("/items/") ? "page" : null
+      },
+      onclick: (e: Event) => { e.preventDefault(); navOpen.val = false; navigate("/items") },
+    }, "Items"),
+    a({
+      href: "#/merchants",
+      "aria-current": () => currentPath.val === "/merchants" ? "page" : null,
+      onclick: (e: Event) => { e.preventDefault(); navOpen.val = false; navigate("/merchants") },
+    }, "Merchants"),
+    a({
+      href: "#/categories",
+      "aria-current": () => currentPath.val === "/categories" ? "page" : null,
+      onclick: (e: Event) => { e.preventDefault(); navOpen.val = false; navigate("/categories") },
+    }, "Categories"),
+    a({
+      href: "#/analysis",
+      "aria-current": () => currentPath.val === "/analysis" ? "page" : null,
+      onclick: (e: Event) => { e.preventDefault(); navOpen.val = false; navigate("/analysis") },
+    }, "Analysis"),
+    // Footer pushed to the bottom of the flex column via `margin-top: auto`
+    // (set in CSS). Holds the Sign-out button so it sits below the nav
+    // links without disrupting the existing layout.
+    div({ class: "sidebar-footer" },
+      button({
+        class: "sidebar-logout",
+        type: "button",
+        onclick: () => { navOpen.val = false; handleLogout() },
+      }, "Sign out"),
+    ),
   ),
+
+  // Backdrop — visible only on narrow viewports when the drawer is open.
+  // Clicking it closes the drawer.
+  div({
+    class: () => "sidebar-backdrop" + (navOpen.val ? " sidebar-backdrop-open" : ""),
+    onclick: () => { navOpen.val = false },
+  }),
 )
 
 const Layout = (content: any) => div({ class: "layout" },
