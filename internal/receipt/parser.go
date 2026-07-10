@@ -173,7 +173,7 @@ func (p *Parser) ParseReceiptStream(ctx context.Context, photo []byte, ownerID u
 			}
 		}
 
-		parsed, err := llm.ParseReceiptResponse(accumulated)
+		parsed, err := llm.ParseReceiptResponse(ctx, accumulated)
 		if err != nil {
 			events <- ParseEvent{Type: "error", Message: fmt.Sprintf("parse response: %v", err)}
 			return
@@ -329,7 +329,7 @@ func (p *Parser) ParseReceiptAsync(ctx context.Context, proposalID uint64, photo
 		}
 	}
 
-	parsed, err := llm.ParseReceiptResponse(accumulated)
+	parsed, err := llm.ParseReceiptResponse(ctx, accumulated)
 	if err != nil {
 		fail(fmt.Sprintf("parse response: %v", err))
 		return

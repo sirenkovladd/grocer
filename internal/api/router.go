@@ -70,7 +70,7 @@ func (r *Router) setupRoutes() {
 	r.mux.HandleFunc("PATCH /api/receipts/{id}", r.withCORS(r.withAuth(r.withAuditLogging("update", "receipt", r.handleUpdateReceipt))))
 	r.mux.HandleFunc("PATCH /api/receipts/{id}/items/{index}", r.withCORS(r.withAuth(r.withAuditLogging("update", "receipt_item", r.handleUpdateReceiptItem))))
 	r.mux.HandleFunc("POST /api/receipts/{id}/reopen", r.withCORS(r.withAuth(r.withAuditLogging("reopen", "receipt", r.handleReopenReceipt))))
-	r.mux.HandleFunc("POST /api/receipts/upload", r.withCORS(r.withAuth(r.withAuditLogging("upload", "receipt", r.handleUploadReceipt))))
+	r.mux.HandleFunc("POST /api/receipts/upload", r.withCORS(r.withAuth(r.withTimezone(r.withAuditLogging("upload", "receipt", r.handleUploadReceipt)))))
 	r.mux.HandleFunc("POST /api/receipts/manual", r.withCORS(r.withAuth(r.withAuditLogging("create", "receipt", r.handleCreateManualReceipt))))
 
 	// Proposals
@@ -78,8 +78,8 @@ func (r *Router) setupRoutes() {
 	r.mux.HandleFunc("GET /api/proposals/{id}", r.withCORS(r.withAuth(r.withAuditLogging("read", "proposal", r.handleGetProposal))))
 	r.mux.HandleFunc("GET /api/proposals/{id}/stream", r.withCORS(r.withAuth(r.handleProposalStream)))
 	r.mux.HandleFunc("POST /api/proposals/{id}/approve", r.withCORS(r.withAuth(r.withAuditLogging("approve", "proposal", r.handleApproveProposal))))
-	r.mux.HandleFunc("POST /api/proposals/{id}/reparse", r.withCORS(r.withAuth(r.withAuditLogging("reparse", "proposal", r.handleReparseProposal))))
-	r.mux.HandleFunc("POST /api/proposals/{id}/apply-external", r.withCORS(r.withAuth(r.withAuditLogging("apply_external", "proposal", r.handleApplyExternal))))
+	r.mux.HandleFunc("POST /api/proposals/{id}/reparse", r.withCORS(r.withAuth(r.withTimezone(r.withAuditLogging("reparse", "proposal", r.handleReparseProposal)))))
+	r.mux.HandleFunc("POST /api/proposals/{id}/apply-external", r.withCORS(r.withAuth(r.withTimezone(r.withAuditLogging("apply_external", "proposal", r.handleApplyExternal)))))
 	r.mux.HandleFunc("DELETE /api/proposals/{id}", r.withCORS(r.withAuth(r.withAuditLogging("delete", "proposal", r.handleDeleteProposal))))
 	r.mux.HandleFunc("PATCH /api/proposals/{id}/items/{index}", r.withCORS(r.withAuth(r.withAuditLogging("update", "proposal_item", r.handleUpdateProposalItem))))
 	r.mux.HandleFunc("POST /api/proposals/{id}/items", r.withCORS(r.withAuth(r.withAuditLogging("create", "proposal_item", r.handleAddProposalItem))))

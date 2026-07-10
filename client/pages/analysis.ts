@@ -2,7 +2,7 @@ import van from "vanjs-core"
 import { api, navigate } from "../main"
 import { Chart, registerables } from "chart.js"
 import DateRange from "../components/date-range"
-import { toCsv, downloadFile, formatMoney, formatDate } from "../utils"
+import { toCsv, downloadFile, formatMoney, formatDateTime } from "../utils"
 
 Chart.register(...registerables)
 
@@ -443,7 +443,7 @@ const AnalysisPage = () => {
             div({ class: "trip-card card", key: trip.key },
               div({ class: "trip-header" },
                 span({ class: "trip-merchant" }, trip.merchantName),
-                span({ class: "trip-date muted" }, formatDate(trip.date)),
+                span({ class: "trip-date muted" }, formatDateTime(trip.date)),
               ),
               div({ class: "trip-meta" },
                 span(`by ${trip.ownerName || "Unknown"}`),

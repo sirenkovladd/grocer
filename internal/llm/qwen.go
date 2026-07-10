@@ -113,7 +113,7 @@ func (q *ZenAnthropicProvider) ParseReceipt(ctx context.Context, photo []byte) (
 	if err != nil {
 		return nil, fmt.Errorf("zen-anthropic request: %w", err)
 	}
-	return ParseReceiptResponse(text)
+	return ParseReceiptResponse(ctx, text)
 }
 
 // ParseReceiptStream is not supported for the Zen Anthropic path.
@@ -131,7 +131,7 @@ func (q *ZenAnthropicProvider) ParseReceiptFromText(ctx context.Context, ocr *OC
 	if err != nil {
 		return nil, fmt.Errorf("zen-anthropic text request: %w", err)
 	}
-	return ParseReceiptResponse(text)
+	return ParseReceiptResponse(ctx, text)
 }
 
 // ParseReceiptFromTextStream extracts structured JSON from pre-OCR'd text

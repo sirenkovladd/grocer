@@ -1,6 +1,6 @@
 import van from "vanjs-core"
 import { api, navigate } from "../main"
-import { formatDate, formatMoney, indexBy } from "../utils"
+import { formatDateTime, formatMoney, indexBy } from "../utils"
 import { Chart, registerables } from "chart.js"
 
 Chart.register(...registerables)
@@ -249,11 +249,16 @@ const ItemDetailPage = () => {
                   ...history.val.map(h => {
                     // Analysis endpoint returns date as "2006-01-02"
                     // (no time, no timezone). Parse as local midnight
-                    // so formatDate displays the same day the user
-                    // expects — not yesterday in negative-UTC zones.
+                    // so formatDateTime displays the same day the
+                    // user expects — not yesterday in negative-UTC
+                    // zones. No time component is available from this
+                    // endpoint, so the display shows "12:00 AM" for
+                    // every row; that's a known limitation of the
+                    // analysis endpoint and a follow-up would have it
+                    // return full RFC 3339 timestamps.
                     const unixSecs = Math.floor(new Date(h.date + "T00:00:00").getTime() / 1000)
                     return tr(
-                      td({ "data-label": "Date" }, formatDate(unixSecs)),
+                      td({ "data-label": "Date" }, formatDateTime(unixSecs)),
                       td({ "data-label": "Price", class: "money" }, formatMoney(h.price * 100)),
                     )
                   }),

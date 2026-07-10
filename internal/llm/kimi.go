@@ -114,7 +114,7 @@ func (k *KimiProvider) ParseReceipt(ctx context.Context, photo []byte) (*ParsedR
 		return nil, fmt.Errorf("no response from kimi")
 	}
 
-	return ParseReceiptResponse(chatResp.Choices[0].Message.Content)
+	return ParseReceiptResponse(ctx, chatResp.Choices[0].Message.Content)
 }
 
 // ParseReceiptStream starts a streaming receipt parse and returns a channel of text chunks.
@@ -261,7 +261,7 @@ func (k *KimiProvider) ParseReceiptFromText(ctx context.Context, ocr *OCRResult)
 		}
 		acc += c.Text
 	}
-	return ParseReceiptResponse(acc)
+	return ParseReceiptResponse(ctx, acc)
 }
 
 // ParseReceiptFromTextStream streams a text-only chat completion that asks

@@ -1,6 +1,6 @@
 import van from "vanjs-core"
 import { navigate } from "../main"
-import { formatDate, formatMoney } from "../utils"
+import { formatDateTime, formatMoney } from "../utils"
 import { fetchPhotoUrl } from "../photos"
 
 const { div, span, img } = van.tags
@@ -63,7 +63,7 @@ export const ReceiptCard = (r: EnrichedReceiptSummary) => {
     div({ class: "receipt-card-body" },
       div({ class: "receipt-merchant" }, r.merchantName),
       div({ class: "receipt-meta" },
-        span({ class: "muted" }, formatDate(r.date)),
+        span({ class: "muted" }, formatDateTime(r.date)),
         span({ class: "receipt-card-sep" }, "·"),
         span(`${r.itemCount} ${r.itemCount === 1 ? "item" : "items"}`),
         span({ class: "receipt-card-total money" }, formatMoney(r.totalCents)),

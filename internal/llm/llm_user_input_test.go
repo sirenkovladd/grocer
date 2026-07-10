@@ -1,8 +1,10 @@
 package llm
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseUserInput_TOML(t *testing.T) {
@@ -22,7 +24,7 @@ quantity = 1
 unit_price = 4.99
 total_price = 4.99
 `
-	p, err := ParseUserInput([]byte(input))
+	p, err := ParseUserInput(context.Background(), []byte(input))
 	if err != nil {
 		t.Fatalf("ParseUserInput: %v", err)
 	}
@@ -58,7 +60,7 @@ func TestParseUserInput_JSON(t *testing.T) {
 			{"name": "Milk", "quantity": 1, "unit_price": 4.49, "total_price": 4.49}
 		]
 	}`
-	p, err := ParseUserInput([]byte(input))
+	p, err := ParseUserInput(context.Background(), []byte(input))
 	if err != nil {
 		t.Fatalf("ParseUserInput: %v", err)
 	}
@@ -76,7 +78,7 @@ func TestParseUserInput_JSON(t *testing.T) {
 func TestParseUserInput_TOMLTriesFirstAndFallsBackToJSON(t *testing.T) {
 	// If TOML parsing fails, we silently try JSON. Make sure that path works.
 	jsonInput := `{"merchant": "Test", "date": "2026-01-01", "items": [{"name": "x", "quantity": 1, "unit_price": 1.0, "total_price": 1.0}], "total": 1.0}`
-	p, err := ParseUserInput([]byte(jsonInput))
+	p, err := ParseUserInput(context.Background(), []byte(jsonInput))
 	if err != nil {
 		t.Fatalf("ParseUserInput: %v", err)
 	}
@@ -86,7 +88,7 @@ func TestParseUserInput_TOMLTriesFirstAndFallsBackToJSON(t *testing.T) {
 }
 
 func TestParseUserInput_RejectsMalformed(t *testing.T) {
-	_, err := ParseUserInput([]byte("this is not toml or json { broken"))
+	_, err := ParseUserInput(context.Background(), []byte("this is not toml or json { broken"))
 	if err == nil {
 		t.Fatal("expected error for malformed input")
 	}
@@ -96,7 +98,7 @@ func TestParseUserInput_RejectsMalformed(t *testing.T) {
 }
 
 func TestParseUserInput_RejectsEmpty(t *testing.T) {
-	_, err := ParseUserInput([]byte(""))
+	_, err := ParseUserInput(context.Background(), []byte(""))
 	if err == nil {
 		t.Fatal("expected error for empty input")
 	}
@@ -111,7 +113,7 @@ quantity = 1
 unit_price = 1.0
 total_price = 1.0
 `
-	_, err := ParseUserInput([]byte(input))
+	_, err := ParseUserInput(context.Background(), []byte(input))
 	if err == nil {
 		t.Fatal("expected error for missing merchant")
 	}
@@ -122,7 +124,7 @@ func TestParseUserInput_RejectsNoItems(t *testing.T) {
 date = "2026-07-09"
 total = 0
 `
-	_, err := ParseUserInput([]byte(input))
+	_, err := ParseUserInput(context.Background(), []byte(input))
 	if err == nil {
 		t.Fatal("expected error for empty items")
 	}
@@ -137,7 +139,7 @@ name = "y"
 quantity = 2
 unit_price = 4.99
 `
-	p, err := ParseUserInput([]byte(input))
+	p, err := ParseUserInput(context.Background(), []byte(input))
 	if err != nil {
 		t.Fatalf("ParseUserInput: %v", err)
 	}
@@ -155,7 +157,7 @@ name = "y"
 unit_price = 4.99
 total_price = 4.99
 `
-	p, err := ParseUserInput([]byte(input))
+	p, err := ParseUserInput(context.Background(), []byte(input))
 	if err != nil {
 		t.Fatalf("ParseUserInput: %v", err)
 	}
@@ -174,7 +176,7 @@ quantity = 1
 unit_price = 1.0
 total_price = 1.0
 `
-	p, err := ParseUserInput([]byte(input))
+	p, err := ParseUserInput(context.Background(), []byte(input))
 	if err != nil {
 		t.Fatalf("ParseUserInput: %v", err)
 	}
@@ -193,11 +195,55 @@ quantity = 1
 unit_price = 1.0
 total_price = 1.0
 `
-	p, err := ParseUserInput([]byte(input))
+	p, err := ParseUserInput(context.Background(), []byte(input))
 	if err != nil {
 		t.Fatalf("ParseUserInput should not fail on bad date: %v", err)
 	}
 	if p.Date.IsZero() {
 		t.Error("expected non-zero date (fallback to now)")
+	}
+}
+
+// TestParseUserInput_DateOnlyAnchoredToNoonInTimezone is the core
+// regression test for the day-shift bug: parsing "2026-07-10" used
+// to anchor to midnight UTC, which is the previous day in negative-
+// UTC zones. Now it anchors to noon in the user's timezone so the
+// calendar date is always correct.
+func TestParseUserInput_DateOnlyAnchoredToNoonInTimezone(t *testing.T) {
+	const input = `merchant = "x"
+date = "2026-07-10"
+total = 0
+[[items]]
+name = "y"
+quantity = 1
+unit_price = 1.0
+total_price = 1.0
+`
+
+	tests := []struct {
+		name     string
+		tz       string
+		wantTime string // expected local time in the given tz
+	}{
+		{"UTC", "UTC", "2026-07-10T12:00:00Z"},
+		{"Los Angeles (PDT, UTC-7)", "America/Los_Angeles", "2026-07-10T12:00:00-07:00"},
+		{"Tokyo (JST, UTC+9)", "Asia/Tokyo", "2026-07-10T12:00:00+09:00"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tz, err := time.LoadLocation(tt.tz)
+			if err != nil {
+				t.Fatalf("load tz: %v", err)
+			}
+			ctx := WithTimezone(context.Background(), tz)
+			p, err := ParseUserInput(ctx, []byte(input))
+			if err != nil {
+				t.Fatalf("ParseUserInput: %v", err)
+			}
+			got := p.Date.In(tz).Format("2006-01-02T15:04:05Z07:00")
+			if got != tt.wantTime {
+				t.Errorf("date = %q, want %q", got, tt.wantTime)
+			}
+		})
 	}
 }

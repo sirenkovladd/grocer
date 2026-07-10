@@ -38,6 +38,10 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  /* Don't shrink the sidebar in the flex row — without this, content
+     with wide tables can squeeze the sidebar below its 200px width
+     and make the nav links wrap into multiple lines. */
+  flex-shrink: 0;
 }
 
 .sidebar a {
@@ -46,6 +50,12 @@ body {
   padding: 0.5rem 0.75rem;
   border-radius: 6px;
   transition: all 0.2s;
+  /* `display: block` so each link fills the full sidebar width
+     (instead of shrinking to its text width and leaving the rest
+     of the row empty). On mobile the @media block overrides this
+     with `flex: 0 0 auto` so links size to their content for
+     horizontal tab layout. */
+  display: block;
 }
 
 .sidebar a:hover {
@@ -53,16 +63,11 @@ body {
   color: var(--text-primary);
 }
 
-/* Hamburger button is hidden on wide viewports. The drawer is the
-   inline nav on desktop, so positioning rules inside @media don't
-   apply and the drawer is just a normal flex item. */
-.sidebar-hamburger {
-  display: none;
-}
-
 /* Sidebar footer — holds the Sign-out button. `margin-top: auto` on the
-   inner div pushes it to the bottom of the flex column, mirroring the
-   visual convention of nav footers in desktop apps. */
+   inner div pushes it to the bottom of the flex column on desktop,
+   mirroring the visual convention of nav footers in desktop apps. On
+   mobile the @media block switches this to `margin-left: auto` to
+   right-align the Sign-out tab at the end of the horizontal tab bar. */
 .sidebar-footer {
   margin-top: auto;
   padding-top: 1rem;
@@ -595,6 +600,16 @@ th {
   cursor: zoom-in;
   touch-action: none;
   max-height: 540px;
+  /* Fill the parent column so the visible zoom window matches
+     the card width (e.g. ~454px inside .proposal-photo's 1rem
+     padding). Without this the container shrinks to the image's
+     natural display size, so a 159px-wide image only reveals a
+     159px-wide window when zoomed in — the user can pan but
+     can't see more horizontal detail at once. The receipt
+     detail page sets this same value via a scoped rule for
+     historical reasons; making it the base behavior means all
+     consumers get a full-width zoom window by default. */
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -685,79 +700,65 @@ th {
     font-size: 1rem;
   }
 
-  /* Hamburger button — visible only on narrow viewports. */
-  .sidebar-hamburger {
+  /* On mobile, stack the sidebar above the content and turn it into
+     a horizontal tab bar that scrolls horizontally if the labels
+     don't fit (six links at ~80–100px each won't fit on a 375px
+     viewport, so scrolling is expected — swipe to reach Sign out).
+     flex-shrink: 0 (set on the desktop .sidebar rule) is overridden
+     by the new width: 100% so the bar fills the viewport. */
+  .layout {
+    flex-direction: column;
+  }
+  .sidebar {
+    width: 100%;
+    height: auto;
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 0.5rem;
+    gap: 0.25rem;
+  }
+  /* On desktop each link is `display: block` and fills the sidebar
+     width. In the row-flex tab bar that would force the row to
+     overflow by 100% × 6 — override to size-to-content with
+     `white-space: nowrap` so the text doesn't wrap mid-label. */
+  .sidebar a {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    min-height: 44px;
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    width: 44px;
-    height: 44px;
-    font-size: 1.5rem;
-    background: none;
-    border: none;
-    cursor: pointer;
-    margin-right: 0.5rem;
   }
-
-  /* On wide viewports the drawer is just a normal flex item inside
-     the .sidebar nav. On narrow viewports it's positioned off-screen
-     and slides in when .sidebar-drawer-open is set. */
-  .sidebar-drawer {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 260px;
-    height: 100vh;
-    background: var(--color-surface, #fff);
-    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
-    transform: translateX(-100%);
-    transition: transform 0.2s ease-out;
-    z-index: 1000;
-    display: flex;
-    flex-direction: column;
+  /* Right-align the Sign-out footer at the end of the tab bar so it
+     stays visually separate from the nav tabs and the bar still
+     scrolls past it. */
+  .sidebar-footer {
+    margin-top: 0;
+    margin-left: auto;
+    padding-top: 0;
+    border-top: none;
+    border-left: 1px solid var(--border);
+    padding-left: 0.5rem;
+  }
+  /* Match the desktop logout button height to the tab row. */
+  .sidebar-logout {
+    min-height: 44px;
+    padding: 0.5rem 0.75rem;
+    width: auto;
+  }
+  /* In the horizontal tab bar, the left-border indicator from the
+     desktop rule doesn't make sense — swap it for a bottom border
+     so the active tab is visually anchored to the bar's bottom
+     edge. Reset the padding-left compensation at the same time. */
+  .sidebar a.active,
+  .sidebar a[aria-current="page"] {
+    border-left: none;
+    border-bottom: 2px solid var(--accent);
+    padding-left: 0.75rem;
+  }
+  .content {
     padding: 1rem;
-    overflow-y: auto;
-  }
-
-  .sidebar-drawer-open {
-    transform: translateX(0);
-  }
-
-  .sidebar-close {
-    align-self: flex-end;
-    background: none;
-    border: none;
-    font-size: 1.5rem;
-    cursor: pointer;
-    padding: 0.5rem;
-    margin-bottom: 0.5rem;
-    min-width: 44px;
-    min-height: 44px;
-  }
-
-  .sidebar-drawer a {
-    display: block;
-    padding: 0.75rem 0.5rem;
-    min-height: 44px;
-    border-radius: 4px;
-  }
-
-  .sidebar-drawer a[aria-current="page"] {
-    background: var(--color-primary-bg, rgba(76, 154, 255, 0.1));
-    font-weight: 600;
-  }
-
-  /* Backdrop — visible only when the drawer is open. */
-  .sidebar-backdrop {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.3);
-    z-index: 999;
-  }
-
-  .sidebar-backdrop-open {
-    display: block;
   }
 }
 
@@ -1555,7 +1556,10 @@ button:disabled {
    UX Overhaul additions (ticket 05)
    ========================================================================== */
 
-/* Sidebar active state */
+/* Sidebar active state. The default (desktop) indicator is a left
+   border, which fits the vertical sidebar layout. The mobile media
+   query further down overrides this to a bottom border so the
+   indicator sits under the active tab in the horizontal tab bar. */
 .sidebar a.active,
 .sidebar a[aria-current="page"] {
   background: var(--bg-tertiary);
@@ -1696,6 +1700,29 @@ button:disabled {
   text-decoration: underline;
 }
 
+/* Proposal page — subtle hint that a parsed name is linked to an
+   existing catalog item. The arrow is small enough to not dominate
+   the row but large enough to read at a glance. Color matches the
+   muted text so it doesn't compete with the name itself. */
+.matched-hint {
+  color: var(--text-muted, #888);
+  font-size: 0.85em;
+  margin-left: 0.15em;
+  white-space: nowrap;
+}
+
+.matched-hint-link {
+  display: inline-block;
+  margin-top: 0.25rem;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.85em;
+}
+
+.matched-hint-link:hover {
+  text-decoration: underline;
+}
+
 /* Receipt photo on detail page — constrain full-size image from /api/photos. */
 .receipt-photo img {
   max-height: 400px;
@@ -1731,7 +1758,6 @@ button:disabled {
    sees the full receipt at a useful size, with room to scroll
    past the items without the image moving off-screen. */
 .receipt-detail-layout .receipt-photo .zoom-container {
-  width: 100%;
   max-height: 80vh;
   border-radius: 8px;
   border: 1px solid var(--border);

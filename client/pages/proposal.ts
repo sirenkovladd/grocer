@@ -89,12 +89,47 @@ const { div, h1, h2, h3, table, tr, td, th, button, select, option, img, p, span
 import { fetchPhotoUrl } from "../photos"
 import { ZoomableImage } from "../components/zoomable-image"
 
+// renderItemName returns the proposal item's parsed name as a clickable
+// link to the matched catalog item when one exists. The server's matcher
+// populates `matchedItemId` either as an auto-match (high string
+// similarity + high OCR confidence → `userChoice = "existing"`) or a
+// suggested match (lower confidence, awaiting user confirmation). Both
+// cases benefit from being clickable: the user can verify the existing
+// item's full name, category, and price history before approving.
+//
+// Opens in a new tab via `target="_blank"` so the user can keep the
+// proposal in the current tab — important when reviewing a long receipt.
+// `rel="noopener"` blocks the new tab from accessing the opener window.
+//
+// When the item isn't matched, the parsed name is rendered as plain text
+// (preserving the previous behavior). The small "↗" hint is intentionally
+// subtle so the matched/unmatched distinction is obvious at a glance
+// without dominating the row.
+const renderItemName = (item: ProposalItem) => {
+  if (!item.matchedItemId) {
+    return item.parsedName
+  }
+  return span({ class: "item-name-with-match" },
+    a({
+      href: `#/items/${item.matchedItemId}`,
+      target: "_blank",
+      rel: "noopener",
+      class: "item-name-link",
+      title: `Opens existing item #${item.matchedItemId} in a new tab`,
+    }, item.parsedName),
+    span({ class: "matched-hint", title: "Matches existing catalog item" }, " ↗"),
+  )
+}
+
 interface ProposalItem {
   parsedName: string
   quantity: number
   unitPriceCents: number
   totalPriceCents?: number
-  matchedItemId: number
+  // The server's `,string` JSON tag sends IDs as strings. Empty string
+  // (or absent) means no match — the auto-matcher either didn't find
+  // one or didn't pass the OCR-confidence gate.
+  matchedItemId?: string
   categoryId: number
   isNewCategory: boolean
   userChoice: string
@@ -453,7 +488,7 @@ const ProposalDetailPage = () => {
               tr(th("Item"), th("Qty"), th("Price")),
               ...streamingItems.val.map((it) =>
                 tr(
-                  td(it.parsedName),
+                  td(renderItemName(it)),
                   td(String(it.quantity)),
                   td(`$${(it.unitPriceCents / 100).toFixed(2)}`),
                 )
@@ -471,12 +506,26 @@ const ProposalDetailPage = () => {
     // If this row is being edited
     if (editingIndex.val === index) {
       return tr({ class: "editing-row" },
-        td(input({
-          type: "text",
-          value: editName.val,
-          oninput: (e: Event) => { editName.val = (e.target as HTMLInputElement).value },
-          class: "edit-input",
-        })),
+        td({ class: "item-name-cell" },
+          input({
+            type: "text",
+            value: editName.val,
+            oninput: (e: Event) => { editName.val = (e.target as HTMLInputElement).value },
+            class: "edit-input",
+          }),
+          // Preserve the matched-item link alongside the edit input so
+          // the user can still click through to the catalog entry being
+          // replaced. Renders nothing when the item isn't matched.
+          () => item.matchedItemId
+            ? a({
+                href: `#/items/${item.matchedItemId}`,
+                target: "_blank",
+                rel: "noopener",
+                class: "matched-hint-link",
+                title: `Opens existing item #${item.matchedItemId} in a new tab`,
+              }, "↗ existing item")
+            : "",
+        ),
         td(input({
           type: "number",
           value: editQty.val,
@@ -509,7 +558,7 @@ const ProposalDetailPage = () => {
     const isWeighted = item.unitPriceCents !== totalCents && item.quantity !== 1
     return tr(
       td({ class: "item-name-cell" },
-        item.parsedName,
+        renderItemName(item),
         () => isWeighted
           ? div({ class: "item-unit-price" }, `@ $${(item.unitPriceCents / 100).toFixed(2)}/unit`)
           : "",
@@ -574,7 +623,7 @@ const ProposalDetailPage = () => {
           }, () => addingItem.val ? "Adding…" : "+ Add item"),
           div({ class: "proposal-summary" },
             p(`Total: $${(pr.totalCents / 100).toFixed(2)}`),
-            p(`Date: ${pr.date ? new Date(pr.date * 1000).toLocaleDateString() : "Unknown"}`),
+            p(`Date: ${pr.date ? new Date(pr.date * 1000).toLocaleString() : "Unknown"}`),
           ),
           () => error.val ? p({ class: "error" }, error.val) : "",
           button({

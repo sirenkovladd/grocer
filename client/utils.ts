@@ -33,6 +33,49 @@ export const formatDate = (unixSeconds: number): string => {
   }).format(new Date(unixSeconds * 1000))
 }
 
+// Unix seconds → "May 30, 2026, 2:30 PM" (en-US, short month, 12-hour
+// time, user's local timezone). Used for receipt/proposal display
+// where the user wants to see when the purchase happened, not just
+// the calendar date.
+//
+// Both this and formatRelativeDate are timezone-correct because they
+// rely on Intl.DateTimeFormat (which defaults to the user's local
+// timezone) — the storage is UTC but the display is local. The
+// "day-shift bug" we used to have (midnight UTC being the previous
+// day in negative-UTC zones) is fixed at the server by anchoring
+// LLM/OCR dates to noon in the user's timezone; this function then
+// renders the resulting instant in the user's local timezone.
+export const formatDateTime = (unixSeconds: number): string => {
+  if (!unixSeconds) return "Unknown date"
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(new Date(unixSeconds * 1000))
+}
+
+// Return the user's IANA timezone (e.g. "America/Los_Angeles").
+// Intl.DateTimeFormat().resolvedOptions().timeZone is the standard
+// way to detect this in the browser — it returns the OS-level
+// timezone setting, not a hard-coded value.
+//
+// Falls back to "UTC" if the browser doesn't support
+// resolvedOptions().timeZone (very old browsers) so the server
+// still gets a parseable value and can fall back to its legacy
+// UTC anchor.
+export const getUserTimezone = (): string => {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    if (tz) return tz
+  } catch {
+    // Intl not available — fall through.
+  }
+  return "UTC"
+}
+
 // Unix seconds → "3 days ago" / "Today" / "Yesterday" / "May 30, 2026" (fallback).
 //
 // Switches from relative to absolute formatting at 30 days (the days→weeks

@@ -1,5 +1,5 @@
 import van from "vanjs-core"
-import { api, navigate } from "../main"
+import { api, idStr, navigate } from "../main"
 import { formatMoney } from "../utils"
 
 const { div, h1, h2, h3, p, button, input, select, option, label, span } = van.tags
@@ -30,16 +30,18 @@ interface ItemRow {
   unitPriceDollars: string
 }
 
-const unixToDateInput = (unixSecs: number): string => {
+const unixToDateTimeInput = (unixSecs: number): string => {
   const d = new Date(unixSecs * 1000)
   const yyyy = d.getFullYear()
   const mm = String(d.getMonth() + 1).padStart(2, "0")
   const dd = String(d.getDate()).padStart(2, "0")
-  return `${yyyy}-${mm}-${dd}`
+  const hh = String(d.getHours()).padStart(2, "0")
+  const mi = String(d.getMinutes()).padStart(2, "0")
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`
 }
 
-const dateInputToUnix = (yyyyMmDd: string): number => {
-  return Math.floor(new Date(yyyyMmDd + "T00:00:00").getTime() / 1000)
+const dateTimeInputToUnix = (yyyyMmDdThhMm: string): number => {
+  return Math.floor(new Date(yyyyMmDdThhMm + ":00").getTime() / 1000)
 }
 
 const ManualReceiptPage = () => {
@@ -50,7 +52,7 @@ const ManualReceiptPage = () => {
 
   // Form state
   const merchantId = van.state("")
-  const date = van.state(unixToDateInput(Math.floor(Date.now() / 1000)))
+  const date = van.state(unixToDateTimeInput(Math.floor(Date.now() / 1000)))
   const totalDollars = van.state("")
   const rows = van.state<ItemRow[]>([
     { itemId: "", quantity: "1", unitPriceDollars: "" },
@@ -98,7 +100,7 @@ const ManualReceiptPage = () => {
       submitError.val = "Pick a merchant"
       return
     }
-    const dateUnix = dateInputToUnix(date.val)
+    const dateUnix = dateTimeInputToUnix(date.val)
     if (isNaN(dateUnix)) {
       submitError.val = "Pick a valid date"
       return
@@ -125,13 +127,13 @@ const ManualReceiptPage = () => {
         submitError.val = `Row ${i + 1}: unit price must be a non-negative number`
         return
       }
-      cleanRows.push({ itemId: r.itemId, quantity: qty, unitPriceCents: priceCents })
+      cleanRows.push({ itemId: idStr(r.itemId), quantity: qty, unitPriceCents: priceCents })
     }
 
     submitting.val = true
     try {
       const data = await api.post("/receipts/manual", {
-        merchantId: merchantId.val,
+        merchantId: idStr(merchantId.val),
         date: dateUnix,
         totalCents,
         items: cleanRows,
@@ -216,10 +218,10 @@ const ManualReceiptPage = () => {
             ),
           ),
           div({ class: "form-field" },
-            label({ for: "manual-date" }, "Date"),
+            label({ for: "manual-date" }, "Date & Time"),
             input({
               id: "manual-date",
-              type: "date",
+              type: "datetime-local",
               value: date,
               oninput: (e: Event) => { date.val = (e.target as HTMLInputElement).value },
               disabled: submitting,

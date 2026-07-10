@@ -260,7 +260,7 @@ func (r *Router) handleApplyExternal(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	parsed, err := llm.ParseUserInput([]byte(reqBody.Content))
+	parsed, err := llm.ParseUserInput(req.Context(), []byte(reqBody.Content))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("parse: %v", err))
 		return

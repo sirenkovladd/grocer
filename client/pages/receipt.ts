@@ -1,6 +1,6 @@
 import van from "vanjs-core"
-import { api, navigate } from "../main"
-import { formatDate, formatMoney, formatQuantity, shortId } from "../utils"
+import { api, idStr, navigate } from "../main"
+import { formatDateTime, formatMoney, formatQuantity, shortId } from "../utils"
 import { fetchPhotoUrl, revokePhotoUrl } from "../photos"
 import { ZoomableImage } from "../components/zoomable-image"
 
@@ -60,24 +60,33 @@ const Breadcrumb = (merchantName: string, receiptId: string) =>
     span({ class: "current" }, merchantName || `Receipt #${shortId(receiptId)}`),
   )
 
-// Convert Unix seconds (UTC) to a YYYY-MM-DD string in the user's
-// local timezone. The receipt date is stored as UTC midnight by
-// convention, but the user picked it (or saw it on the receipt) in
-// their local timezone — so we round-trip through local time to
-// avoid a -1 day shift in negative-UTC zones.
-const unixToDateInput = (unixSecs: number): string => {
+// Convert Unix seconds (UTC) to a YYYY-MM-DDTHH:MM string in the
+// user's local timezone. Used as the value of <input type="datetime-local">
+// in the edit form, which always interprets its value in the user's
+// local timezone (no Z suffix) — so we round-trip through the local
+// Date methods to get the same wall-clock the server stored in the
+// user's tz.
+//
+// The server now anchors LLM/OCR dates to noon in the user's timezone
+// (see internal/llm/base.go parseDateInTimezone) so the calendar
+// date is correct in every timezone. This helper preserves the
+// time-of-day the user (or the LLM) picked.
+const unixToDateTimeInput = (unixSecs: number): string => {
   const d = new Date(unixSecs * 1000)
   const yyyy = d.getFullYear()
   const mm = String(d.getMonth() + 1).padStart(2, "0")
   const dd = String(d.getDate()).padStart(2, "0")
-  return `${yyyy}-${mm}-${dd}`
+  const hh = String(d.getHours()).padStart(2, "0")
+  const mi = String(d.getMinutes()).padStart(2, "0")
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`
 }
 
-// Inverse of unixToDateInput — parse YYYY-MM-DD as local midnight
-// and return Unix seconds. Matches the convention used elsewhere in
-// the client (date-range, receipts list filter).
-const dateInputToUnix = (yyyyMmDd: string): number => {
-  return Math.floor(new Date(yyyyMmDd + "T00:00:00").getTime() / 1000)
+// Inverse of unixToDateTimeInput — parse the YYYY-MM-DDTHH:MM string
+// from a datetime-local input as a wall-clock in the user's local
+// timezone and return Unix seconds. Appends ":00" seconds so the
+// second component is always present (the input strips them).
+const dateTimeInputToUnix = (yyyyMmDdThhMm: string): number => {
+  return Math.floor(new Date(yyyyMmDdThhMm + ":00").getTime() / 1000)
 }
 
 const ReceiptDetailPage = () => {
@@ -168,7 +177,7 @@ const ReceiptDetailPage = () => {
 
     isEditing.val = true
     editMerchantId.val = r.merchantId
-    editDate.val = unixToDateInput(r.date)
+    editDate.val = unixToDateTimeInput(r.date)
     editTotalDollars.val = (r.totalCents / 100).toFixed(2)
     editError.val = null
 
@@ -247,7 +256,7 @@ const ReceiptDetailPage = () => {
       editError.val = "Total must be a non-negative number"
       return
     }
-    const dateUnix = dateInputToUnix(editDate.val)
+    const dateUnix = dateTimeInputToUnix(editDate.val)
     if (isNaN(dateUnix)) {
       editError.val = "Invalid date"
       return
@@ -258,7 +267,7 @@ const ReceiptDetailPage = () => {
     try {
       // 1. Update header (merchant, date, total).
       await api.patch(`/receipts/${r.receiptId}`, {
-        merchantId: editMerchantId.val,
+        merchantId: idStr(editMerchantId.val),
         date: dateUnix,
         totalCents,
       })
@@ -276,7 +285,7 @@ const ReceiptDetailPage = () => {
           throw new Error(`Row ${i + 1}: unit price must be a non-negative number`)
         }
         await api.patch(`/receipts/${r.receiptId}/items/${i}`, {
-          itemId: editItemItemId.val[i],
+          itemId: idStr(editItemItemId.val[i]),
           quantity: qty,
           unitPriceCents: priceCents,
         })
@@ -349,14 +358,14 @@ const ReceiptDetailPage = () => {
                 div({ class: "edit-field" },
                   span({ class: "edit-label" }, "Date"),
                   input({
-                    type: "date",
+                    type: "datetime-local",
                     value: editDate,
                     oninput: (e: Event) => {
                       editDate.val = (e.target as HTMLInputElement).value
                     },
                     disabled: savingEdit,
                     class: "edit-input",
-                    "aria-label": "Date",
+                    "aria-label": "Date and time",
                   }),
                 ),
                 div({ class: "edit-field" },
@@ -379,7 +388,7 @@ const ReceiptDetailPage = () => {
             : div(
               h1(r.merchantName || `Receipt #${shortId(r.receiptId)}`),
               div({ class: "page-header-meta" },
-                span({ class: "muted" }, formatDate(r.date)),
+                span({ class: "muted" }, formatDateTime(r.date)),
                 span({ class: "money" }, formatMoney(r.totalCents)),
               ),
             ),

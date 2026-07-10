@@ -14,6 +14,39 @@ import (
 	"code.sirenko.ca/grocer/internal/domain"
 )
 
+// timezoneKey is the unexported context key under which the user's
+// IANA timezone (as a *time.Location) is stored. Using a struct{}
+// type (rather than a string) prevents accidental collisions with
+// other context values per the standard Go context idiom.
+type timezoneKey struct{}
+
+// WithTimezone returns a derived context that carries the user's local
+// timezone. Date-only strings parsed downstream (LLM date, user-pasted
+// TOML/JSON) are anchored to noon in this timezone so the calendar
+// date is always correct regardless of the server's clock. nil tz
+// is a no-op — the returned context has no timezone, and parsers
+// fall back to UTC.
+func WithTimezone(ctx context.Context, tz *time.Location) context.Context {
+	if tz == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, timezoneKey{}, tz)
+}
+
+// TimezoneFromContext returns the timezone stored in ctx by
+// WithTimezone, or UTC if none is set. Always non-nil, so callers
+// can pass the result directly to time.Date / time.ParseInLocation
+// without a nil check.
+func TimezoneFromContext(ctx context.Context) *time.Location {
+	if ctx == nil {
+		return time.UTC
+	}
+	if tz, ok := ctx.Value(timezoneKey{}).(*time.Location); ok && tz != nil {
+		return tz
+	}
+	return time.UTC
+}
+
 // BaseProvider contains common functionality for all LLM providers
 type BaseProvider struct {
 	apiKey  string
@@ -72,8 +105,17 @@ func encodeImageToBase64(photo []byte) string {
 	return base64.StdEncoding.EncodeToString(photo)
 }
 
-// ParseReceiptResponse parses a receipt response from JSON
-func ParseReceiptResponse(content string) (*ParsedReceipt, error) {
+// ParseReceiptResponse parses a receipt response from JSON.
+//
+// The user's local timezone is read from ctx via TimezoneFromContext
+// (set by the API layer from the X-Timezone request header). For
+// date-only strings (which the LLM/OCR typically return), the parsed
+// time is set to noon in that timezone so the calendar date is correct
+// in every timezone. Without this, parsing "2026-07-10" as midnight
+// UTC causes a -1 day shift in negative-UTC zones (the bug this fixes).
+// Falls back to UTC when no timezone is in ctx, preserving the legacy
+// behavior for callers that haven't migrated.
+func ParseReceiptResponse(ctx context.Context, content string) (*ParsedReceipt, error) {
 	content = trimMarkdownCodeBlock(content)
 
 	// Use flexible struct that accepts both int and float for quantity
@@ -93,8 +135,10 @@ func ParseReceiptResponse(content string) (*ParsedReceipt, error) {
 		return nil, fmt.Errorf("parse receipt JSON: %w", err)
 	}
 
-	date, err := time.Parse("2006-01-02", parsed.Date)
+	date, err := parseDateInTimezone(parsed.Date, TimezoneFromContext(ctx))
 	if err != nil {
+		// Same fallback as before: bad date is logged but not fatal,
+		// otherwise a typo would fail the whole parse.
 		date = time.Now()
 	}
 
@@ -122,6 +166,55 @@ func ParseReceiptResponse(content string) (*ParsedReceipt, error) {
 		Items:    items,
 		Total:    parsed.Total,
 	}, nil
+}
+
+// parseDateInTimezone parses a date string from an LLM/OCR response.
+// The behavior depends on whether the string includes a time component:
+//
+//   - Date-only strings ("2026-07-10", "07/10/2026", "2026/07/10"):
+//     returned as noon in tz. This is the common case for receipts —
+//     the LLM/OCR returns just a calendar date. Noon is the safest
+//     time of day: it always falls on the intended calendar date in
+//     every IANA timezone (midnight UTC, by contrast, is the PREVIOUS
+//     day in negative-UTC zones).
+//   - Full datetime strings (RFC 3339, "2026-07-10T15:30:00"): returned
+//     as parsed, with the timezone offset carried in the result.
+//
+// tz may be nil, in which case UTC is used. A bad/unparseable string
+// returns an error so the caller can decide on a fallback (the
+// existing code uses time.Now()).
+func parseDateInTimezone(s string, tz *time.Location) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, fmt.Errorf("empty date")
+	}
+	if tz == nil {
+		tz = time.UTC
+	}
+
+	// Full datetimes first — they include their own timezone offset
+	// when present (RFC 3339), so tz is ignored for these.
+	fullFormats := []string{time.RFC3339, time.RFC3339Nano, "2006-01-02T15:04:05"}
+	for _, f := range fullFormats {
+		if t, err := time.Parse(f, s); err == nil {
+			return t, nil
+		}
+	}
+
+	// Date-only formats: anchor to noon in tz so the calendar date is
+	// correct in every timezone. Using time.ParseInLocation (not
+	// time.Parse, which forces UTC) means the parsed components are
+	// interpreted in tz; the resulting time is then re-anchored to
+	// noon so DST transitions on the boundary date don't shift us
+	// into a different day.
+	dateOnly := []string{"2006-01-02", "01/02/2006", "2006/01/02"}
+	for _, f := range dateOnly {
+		if t, err := time.ParseInLocation(f, s, tz); err == nil {
+			return time.Date(t.Year(), t.Month(), t.Day(), 12, 0, 0, 0, tz), nil
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("unrecognized date format: %q", s)
 }
 
 // parseCategorizationResponse parses a categorization response from JSON

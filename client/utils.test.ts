@@ -2,10 +2,12 @@ import { test, expect, describe } from "bun:test"
 import {
   formatMoney,
   formatDate,
+  formatDateTime,
   formatRelativeDate,
   formatQuantity,
   shortId,
   indexBy,
+  getUserTimezone,
 } from "./utils"
 
 describe("formatMoney", () => {
@@ -34,6 +36,21 @@ describe("formatDate", () => {
     const unix = Math.floor(Date.UTC(2026, 4, 30) / 1000)
     const result = formatDate(unix)
     expect(result).toMatch(/^May \d{1,2}, 2026$/)
+  })
+})
+
+describe("formatDateTime", () => {
+  test("zero returns Unknown date", () => {
+    expect(formatDateTime(0)).toBe("Unknown date")
+  })
+  test("includes a time component", () => {
+    // Pick a specific Unix instant: 2026-05-30 14:30:00 UTC. The exact
+    // wall-clock varies by test runner timezone, but the output must
+    // include BOTH a date and a time-of-day, not just a date.
+    const unix = Math.floor(Date.UTC(2026, 4, 30, 14, 30) / 1000)
+    const result = formatDateTime(unix)
+    expect(result).toMatch(/[A-Z][a-z]{2} \d{1,2}, 2026/)
+    expect(result).toMatch(/\d{1,2}:\d{2}\s?(AM|PM)/)
   })
 })
 
@@ -138,5 +155,18 @@ describe("indexBy", () => {
     const byKey = indexBy(items, i => i.key)
     expect(byKey["a"].v).toBe(1)
     expect(byKey["b"].v).toBe(2)
+  })
+})
+
+describe("getUserTimezone", () => {
+  test("returns a non-empty IANA timezone string", () => {
+    const tz = getUserTimezone()
+    expect(tz).toBeTruthy()
+    // Should be a non-empty string. We can't assert the exact value
+    // because the test runner's timezone varies, but it should
+    // contain a "/" (IANA format like "America/Los_Angeles") or be
+    // "UTC" (the fallback). Anything else would mean Intl isn't
+    // behaving as expected.
+    expect(tz === "UTC" || tz.includes("/")).toBe(true)
   })
 })

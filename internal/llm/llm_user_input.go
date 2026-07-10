@@ -2,6 +2,7 @@ package llm
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -33,40 +34,48 @@ type userInputItem struct {
 // the "Copy schema" UX — the user pastes back what they got from the LLM
 // (which was prompted for TOML) but JSON from older LLM sessions is also
 // accepted.
-func ParseUserInput(content []byte) (*ParsedReceipt, error) {
+//
+// The user's local timezone is read from ctx via TimezoneFromContext
+// (see WithTimezone). Date-only strings are anchored to noon in that
+// timezone so the calendar date is correct in every timezone. Pass
+// context.Background() (or any context without a timezone) to fall
+// back to UTC.
+func ParseUserInput(ctx context.Context, content []byte) (*ParsedReceipt, error) {
 	if len(bytes.TrimSpace(content)) == 0 {
 		return nil, fmt.Errorf("empty content")
 	}
 
-	if parsed, err := parseUserInputTOML(content); err == nil {
+	tz := TimezoneFromContext(ctx)
+
+	if parsed, err := parseUserInputTOML(content, tz); err == nil {
 		return parsed, nil
-	} else if parsed, err2 := parseUserInputJSON(content); err2 == nil {
+	} else if parsed, err2 := parseUserInputJSON(content, tz); err2 == nil {
 		return parsed, nil
 	} else {
 		return nil, fmt.Errorf("not valid TOML (%v) or JSON (%v)", err, err2)
 	}
 }
 
-func parseUserInputTOML(content []byte) (*ParsedReceipt, error) {
+func parseUserInputTOML(content []byte, tz *time.Location) (*ParsedReceipt, error) {
 	var r userInputReceipt
 	if err := toml.Unmarshal(content, &r); err != nil {
 		return nil, err
 	}
-	return toParsedReceipt(&r)
+	return toParsedReceipt(&r, tz)
 }
 
-func parseUserInputJSON(content []byte) (*ParsedReceipt, error) {
+func parseUserInputJSON(content []byte, tz *time.Location) (*ParsedReceipt, error) {
 	var r userInputReceipt
 	if err := json.Unmarshal(content, &r); err != nil {
 		return nil, err
 	}
-	return toParsedReceipt(&r)
+	return toParsedReceipt(&r, tz)
 }
 
 // toParsedReceipt converts the wire shape into a ParsedReceipt, applying
 // the same fallbacks as ParseReceiptResponse so the matcher/categorizer
 // see a consistent shape.
-func toParsedReceipt(r *userInputReceipt) (*ParsedReceipt, error) {
+func toParsedReceipt(r *userInputReceipt, tz *time.Location) (*ParsedReceipt, error) {
 	if r.Merchant == "" {
 		return nil, fmt.Errorf("merchant is required")
 	}
@@ -74,7 +83,7 @@ func toParsedReceipt(r *userInputReceipt) (*ParsedReceipt, error) {
 		return nil, fmt.Errorf("at least one item is required")
 	}
 
-	date := parseFlexibleDate(r.Date)
+	date := parseFlexibleDate(r.Date, tz)
 
 	items := make([]ParsedItem, len(r.Items))
 	for i, it := range r.Items {
@@ -107,24 +116,14 @@ func toParsedReceipt(r *userInputReceipt) (*ParsedReceipt, error) {
 }
 
 // parseFlexibleDate accepts a few common date formats so users don't have
-// to guess the right one. Falls back to time.Now() on failure (same as
-// ParseReceiptResponse) so a typo doesn't fail the whole apply.
-func parseFlexibleDate(s string) time.Time {
-	s = trimSpace(s)
-	if s == "" {
-		return time.Now()
-	}
-	formats := []string{
-		"2006-01-02",
-		time.RFC3339,
-		"2006-01-02T15:04:05",
-		"01/02/2006",
-		"2006/01/02",
-	}
-	for _, f := range formats {
-		if t, err := time.Parse(f, s); err == nil {
-			return t
-		}
+// to guess the right one. Date-only strings are anchored to noon in tz
+// so the calendar date is correct in every timezone (see
+// parseDateInTimezone for the rationale). Falls back to time.Now() on
+// failure (same as ParseReceiptResponse) so a typo doesn't fail the
+// whole apply. tz may be nil; UTC is used as a fallback.
+func parseFlexibleDate(s string, tz *time.Location) time.Time {
+	if t, err := parseDateInTimezone(s, tz); err == nil {
+		return t
 	}
 	return time.Now()
 }

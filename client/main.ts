@@ -1,4 +1,5 @@
 import van from "vanjs-core"
+import { getUserTimezone } from "./utils"
 
 const { div, nav, a, button } = van.tags
 
@@ -9,22 +10,25 @@ window.addEventListener("hashchange", () => {
   currentPath.val = window.location.hash.slice(1)
 })
 
-// navOpen controls the mobile hamburger drawer. It's read by the
-// Sidebar component on narrow viewports to toggle the drawer; the
-// inline (desktop) nav ignores it entirely. The state is local to
-// this module — there's no need to share it with pages.
-const navOpen = van.state(false)
-
 export const navigate = (path: string) => {
   window.location.hash = path
 }
 
-// Close the mobile drawer on Esc.
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && navOpen.val) {
-    navOpen.val = false
-  }
-})
+// Stringify a domain ID for JSON transport.
+//
+// JavaScript's Number type cannot safely represent integers above
+// 2^53, but our domain IDs are timestamp-based and exceed that
+// (18 digits). Sending an ID as a number silently corrupts it via
+// rounding before the request even leaves the browser. The server
+// accepts both forms, but always sending strings preserves
+// precision end-to-end.
+//
+// Treats null, undefined, and empty string as null so call sites
+// can use this in place of `value || null` for optional IDs.
+export const idStr = (v: string | number | null | undefined): string | null => {
+  if (v == null || v === "") return null
+  return String(v)
+}
 
 // API helper
 //
@@ -32,10 +36,20 @@ document.addEventListener("keydown", (e) => {
 // The browser auto-attaches the cookie to same-origin requests, so the
 // client never reads or stores the token. On 401 we just navigate to
 // /login — there is no local state to clean up.
+//
+// Every request also carries an X-Timezone header so the server can
+// anchor LLM/OCR date strings to noon in the user's local timezone.
+// Without this, "2026-07-10" from the LLM becomes midnight UTC and
+// displays as the previous day in negative-UTC zones. We send the
+// header on ALL requests (not just the ones that produce a date) so
+// the server never has to special-case which paths need it; the
+// timezone middleware is a no-op for read paths and other endpoints
+// that don't parse dates.
 export const api = {
   async fetch(path: string, options: RequestInit = {}) {
     const headers: Record<string, string> = {
       ...options.headers as Record<string, string>,
+      "X-Timezone": getUserTimezone(),
     }
     const response = await fetch(`/api${path}`, {
       ...options,
@@ -74,6 +88,9 @@ export const api = {
       method: "POST",
       body: formData,
       credentials: "same-origin",
+      headers: {
+        "X-Timezone": getUserTimezone(),
+      },
     })
     if (response.status === 401) {
       navigate("/login")
@@ -110,81 +127,61 @@ const handleLogout = async () => {
 // attribute on every route change. `e.preventDefault()` in the onclick
 // handler stops the browser from updating the hash twice (once via the
 // default anchor behavior, once via the explicit navigate() call).
+//
+// On desktop the sidebar is a vertical flex column (200px wide, links
+// stacked). On mobile (≤768px) CSS converts it to a horizontal tab bar
+// that scrolls horizontally if the links don't fit. The footer
+// (Sign-out) is right-aligned on mobile via `margin-left: auto` so it
+// stays visually separate from the nav tabs. There's no hamburger
+// drawer — tabs replace it so all routes are one tap away.
 const Sidebar = () => nav({ class: "sidebar" },
-  // Hamburger button — visible only on narrow viewports via CSS.
-  button({
-    class: "sidebar-hamburger",
-    type: "button",
-    "aria-label": "Open navigation",
-    "aria-expanded": () => navOpen.val ? "true" : "false",
-    onclick: () => { navOpen.val = true },
-  }, "☰"),
-
-  // Drawer — positioned over the page on narrow viewports. On
-  // desktop it's a normal flow element (no positioning).
-  div({
-    class: () => "sidebar-drawer" + (navOpen.val ? " sidebar-drawer-open" : ""),
-  },
+  a({
+    href: "#/",
+    "aria-current": () => currentPath.val === "/" ? "page" : null,
+    onclick: (e: Event) => { e.preventDefault(); navigate("/") },
+  }, "Home"),
+  a({
+    href: "#/receipts",
+    "aria-current": () => {
+      const p = currentPath.val
+      return p === "/receipts" || p.startsWith("/receipts/") ? "page" : null
+    },
+    onclick: (e: Event) => { e.preventDefault(); navigate("/receipts") },
+  }, "Receipts"),
+  a({
+    href: "#/items",
+    "aria-current": () => {
+      const p = currentPath.val
+      return p === "/items" || p.startsWith("/items/") ? "page" : null
+    },
+    onclick: (e: Event) => { e.preventDefault(); navigate("/items") },
+  }, "Items"),
+  a({
+    href: "#/merchants",
+    "aria-current": () => currentPath.val === "/merchants" ? "page" : null,
+    onclick: (e: Event) => { e.preventDefault(); navigate("/merchants") },
+  }, "Merchants"),
+  a({
+    href: "#/categories",
+    "aria-current": () => currentPath.val === "/categories" ? "page" : null,
+    onclick: (e: Event) => { e.preventDefault(); navigate("/categories") },
+  }, "Categories"),
+  a({
+    href: "#/analysis",
+    "aria-current": () => currentPath.val === "/analysis" ? "page" : null,
+    onclick: (e: Event) => { e.preventDefault(); navigate("/analysis") },
+  }, "Analysis"),
+  // Footer pushed to the bottom of the flex column on desktop (via
+  // `margin-top: auto` in CSS), and to the right end of the tab bar on
+  // mobile (via `margin-left: auto` in the mobile media query). Holds
+  // the Sign-out button.
+  div({ class: "sidebar-footer" },
     button({
-      class: "sidebar-close",
+      class: "sidebar-logout",
       type: "button",
-      "aria-label": "Close navigation",
-      onclick: () => { navOpen.val = false },
-    }, "✕"),
-    a({
-      href: "#/",
-      "aria-current": () => currentPath.val === "/" ? "page" : null,
-      onclick: (e: Event) => { e.preventDefault(); navOpen.val = false; navigate("/") },
-    }, "Home"),
-    a({
-      href: "#/receipts",
-      "aria-current": () => {
-        const p = currentPath.val
-        return p === "/receipts" || p.startsWith("/receipts/") ? "page" : null
-      },
-      onclick: (e: Event) => { e.preventDefault(); navOpen.val = false; navigate("/receipts") },
-    }, "Receipts"),
-    a({
-      href: "#/items",
-      "aria-current": () => {
-        const p = currentPath.val
-        return p === "/items" || p.startsWith("/items/") ? "page" : null
-      },
-      onclick: (e: Event) => { e.preventDefault(); navOpen.val = false; navigate("/items") },
-    }, "Items"),
-    a({
-      href: "#/merchants",
-      "aria-current": () => currentPath.val === "/merchants" ? "page" : null,
-      onclick: (e: Event) => { e.preventDefault(); navOpen.val = false; navigate("/merchants") },
-    }, "Merchants"),
-    a({
-      href: "#/categories",
-      "aria-current": () => currentPath.val === "/categories" ? "page" : null,
-      onclick: (e: Event) => { e.preventDefault(); navOpen.val = false; navigate("/categories") },
-    }, "Categories"),
-    a({
-      href: "#/analysis",
-      "aria-current": () => currentPath.val === "/analysis" ? "page" : null,
-      onclick: (e: Event) => { e.preventDefault(); navOpen.val = false; navigate("/analysis") },
-    }, "Analysis"),
-    // Footer pushed to the bottom of the flex column via `margin-top: auto`
-    // (set in CSS). Holds the Sign-out button so it sits below the nav
-    // links without disrupting the existing layout.
-    div({ class: "sidebar-footer" },
-      button({
-        class: "sidebar-logout",
-        type: "button",
-        onclick: () => { navOpen.val = false; handleLogout() },
-      }, "Sign out"),
-    ),
+      onclick: () => { handleLogout() },
+    }, "Sign out"),
   ),
-
-  // Backdrop — visible only on narrow viewports when the drawer is open.
-  // Clicking it closes the drawer.
-  div({
-    class: () => "sidebar-backdrop" + (navOpen.val ? " sidebar-backdrop-open" : ""),
-    onclick: () => { navOpen.val = false },
-  }),
 )
 
 const Layout = (content: any) => div({ class: "layout" },
