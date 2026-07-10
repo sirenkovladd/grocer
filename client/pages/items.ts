@@ -130,6 +130,19 @@ const ItemsPage = () => {
   const loading = van.state(true)
   const error = van.state<string | null>(null)
   const search = van.state("")
+  // Possible values:
+  //   ""                -> no filter (show all)
+  //   "__uncategorized__" -> items whose categoryId is not in the
+  //                          categories map (matches the
+  //                          "Uncategorized" fallback in the
+  //                          category column)
+  //   <categoryId>      -> that specific category
+  // We can't reuse the empty string for "Uncategorized" because it
+  // already means "no filter", and we can't use a real categoryId
+  // because there's no canonical ID for the implicit "Unknown"
+  // category on the client (the backend just falls back to it).
+  const UNCATEGORIZED = "__uncategorized__"
+  const categoryFilter = van.state<string>("")
 
   // Edit state — only one row is in edit mode at a time, so a single
   // set of "edit-*" states is sufficient. `editingId` is the empty
@@ -209,11 +222,19 @@ const ItemsPage = () => {
 
   const filtered = (): Item[] => {
     const s = search.val.trim().toLowerCase()
-    if (!s) return sorted()
-    return sorted().filter(i =>
-      i.name.toLowerCase().includes(s) ||
-      i.aliases.some(a => a.toLowerCase().includes(s)),
-    )
+    const cat = categoryFilter.val
+    const cats = categories.val
+    const list = sorted()
+    return list.filter(i => {
+      if (cat === UNCATEGORIZED) {
+        if (cats[i.categoryId]) return false
+      } else if (cat) {
+        if (i.categoryId !== cat) return false
+      }
+      if (!s) return true
+      return i.name.toLowerCase().includes(s) ||
+        i.aliases.some(a => a.toLowerCase().includes(s))
+    })
   }
 
   // Populate the edit-* states from the row and enter edit mode.
@@ -302,6 +323,35 @@ const ItemsPage = () => {
         option({ value: "alpha" }, "Alphabetical"),
         option({ value: "frequent" }, "Most frequently bought"),
       ),
+      // Wrap the entire <select> in a function-child so reading
+      // `categories.val` is scoped to this function-child, not the
+      // surrounding App function-child. Without it, VanJS would
+      // push the App binding into categories._bindings, and a later
+      // `loadData()` set would re-evaluate App, call ItemsPage()
+      // again, and loop forever. Same pattern as the owner/merchant
+      // filters in receipts.ts.
+      () => select({
+        value: categoryFilter,
+        onchange: (e: Event) => {
+          categoryFilter.val = (e.target as HTMLSelectElement).value
+        },
+        "aria-label": "Filter by category",
+        class: "category-filter",
+      },
+        option({ value: "" }, "All categories"),
+        // Matches the position used by the EditForm's category
+        // picker so users see the same "Uncategorized" entry in
+        // both places. Placed right after "All categories" so the
+        // implicit/no-category items are easy to find without
+        // scrolling through the sorted real categories.
+        option({ value: UNCATEGORIZED }, "Uncategorized"),
+        ...Object.values(categories.val)
+          .slice()
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((c: Category) =>
+            option({ value: c.categoryId }, c.name),
+          ),
+      ),
     ),
 
     () => {
@@ -327,10 +377,18 @@ const ItemsPage = () => {
       }
       const list = filtered()
       if (list.length === 0) {
+        const hasFilters = !!(search.val || categoryFilter.val)
         return div({ class: "empty-state" },
-          h3("No items match your search"),
-          p("Try a different term or clear the search."),
-          button({ onclick: () => { search.val = "" } }, "Clear search"),
+          h3(hasFilters ? "No items match your filters" : "No items match your search"),
+          p(hasFilters
+            ? "Try adjusting or clearing your filters."
+            : "Try a different term or clear the search."),
+          button({
+            onclick: () => {
+              search.val = ""
+              categoryFilter.val = ""
+            },
+          }, hasFilters ? "Clear filters" : "Clear search"),
         )
       }
       return div({ class: "items-table-wrapper" },

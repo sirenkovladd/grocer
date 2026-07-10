@@ -804,6 +804,11 @@ th {
   min-width: 12rem;
 }
 
+/* Category filter dropdown used in the items list filter bar. */
+.category-filter {
+  min-width: 12rem;
+}
+
 /* Error boundary fallback UI — reuses the .empty-state look so
    the visual language is consistent with other error paths. */
 .error-boundary {
