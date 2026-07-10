@@ -77,8 +77,8 @@ type mistralOCRResponse struct {
 			Content string `json:"content"`
 		} `json:"tables"`
 		ConfidenceScores *struct {
-			AveragePageConfidenceScore float64            `json:"average_page_confidence_score"`
-			MinimumPageConfidenceScore float64            `json:"minimum_page_confidence_score"`
+			AveragePageConfidenceScore float64           `json:"average_page_confidence_score"`
+			MinimumPageConfidenceScore float64           `json:"minimum_page_confidence_score"`
 			WordConfidenceScores       []json.RawMessage `json:"word_confidence_scores"`
 		} `json:"confidence_scores"`
 	} `json:"pages"`
@@ -103,7 +103,7 @@ func (m *MistralOCR) Extract(ctx context.Context, photo []byte, mime string) (*O
 			ImageURL: fmt.Sprintf("data:%s;base64,%s", mime, base64.StdEncoding.EncodeToString(photo)),
 		},
 		IncludeBlocks:               true,
-		TableFormat:                 "markdown",
+		TableFormat:                 "null",
 		ExtractHeader:               true,
 		ExtractFooter:               true,
 		ConfidenceScoresGranularity: "word",
