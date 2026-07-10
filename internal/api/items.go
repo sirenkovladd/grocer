@@ -201,7 +201,7 @@ func (r *Router) handleListItemsWithStats(w http.ResponseWriter, req *http.Reque
 // {id} in the path is the source; the body's `targetId` is the item
 // to retarget references to.
 type mergeItemRequest struct {
-	TargetID uint64 `json:"targetId"`
+	TargetID uint64 `json:"targetId,string"`
 }
 
 // handleMergeItem consolidates two items: every receipt that

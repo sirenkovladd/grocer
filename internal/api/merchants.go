@@ -131,7 +131,7 @@ func (r *Router) handleDeleteMerchant(w http.ResponseWriter, req *http.Request) 
 // mergeMerchantRequest — {id} is the source, body's targetId is the
 // merchant to retarget references to.
 type mergeMerchantRequest struct {
-	TargetID uint64 `json:"targetId"`
+	TargetID uint64 `json:"targetId,string"`
 }
 
 // handleMergeMerchant consolidates two merchants: every receipt
