@@ -76,6 +76,36 @@ func main() {
 		if err := s.LoadSnapshot(ctx); err != nil {
 			log.Fatalf("Failed to load snapshot: %v", err)
 		}
+
+		// Start Pub/Sub watcher to keep this server in sync with
+		// other grocer instances that share the same GCS bucket.
+		// Triggered when GCS_PUBSUB_TOPIC is set; see internal/store/pubsub.go
+		// for the one-time `gcloud` setup commands.
+		//
+		// ProjectID is optional: if GCP_PROJECT_ID is unset, the
+		// watcher reads project_id from the credentials file. The
+		// server still starts and serves traffic if the watcher
+		// fails — it just falls back to the old "sync on restart"
+		// behavior.
+		if pubsubTopic := os.Getenv("GCS_PUBSUB_TOPIC"); pubsubTopic != "" {
+			watcher, err := store.NewPubSubWatcher(ctx, store.PubSubConfig{
+				ProjectID:       os.Getenv("GCP_PROJECT_ID"),
+				CredentialsFile: gcsCredsFile,
+				TopicID:         pubsubTopic,
+				SubscriptionID:  os.Getenv("GCS_PUBSUB_SUBSCRIPTION"),
+				SnapshotObject:  gcs.ObjectName(),
+			}, s)
+			if err != nil {
+				log.Printf("Warning: failed to create Pub/Sub snapshot watcher: %v (server will only sync on restart)", err)
+			} else {
+				defer watcher.Close()
+				go func() {
+					if err := watcher.Run(ctx); err != nil {
+						log.Printf("PubSubWatcher: %v", err)
+					}
+				}()
+			}
+		}
 	}
 
 	// Handle create-user flag

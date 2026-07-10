@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log"
@@ -1088,13 +1089,25 @@ func (s *Store) LoadSnapshot(ctx context.Context) error {
 		return nil
 	}
 
+	gcsPath := s.snapshot.GCSPath()
+
 	data, err := s.snapshot.Pull(ctx)
 	if err != nil {
+		log.Printf("LoadSnapshot: pull failed from %s: %v", gcsPath, err)
 		return fmt.Errorf("pull snapshot: %w", err)
 	}
 	if data == nil {
+		log.Printf("LoadSnapshot: no snapshot found at %s (starting with empty store)", gcsPath)
 		return nil
 	}
+
+	// Hash the raw pulled bytes so an operator can confirm two servers
+	// are reading the same snapshot. SHA-256 of the gzip-compressed proto
+	// is stable across the wire, so the same hash on both sides proves
+	// the snapshots are byte-identical.
+	sum := sha256.Sum256(data)
+	log.Printf("LoadSnapshot: pulled %s, size=%d bytes, sha256=%x",
+		gcsPath, len(data), sum)
 
 	snapshot, err := DeserializeSnapshot(data)
 	if err != nil {
@@ -1107,6 +1120,99 @@ func (s *Store) LoadSnapshot(ctx context.Context) error {
 	txn := s.db.Txn(true)
 	defer txn.Abort()
 
+	if err := s.insertSnapshotLocked(txn, snapshot); err != nil {
+		return err
+	}
+
+	txn.Commit()
+	logSnapshotCounts("Loaded snapshot", snapshot)
+	return nil
+}
+
+// ReloadSnapshot pulls the current snapshot from GCS, clears all
+// in-memory tables, and re-inserts the new state. Called by the
+// Pub/Sub watcher when it receives a notification that the snapshot
+// object changed.
+//
+// Behavior notes:
+//
+//   - If the snapshot has disappeared in GCS (deleted manually), the
+//     reload is skipped and the local in-memory state is preserved.
+//     We never silently wipe the store; the operator can manually
+//     restart if they want a clean slate.
+//
+//   - The clear-and-reload happens inside a single memdb write
+//     transaction while s.mu is held, so readers and writers never
+//     observe a partial state. Concurrent operations block on s.mu
+//     for the duration of the reload (typically <1s).
+//
+//   - An in-flight local write that races with a remote reload is
+//     lost: the reload's snapshot overwrites the local change. This
+//     is the trade-off of the "last-writer-wins" model used by the
+//     family tool. In practice, the watcher fires in response to
+//     remote writes, and the local debounced save re-pushes any
+//     subsequent local change within SNAPSHOT_DEBOUNCE_SECONDS
+//     (default 5s).
+func (s *Store) ReloadSnapshot(ctx context.Context) error {
+	if s.snapshot == nil {
+		return nil
+	}
+
+	gcsPath := s.snapshot.GCSPath()
+
+	data, err := s.snapshot.Pull(ctx)
+	if err != nil {
+		return fmt.Errorf("pull snapshot: %w", err)
+	}
+	if data == nil {
+		log.Printf("ReloadSnapshot: snapshot at %s no longer exists, skipping reload", gcsPath)
+		return nil
+	}
+
+	sum := sha256.Sum256(data)
+	log.Printf("ReloadSnapshot: pulled %s, size=%d bytes, sha256=%x", gcsPath, len(data), sum)
+
+	snapshot, err := DeserializeSnapshot(data)
+	if err != nil {
+		return fmt.Errorf("deserialize snapshot: %w", err)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	txn := s.db.Txn(true)
+	defer txn.Abort()
+
+	tables := []string{"users", "categories", "merchants", "items", "receipts", "proposals", "bot_users", "sessions"}
+	for _, table := range tables {
+		iter, err := txn.Get(table, "id")
+		if err != nil {
+			return fmt.Errorf("iterate %s: %w", table, err)
+		}
+		var toDelete []interface{}
+		for raw := iter.Next(); raw != nil; raw = iter.Next() {
+			toDelete = append(toDelete, raw)
+		}
+		for _, raw := range toDelete {
+			if err := txn.Delete(table, raw); err != nil {
+				return fmt.Errorf("delete from %s: %w", table, err)
+			}
+		}
+	}
+
+	if err := s.insertSnapshotLocked(txn, snapshot); err != nil {
+		return err
+	}
+
+	txn.Commit()
+	logSnapshotCounts("Reloaded snapshot", snapshot)
+	return nil
+}
+
+// insertSnapshotLocked inserts all entities from the snapshot into
+// the given write transaction. Caller must hold s.mu (the write
+// lock) and must commit the transaction.
+func (s *Store) insertSnapshotLocked(txn *memdb.Txn, snapshot *SnapshotData) error {
 	for _, u := range snapshot.Users {
 		if err := txn.Insert("users", u); err != nil {
 			return err
@@ -1147,13 +1253,17 @@ func (s *Store) LoadSnapshot(ctx context.Context) error {
 			return err
 		}
 	}
-
-	txn.Commit()
-	log.Printf("Loaded snapshot: %d users, %d items, %d receipts, %d bot_users, %d sessions",
-		len(snapshot.Users), len(snapshot.Items), len(snapshot.Receipts),
-		len(snapshot.BotUsers), len(snapshot.Sessions))
-
 	return nil
+}
+
+// logSnapshotCounts logs the per-table counts of a snapshot with a
+// caller-supplied prefix ("Loaded snapshot", "Reloaded snapshot").
+func logSnapshotCounts(prefix string, snap *SnapshotData) {
+	log.Printf("%s: %d users, %d categories, %d merchants, %d items, %d receipts, %d proposals, %d bot_users, %d sessions",
+		prefix,
+		len(snap.Users), len(snap.Categories), len(snap.Merchants),
+		len(snap.Items), len(snap.Receipts), len(snap.Proposals),
+		len(snap.BotUsers), len(snap.Sessions))
 }
 
 func (s *Store) SaveSnapshot(ctx context.Context) error {

@@ -33,12 +33,29 @@ func NewGCloudStorage(ctx context.Context, credentialsFile, bucket, prefix strin
 	}, nil
 }
 
-func (g *GCloudStorage) objectName() string {
+// ObjectName returns the GCS object name (prefix + "snapshot.pb.gz") of
+// the snapshot. Exposed so startup code can log the full path before
+// pulling, which makes it easy to confirm both sides are reading from
+// the same location.
+func (g *GCloudStorage) ObjectName() string {
 	return g.prefix + "snapshot.pb.gz"
 }
 
+// Bucket returns the GCS bucket name. Exposed for logging alongside
+// ObjectName.
+func (g *GCloudStorage) Bucket() string {
+	return g.bucket
+}
+
+// GCSPath returns the canonical gs://bucket/object form of the snapshot
+// location. Used in startup logs so an operator can confirm at a glance
+// which snapshot the server is loading.
+func (g *GCloudStorage) GCSPath() string {
+	return "gs://" + g.bucket + "/" + g.ObjectName()
+}
+
 func (g *GCloudStorage) Pull(ctx context.Context) ([]byte, error) {
-	obj := g.client.Bucket(g.bucket).Object(g.objectName())
+	obj := g.client.Bucket(g.bucket).Object(g.ObjectName())
 
 	reader, err := obj.NewReader(ctx)
 	if err != nil {
@@ -58,7 +75,7 @@ func (g *GCloudStorage) Pull(ctx context.Context) ([]byte, error) {
 }
 
 func (g *GCloudStorage) Push(ctx context.Context, data []byte) error {
-	obj := g.client.Bucket(g.bucket).Object(g.objectName())
+	obj := g.client.Bucket(g.bucket).Object(g.ObjectName())
 
 	writer := obj.NewWriter(ctx)
 	writer.ContentType = "application/gzip"
