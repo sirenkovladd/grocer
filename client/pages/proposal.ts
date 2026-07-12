@@ -310,9 +310,14 @@ const ProposalDetailPage = () => {
     if (index < 0 || !id) return
 
     try {
+      // quantity is a float on the wire — weighted items (e.g. 0.92 kg
+      // of bananas) need the decimal preserved. parseInt would silently
+      // turn 0.92 into 0 here, and the `|| 1` guard would then send
+      // 1 to the server.
+      const parsedQty = parseFloat(editQty.val)
       const updated = await api.patch(`/proposals/${id}/items/${index}`, {
         parsedName: editName.val,
-        quantity: parseInt(editQty.val) || 1,
+        quantity: !isNaN(parsedQty) && parsedQty > 0 ? parsedQty : 1,
         totalPriceCents: Math.round(parseFloat(editPrice.val) * 100) || 0,
       })
 
@@ -541,7 +546,10 @@ const ProposalDetailPage = () => {
           value: editQty,
           oninput: (e: Event) => { editQty.val = (e.target as HTMLInputElement).value },
           class: "edit-input edit-qty",
-          min: "1",
+          // Allow weighted quantities (< 1, e.g. 0.92 kg) without
+          // tripping the browser's HTML5 number-input validation.
+          min: "0",
+          step: "0.01",
         })),
         td(input({
           type: "number",
