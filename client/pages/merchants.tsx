@@ -149,10 +149,10 @@ export default function MerchantsPage() {
   // Body reads the resource (suspending until ready). Closure
   // component so data reads stay inside the boundary.
   const Body = () => {
-    const list = () => [...data()!].sort((a, b) => a.name.localeCompare(b.name))
+    const list = () => [...(data() ?? [])].sort((a, b) => a.name.localeCompare(b.name))
     return (
       <Show
-        when={data()!.length > 0}
+        when={(data() ?? []).length > 0}
         fallback={
           <div class="empty-state">
             <h3>No merchants yet</h3>
@@ -247,7 +247,7 @@ export default function MerchantsPage() {
                             <option value="" selected={(mergeTarget()[m.merchantId] ?? "") === ""}>
                               Merge into…
                             </option>
-                            <For each={data()!.filter((x) => x.merchantId !== m.merchantId)}>
+                            <For each={(data() ?? []).filter((x) => x.merchantId !== m.merchantId)}>
                               {(other) => (
                                 <option
                                   value={other.merchantId}

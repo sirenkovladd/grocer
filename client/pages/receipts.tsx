@@ -96,7 +96,7 @@ export default function ReceiptsPage() {
   // but the user picked the date in their LOCAL time. Append
   // "T00:00:00" so the parser treats it as local midnight.
   const filtered = (): EnrichedReceiptSummary[] => {
-    const { receipts: all } = data()!
+    const all = data()?.receipts ?? []
     const s = search().trim().toLowerCase()
     const fromSecs = from() ? new Date(from() + "T00:00:00").getTime() / 1000 : null
     const toSecs = to() ? new Date(to() + "T23:59:59").getTime() / 1000 : null
@@ -114,12 +114,12 @@ export default function ReceiptsPage() {
   }
 
   const sortedUsers = (): User[] =>
-    Object.values(data()!.users)
+    Object.values(data()?.users ?? {})
       .slice()
       .sort((a, b) => a.name.localeCompare(b.name))
 
   const sortedMerchants = (): Merchant[] =>
-    Object.values(data()!.merchants)
+    Object.values(data()?.merchants ?? {})
       .slice()
       .sort((a, b) => a.name.localeCompare(b.name))
 

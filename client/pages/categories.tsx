@@ -152,17 +152,17 @@ export default function CategoriesPage() {
   // edited (would create a 1-level cycle). Deep cycles unchecked —
   // the backend doesn't either; negligible at family scale.
   const parentOptions = (excludeId: string): Category[] =>
-    data()!
+    (data() ?? [])
       .filter((c) => c.categoryId !== excludeId)
       .sort((a, b) => a.name.localeCompare(b.name))
 
   const roots = (): Category[] =>
-    data()!
+    (data() ?? [])
       .filter((c) => (c.parentId ?? null) === null)
       .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
 
   const childrenOf = (id: string): Category[] =>
-    data()!
+    (data() ?? [])
       .filter((c) => (c.parentId ?? null) === id)
       .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
 
@@ -250,7 +250,7 @@ export default function CategoriesPage() {
       </Show>
 
       <Show
-        when={data()!.length > 0}
+        when={(data() ?? []).length > 0}
         fallback={
           <div class="empty-state">
             <h3>No categories yet</h3>
@@ -264,7 +264,7 @@ export default function CategoriesPage() {
               <CategoryNode
                 category={root}
                 children={childrenOf(root.categoryId)}
-                all={data()!}
+                all={data() ?? []}
                 onEdit={startEdit}
                 onDelete={handleDelete}
               />

@@ -148,11 +148,11 @@ export default function ManualReceiptPage() {
   // component so data reads stay inside the boundary.
   const Body = () => {
     const sortedMerchants = () =>
-      [...data()!.merchants].sort((a, b) => a.name.localeCompare(b.name))
-    const sortedItems = () => [...data()!.items].sort((a, b) => a.name.localeCompare(b.name))
+      [...(data()?.merchants ?? [])].sort((a, b) => a.name.localeCompare(b.name))
+    const sortedItems = () => [...(data()?.items ?? [])].sort((a, b) => a.name.localeCompare(b.name))
     return (
       <Show
-        when={data()!.merchants.length > 0}
+        when={(data()?.merchants.length ?? 0) > 0}
         fallback={
           <div class="empty-state">
             <h3>No merchants yet</h3>
@@ -162,7 +162,7 @@ export default function ManualReceiptPage() {
         }
       >
         <Show
-          when={data()!.items.length > 0}
+          when={(data()?.items.length ?? 0) > 0}
           fallback={
             <div class="empty-state">
               <h3>No items yet</h3>

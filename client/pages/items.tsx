@@ -188,7 +188,7 @@ export default function ItemsPage() {
   })
 
   const sorted = (): Item[] => {
-    const all = [...data()!.items]
+    const all = [...(data()?.items ?? [])]
     if (sort() === "frequent") {
       all.sort((a, b) => {
         if (b.purchaseCount !== a.purchaseCount) return b.purchaseCount - a.purchaseCount
@@ -203,7 +203,7 @@ export default function ItemsPage() {
   const filtered = (): Item[] => {
     const s = search().trim().toLowerCase()
     const cat = categoryFilter()
-    const cats = data()!.categories
+    const cats = data()?.categories ?? {}
     return sorted().filter((i) => {
       if (cat === UNCATEGORIZED) {
         if (cats[i.categoryId]) return false
@@ -275,7 +275,7 @@ export default function ItemsPage() {
   // filters + table. A closure component so filter-bar signal reads
   // stay inside the boundary instead of suspending the page shell.
   const Body = () => {
-    const cats = () => data()!.categories
+    const cats = () => data()?.categories ?? {}
     const list = () => filtered()
     const hasFilters = () => !!(search() || categoryFilter())
     return (
@@ -324,7 +324,7 @@ export default function ItemsPage() {
         </div>
 
         <Show
-          when={data()!.items.length > 0}
+          when={(data()?.items.length ?? 0) > 0}
           fallback={
             <div class="empty-state">
               <h3>No items yet</h3>

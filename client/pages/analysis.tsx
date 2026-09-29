@@ -313,7 +313,7 @@ export default function AnalysisPage() {
   // Charts section reads the resource (suspending until ready).
   // Closure component so reads stay inside the boundary.
   const ChartsSection = () => {
-    const d = () => data()!
+    const d = () => data() ?? { spending: [], categories: [], family: [] }
     const empty =
       () => d().spending.length === 0 && d().categories.length === 0 && d().family.length === 0
     return (

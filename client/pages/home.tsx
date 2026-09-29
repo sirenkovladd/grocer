@@ -210,12 +210,12 @@ export default function HomePage() {
   })
 
   // Cap "Recent Receipts" at 10; matches the previous home-page limit.
-  const recentReceipts = () => receipts()!.slice(0, 10)
+  const recentReceipts = () => (receipts() ?? []).slice(0, 10)
 
   // Body reads both resources (suspending until ready). Closure
   // component so reads stay inside the boundary.
   const Body = () => {
-    const stats = () => monthStats(receipts()!)
+    const stats = () => monthStats(receipts() ?? [])
     const delta = () => {
       const s = stats()
       return s ? deltaPct(s.total, s.lastMonthTotal) : null
@@ -253,12 +253,12 @@ export default function HomePage() {
         <div class="home-section">
           <div class="section-header">
             <h2>Pending Proposals</h2>
-            <Show when={proposals()!.length > 0}>
-              <span class="section-count">{proposals()!.length}</span>
+            <Show when={(proposals() ?? []).length > 0}>
+              <span class="section-count">{(proposals() ?? []).length}</span>
             </Show>
           </div>
           <Show
-            when={proposals()!.length > 0}
+            when={(proposals() ?? []).length > 0}
             fallback={
               <div class="empty-section">
                 <p>No pending proposals</p>
@@ -266,7 +266,7 @@ export default function HomePage() {
             }
           >
             <div class="cards-grid">
-              <For each={proposals()!}>
+              <For each={proposals() ?? []}>
                 {(p) => <ProposalCard proposal={p} onAction={refetchProposals} />}
               </For>
             </div>
@@ -281,7 +281,7 @@ export default function HomePage() {
             </button>
           </div>
           <Show
-            when={receipts()!.length > 0}
+            when={(receipts() ?? []).length > 0}
             fallback={
               <div class="empty-section">
                 <p>No receipts yet</p>

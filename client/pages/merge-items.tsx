@@ -68,7 +68,7 @@ export default function MergeItemsPage() {
   // Filter auto-detected pairs by the search box: only pairs where
   // either name matches. Finds one candidate in a long list.
   const filteredPairs = (): { a: Item; b: Item }[] => {
-    const allPairs = findSimilarPairs(data()!)
+    const allPairs = findSimilarPairs(data() ?? [])
     const s = search().trim().toLowerCase()
     if (!s) return allPairs
     return allPairs.filter(
