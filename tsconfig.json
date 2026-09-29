@@ -17,7 +17,7 @@
     // time; preserve keeps tsc from touching JSX).
     "jsx": "preserve",
     "jsxImportSource": "solid-js",
-    "types": ["vite/client"],
+    "types": ["vite/client", "bun"],
 
     // Best practices
     "strict": true,

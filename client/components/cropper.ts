@@ -312,7 +312,7 @@ export const ImageCropper = ({ imageUrl, imageHash, onCrop, onCancel, onSkip }: 
     // Touch support
     cropBox.addEventListener("touchstart", (e) => {
       e.preventDefault()
-      const touch = e.touches[0]
+      const touch = e.touches[0]!
       const rect = overlay.getBoundingClientRect()
       const x = touch.clientX - rect.left
       const y = touch.clientY - rect.top
@@ -353,7 +353,7 @@ export const ImageCropper = ({ imageUrl, imageHash, onCrop, onCancel, onSkip }: 
       if (!isDragging) return
       e.preventDefault()
 
-      const touch = e.touches[0]
+      const touch = e.touches[0]!
       const rect = overlay.getBoundingClientRect()
       const x = touch.clientX - rect.left
       const y = touch.clientY - rect.top

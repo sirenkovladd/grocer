@@ -14,6 +14,7 @@ import ItemDetailPage from "./pages/item-detail.tsx"
 import MergeItemsPage from "./pages/merge-items.tsx"
 import MerchantsPage from "./pages/merchants.tsx"
 import CategoriesPage from "./pages/categories.tsx"
+import AnalysisPage from "./pages/analysis.tsx"
 
 // Logout handler. The server clears the session cookie via
 // `POST /api/auth/logout`; the client just needs to call it and redirect
@@ -135,7 +136,7 @@ export default function App() {
       <Route path="/items/:id" component={ItemDetailPage} />
       <Route path="/merchants" component={MerchantsPage} />
       <Route path="/categories" component={CategoriesPage} />
-      <Route path="/analysis" component={TodoPage} />
+      <Route path="/analysis" component={AnalysisPage} />
       <Route path="*404" component={TodoPage} />
     </HashRouter>
   )

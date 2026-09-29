@@ -104,14 +104,14 @@ export const ZoomableImage = (src: () => string, alt: string): HTMLElement => {
     if (e.touches.length === 2) {
       e.preventDefault()
       lastPinchDist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY,
+        e.touches[0]!.clientX - e.touches[1]!.clientX,
+        e.touches[0]!.clientY - e.touches[1]!.clientY,
       )
     } else if (e.touches.length === 1 && scale > 1) {
       isDragging = true
       didDrag = false
-      lastPanX = e.touches[0].clientX - panX
-      lastPanY = e.touches[0].clientY - panY
+      lastPanX = e.touches[0]!.clientX - panX
+      lastPanY = e.touches[0]!.clientY - panY
     }
   }, { passive: false })
 
@@ -119,20 +119,20 @@ export const ZoomableImage = (src: () => string, alt: string): HTMLElement => {
     if (e.touches.length === 2) {
       e.preventDefault()
       const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY,
+        e.touches[0]!.clientX - e.touches[1]!.clientX,
+        e.touches[0]!.clientY - e.touches[1]!.clientY,
       )
       if (lastPinchDist > 0) {
         const rect = container.getBoundingClientRect()
-        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left
-        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top
+        const midX = (e.touches[0]!.clientX + e.touches[1]!.clientX) / 2 - rect.left
+        const midY = (e.touches[0]!.clientY + e.touches[1]!.clientY) / 2 - rect.top
         zoomAt(midX, midY, dist / lastPinchDist)
       }
       lastPinchDist = dist
     } else if (e.touches.length === 1 && isDragging) {
       e.preventDefault()
-      const dx = e.touches[0].clientX - lastPanX
-      const dy = e.touches[0].clientY - lastPanY
+      const dx = e.touches[0]!.clientX - lastPanX
+      const dy = e.touches[0]!.clientY - lastPanY
       if (Math.abs(dx - panX) > 2 || Math.abs(dy - panY) > 2) didDrag = true
       panX = dx
       panY = dy

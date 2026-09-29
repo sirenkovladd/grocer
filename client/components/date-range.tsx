@@ -9,29 +9,29 @@ interface DateRangeProps {
 }
 
 export default function DateRange(props: DateRangeProps) {
-  const today = () => new Date().toISOString().split("T")[0]
+  const today = () => new Date().toISOString().split("T")[0]!
 
   const startOfWeek = () => {
     const d = new Date()
     const day = d.getDay()
     const diff = d.getDate() - day + (day === 0 ? -6 : 1)
-    return new Date(d.setDate(diff)).toISOString().split("T")[0]
+    return new Date(d.setDate(diff)).toISOString().split("T")[0]!
   }
 
   const startOfMonth = () => {
     const d = new Date()
-    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split("T")[0]
+    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split("T")[0]!
   }
 
   const monthsAgo = (n: number) => {
     const d = new Date()
     d.setMonth(d.getMonth() - n)
-    return d.toISOString().split("T")[0]
+    return d.toISOString().split("T")[0]!
   }
 
   const startOfYear = () => {
     const d = new Date()
-    return new Date(d.getFullYear(), 0, 1).toISOString().split("T")[0]
+    return new Date(d.getFullYear(), 0, 1).toISOString().split("T")[0]!
   }
 
   const presets = [

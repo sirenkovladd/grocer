@@ -147,8 +147,8 @@ describe("indexBy", () => {
       { id: 2, name: "Bob" },
     ]
     const byId = indexBy(users, u => u.id)
-    expect(byId["1"].name).toBe("Alice")
-    expect(byId["2"].name).toBe("Bob")
+    expect(byId["1"]!.name).toBe("Alice")
+    expect(byId["2"]!.name).toBe("Bob")
   })
   test("empty list", () => {
     expect(indexBy([], (x: unknown) => x as string)).toEqual({})
@@ -156,8 +156,8 @@ describe("indexBy", () => {
   test("string keys", () => {
     const items = [{ key: "a", v: 1 }, { key: "b", v: 2 }]
     const byKey = indexBy(items, i => i.key)
-    expect(byKey["a"].v).toBe(1)
-    expect(byKey["b"].v).toBe(2)
+    expect(byKey["a"]!.v).toBe(1)
+    expect(byKey["b"]!.v).toBe(2)
   })
 })
 
