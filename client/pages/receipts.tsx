@@ -254,6 +254,8 @@ function EmptyState(props: { hasItemFilter: boolean; hasFilters: boolean; onClea
       </p>
       {props.hasFilters ? (
         <button onClick={props.onClear}>Clear filters</button>
+      ) : props.hasItemFilter ? (
+        <button onClick={() => navigate("/receipts")}>Clear filter</button>
       ) : empty ? (
         <button onClick={() => navigate("/receipts/upload")}>Upload your first receipt</button>
       ) : null}

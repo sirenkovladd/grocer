@@ -105,11 +105,13 @@ export default function ReceiptDetailPage() {
       cancelled = true
     })
   })
+  // Revoke this receipt's cached blob URLs on unmount / id change.
+  // revokePhotoUrl drops the cache entries too — revoking the raw
+  // object URL alone would leave a dead URL in the photo cache and
+  // break the image when navigating back to this receipt.
   onCleanup(() => {
     const r = data.state === "ready" ? data() : undefined
     if (r) revokePhotoUrl(r.receiptId)
-    const url = photoSrc()
-    if (url) URL.revokeObjectURL(url)
   })
 
   // Keep the tab title in sync with the merchant on screen.

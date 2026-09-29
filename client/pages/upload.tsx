@@ -135,8 +135,10 @@ export default function UploadPage() {
         </div>
       </div>
       <div class="upload-form">
-        {/* Cropper binds its image URL at construction; Show remounts
-            it when a new file is picked (preview null → url). */}
+        {/* Cropper binds image URL + hash at construction, so mount
+            only when BOTH are ready — mounting on preview alone
+            would capture imageHash="" and send an empty
+            originalHash to the server (breaking dedupe). */}
         <Show
           when={preview()}
           fallback={
@@ -156,15 +158,20 @@ export default function UploadPage() {
             </div>
           }
         >
-          {(url) => (
-            <ImageCropperView
-              imageUrl={url()}
-              imageHash={imageHash()}
-              onCrop={handleCrop}
-              onSkip={handleSkip}
-              onCancel={cancelCrop}
-            />
-          )}
+          <Show
+            when={imageHash()}
+            fallback={<div class="muted">Preparing…</div>}
+          >
+            {(hash) => (
+              <ImageCropperView
+                imageUrl={preview()!}
+                imageHash={hash()}
+                onCrop={handleCrop}
+                onSkip={handleSkip}
+                onCancel={cancelCrop}
+              />
+            )}
+          </Show>
         </Show>
         <input
           id="file-input"
