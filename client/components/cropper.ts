@@ -7,7 +7,7 @@ interface CropRect {
   height: number
 }
 
-interface CropperOptions {
+export interface CropperOptions {
   imageUrl: string
   imageHash: string
   onCrop: (blob: Blob, originalHash: string) => void

@@ -3,7 +3,12 @@ import { A, HashRouter, Route, useLocation } from "@solidjs/router"
 import { api, navigate } from "./lib/api"
 import { setPageTitle } from "./utils"
 import Login from "./pages/login.tsx"
+import HomePage from "./pages/home.tsx"
 import ReceiptsPage from "./pages/receipts.tsx"
+import ReceiptDetailPage from "./pages/receipt.tsx"
+import UploadPage from "./pages/upload.tsx"
+import ManualReceiptPage from "./pages/manual-receipt.tsx"
+import ProposalDetailPage from "./pages/proposal.tsx"
 import ItemsPage from "./pages/items.tsx"
 import ItemDetailPage from "./pages/item-detail.tsx"
 import MergeItemsPage from "./pages/merge-items.tsx"
@@ -119,12 +124,12 @@ export default function App() {
   return (
     <HashRouter root={Shell}>
       <Route path="/login" component={Login} />
-      <Route path="/" component={TodoPage} />
+      <Route path="/" component={HomePage} />
       <Route path="/receipts" component={ReceiptsPage} />
-      <Route path="/receipts/upload" component={TodoPage} />
-      <Route path="/receipts/manual" component={TodoPage} />
-      <Route path="/receipts/:id" component={TodoPage} />
-      <Route path="/proposals/:id" component={TodoPage} />
+      <Route path="/receipts/upload" component={UploadPage} />
+      <Route path="/receipts/manual" component={ManualReceiptPage} />
+      <Route path="/receipts/:id" component={ReceiptDetailPage} />
+      <Route path="/proposals/:id" component={ProposalDetailPage} />
       <Route path="/items" component={ItemsPage} />
       <Route path="/items/merge" component={MergeItemsPage} />
       <Route path="/items/:id" component={ItemDetailPage} />
