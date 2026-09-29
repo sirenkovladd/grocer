@@ -1,5 +1,8 @@
 import { render } from "solid-js/web"
+import App from "./App"
 
-// Temporary mount to prove the Vite + Solid toolchain. Replaced by
-// the real <App/> router in Task 1.
-render(() => <div>Solid mount OK</div>, document.getElementById("app")!)
+// Global stylesheet is linked from index.html
+// (<link href="./styles/main.css">), which Vite bundles into dist.
+// Keep that single path so class names stay byte-identical.
+
+render(() => <App />, document.getElementById("app")!)
