@@ -1,4 +1,4 @@
-import van from "vanjs-core"
+// (Framework-free: builds DOM imperatively, no VanJS/Solid dependency.)
 
 interface CropRect {
   x: number

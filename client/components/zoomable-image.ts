@@ -1,5 +1,3 @@
-import van from "vanjs-core"
-
 // Zoomable image with mouse-wheel zoom, click-to-zoom, pinch-to-zoom
 // (touch), drag-to-pan, and double-click to reset. Used on pages
 // where the user needs to inspect the original photo at full detail
@@ -20,15 +18,19 @@ import van from "vanjs-core"
 //   - Drag (mouse or single-finger when zoomed): pan
 //   - Double-click: reset to 1x, centered
 //
-// The component is a one-shot DOM element (not VanJS-reactive) —
-// the source URL is bound at construction; pass a fresh component
-// when the URL changes.
-
-const { div, img } = van.tags
+// Framework-free: builds DOM imperatively (de-vanned during the
+// Solid rewrite — document.createElement replaces van.tags). The
+// component is a one-shot DOM element (not reactive) — the source
+// URL is bound at construction; pass a fresh component when the
+// URL changes.
 
 export const ZoomableImage = (src: () => string, alt: string): HTMLElement => {
-  const container = div({ class: "zoom-container" })
-  const imgEl = img({ src: src(), alt, class: "zoom-image" })
+  const container = document.createElement("div")
+  container.className = "zoom-container"
+  const imgEl = document.createElement("img")
+  imgEl.src = src()
+  imgEl.alt = alt
+  imgEl.className = "zoom-image"
 
   let scale = 1
   let panX = 0
@@ -198,7 +200,7 @@ export const ZoomableImage = (src: () => string, alt: string): HTMLElement => {
     apply()
   })
 
-  van.add(container, imgEl)
+  container.appendChild(imgEl)
   apply()
   return container
 }
