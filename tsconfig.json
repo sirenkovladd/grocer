@@ -13,6 +13,12 @@
     "verbatimModuleSyntax": true,
     "noEmit": true,
 
+    // Solid JSX transform (vite-plugin-solid compiles .tsx at build
+    // time; preserve keeps tsc from touching JSX).
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "types": ["vite/client"],
+
     // Best practices
     "strict": true,
     "skipLibCheck": true,

@@ -13,7 +13,7 @@ run = "protoc --go_out=. --go_opt=paths=source_relative proto/grocer.proto && mv
 [tasks.build_client]
 run = [
   "rm -rf dist",
-  "bun build --sourcemap=inline --outdir=dist ./client/index.html",
+  "bunx vite build --config vite.config.ts --sourcemap=inline ./client",
 ]
 outputs = ["dist/*"]
 sources = ["client/*"]
@@ -21,7 +21,7 @@ sources = ["client/*"]
 [tasks.build_client_prod]
 run = [
   "rm -rf dist",
-  "bun build --outdir=dist --production ./client/index.html",
+  "bunx vite build --config vite.config.ts ./client",
 ]
 outputs = ["dist/*"]
 sources = ["client/*"]
