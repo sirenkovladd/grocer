@@ -39,6 +39,11 @@ message Receipt {
   string photoUrl = 5;
   repeated ReceiptItem items = 6;
   int64 totalCents = 7;
+  // External import identifier, e.g. "costco:22055220303942610191902".
+  // Empty for manually-entered and photo-parsed receipts. Used for
+  // idempotent re-imports: the importer skips receipts whose
+  // external_id already exists in the store.
+  string external_id = 8;
 }
 
 message ReceiptItem {
@@ -60,6 +65,13 @@ message Proposal {
   string originalHash = 10;
   string ocrMarkdown = 11;
   float ocrMinConfidence = 12;
+  // Human-readable failure reason for status=failed. Persisted so a
+  // restart doesn't lose the parse error (previously in-memory only).
+  string error = 13;
+  // Same semantics as Receipt.external_id. Proposals created by the
+  // Costco importer set this to "costco:<barcode>" so re-imports
+  // can be skipped before approval.
+  string external_id = 14;
 }
 
 message ProposalItem {
@@ -73,6 +85,10 @@ message ProposalItem {
   float ocrConfidence = 8;
   string sourceBlockType = 9;
   int64 totalPriceCents = 10;
+  // Suggested new-category name from the LLM categorizer. Set when
+  // isNewCategory is true; the category itself is created on approval
+  // (not during parsing) so rejected proposals don't pollute the catalog.
+  string suggestedCategory = 11;
 }
 
 message Snapshot {

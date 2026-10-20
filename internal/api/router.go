@@ -112,6 +112,14 @@ func (r *Router) setupRoutes() {
 	// though the UI does not display owner names yet.
 	r.mux.HandleFunc("GET /api/users", r.withCORS(r.withAuth(r.withAuditLogging("list", "users", r.handleListUsers))))
 
+	// Costco import (paste-first; direct fetch is experimental). All three
+	// accept pasted JSON bodies up to 5MB; see internal/costco/doc.go for
+	// the DevTools copy-paste flow.
+	r.mux.HandleFunc("POST /api/costco/preview-list", r.withCORS(r.withAuth(r.withAuditLogging("preview", "costco_list", r.handleCostcoPreviewList))))
+	r.mux.HandleFunc("POST /api/costco/preview-detail", r.withCORS(r.withAuth(r.withTimezone(r.withAuditLogging("preview", "costco_detail", r.handleCostcoPreviewDetail)))))
+	r.mux.HandleFunc("POST /api/costco/import", r.withCORS(r.withAuth(r.withTimezone(r.withAuditLogging("import", "costco", r.handleCostcoImport)))))
+	r.mux.HandleFunc("POST /api/costco/sync", r.withCORS(r.withAuth(r.withAuditLogging("sync", "costco", r.handleCostcoSync))))
+
 	// Analysis
 	r.mux.HandleFunc("GET /api/analysis/spending", r.withCORS(r.withAuth(r.withAuditLogging("read", "analysis_spending", r.handleAnalysisSpending))))
 	r.mux.HandleFunc("GET /api/analysis/categories", r.withCORS(r.withAuth(r.withAuditLogging("read", "analysis_categories", r.handleAnalysisCategories))))
@@ -132,6 +140,16 @@ func (r *Router) setupRoutes() {
 type contextKey string
 
 const userIDKey contextKey = "userID"
+
+// versionFromMain is set by cmd/server at startup so /api/health reports
+// the same build metadata as the startup log line. Defaults to "" (dev).
+var versionFromMain string
+
+// SetVersion records the binary version for health checks. Called once
+// from main() with the ldflags-injected GitCommit/BuildTime.
+func SetVersion(v string) {
+	versionFromMain = v
+}
 
 func (r *Router) withAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
@@ -208,7 +226,11 @@ var globalRateLimiter = &rateLimiter{
 	requests: make(map[string][]time.Time),
 }
 
-// withRateLimit limits requests per IP address
+// withRateLimit limits requests per IP address. Old entries are pruned on
+// every request and empty IP buckets are deleted so the map cannot grow
+// unboundedly across restarts (previous version leaked one slice per
+// unique IP forever). For a single-process family tool an in-memory map
+// is sufficient; a multi-instance deployment would need a shared store.
 func (r *Router) withRateLimit(next http.HandlerFunc, maxRequests int, window time.Duration) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		ip := getClientIP(req)
@@ -219,14 +241,36 @@ func (r *Router) withRateLimit(next http.HandlerFunc, maxRequests int, window ti
 		now := time.Now()
 		windowStart := now.Add(-window)
 
-		// Clean old requests
+		// Prune this IP's window, then sweep other expired buckets
+		// opportunistically (amortized O(1): only buckets touched by
+		// traffic are visited, and empty ones are removed).
 		var validRequests []time.Time
 		for _, t := range globalRateLimiter.requests[ip] {
 			if t.After(windowStart) {
 				validRequests = append(validRequests, t)
 			}
 		}
-		globalRateLimiter.requests[ip] = validRequests
+		if len(validRequests) == 0 {
+			delete(globalRateLimiter.requests, ip)
+		} else {
+			globalRateLimiter.requests[ip] = validRequests
+		}
+		// Opportunistic global sweep: only when the map looks large.
+		if len(globalRateLimiter.requests) > 10000 {
+			for otherIP, times := range globalRateLimiter.requests {
+				keep := times[:0]
+				for _, t := range times {
+					if t.After(windowStart) {
+						keep = append(keep, t)
+					}
+				}
+				if len(keep) == 0 {
+					delete(globalRateLimiter.requests, otherIP)
+				} else {
+					globalRateLimiter.requests[otherIP] = keep
+				}
+			}
+		}
 
 		// Check rate limit
 		if len(validRequests) >= maxRequests {
@@ -276,10 +320,35 @@ func writeError(w http.ResponseWriter, status int, message string) {
 }
 
 func (r *Router) handleHealth(w http.ResponseWriter, req *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{
+	counts := map[string]int{}
+	if r.store != nil {
+		if users, err := r.store.ListUsers(); err == nil {
+			counts["users"] = len(users)
+		}
+		if receipts, err := r.store.ListReceipts(); err == nil {
+			counts["receipts"] = len(receipts)
+		}
+		if proposals, err := r.store.ListProposals(); err == nil {
+			counts["proposals"] = len(proposals)
+		}
+		if items, err := r.store.ListItems(); err == nil {
+			counts["items"] = len(items)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
 		"status":  "ok",
-		"version": "1.0.0",
+		"version": buildVersion(),
+		"counts":  counts,
 	})
+}
+
+// buildVersion reports the binary version for /api/health. Overridden at
+// link time via -ldflags in production builds; "dev" locally.
+func buildVersion() string {
+	if versionFromMain != "" {
+		return versionFromMain
+	}
+	return "dev"
 }
 
 // serveSPA serves the embedded frontend (webcontent.WebContent)

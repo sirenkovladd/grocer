@@ -210,6 +210,7 @@ func receiptsToProto(receipts []*domain.Receipt) []*pb.Receipt {
 			PhotoUrl:   r.PhotoURL,
 			Items:      items,
 			TotalCents: r.TotalCents,
+			ExternalId: r.ExternalID,
 		}
 	}
 	return result
@@ -234,6 +235,7 @@ func receiptsFromProto(receipts []*pb.Receipt) []*domain.Receipt {
 			PhotoURL:   r.PhotoUrl,
 			Items:      items,
 			TotalCents: r.TotalCents,
+			ExternalID: r.ExternalId,
 		}
 	}
 	return result
@@ -255,6 +257,7 @@ func proposalsToProto(proposals []*domain.Proposal) []*pb.Proposal {
 				OcrConfidence:   item.OcrConfidence,
 				SourceBlockType: item.SourceBlockType,
 				TotalPriceCents: item.TotalPriceCents,
+				SuggestedCategory: item.SuggestedCategory,
 			}
 		}
 		result[i] = &pb.Proposal{
@@ -267,9 +270,11 @@ func proposalsToProto(proposals []*domain.Proposal) []*pb.Proposal {
 			Items:            items,
 			TotalCents:       p.TotalCents,
 			Status:           p.Status,
+			Error:            p.Error,
 			OriginalHash:     p.OriginalHash,
 			OcrMarkdown:      p.OcrMarkdown,
 			OcrMinConfidence: p.OcrMinConfidence,
+			ExternalId:       p.ExternalID,
 		}
 	}
 	return result
@@ -291,6 +296,7 @@ func proposalsFromProto(proposals []*pb.Proposal) []*domain.Proposal {
 				OcrConfidence:   item.OcrConfidence,
 				SourceBlockType: item.SourceBlockType,
 				TotalPriceCents: item.TotalPriceCents,
+				SuggestedCategory: item.SuggestedCategory,
 			}
 		}
 		result[i] = &domain.Proposal{
@@ -303,9 +309,11 @@ func proposalsFromProto(proposals []*pb.Proposal) []*domain.Proposal {
 			Items:            items,
 			TotalCents:       p.TotalCents,
 			Status:           p.Status,
+			Error:            p.Error,
 			OriginalHash:     p.OriginalHash,
 			OcrMarkdown:      p.OcrMarkdown,
 			OcrMinConfidence: p.OcrMinConfidence,
+			ExternalID:       p.ExternalId,
 		}
 	}
 	return result

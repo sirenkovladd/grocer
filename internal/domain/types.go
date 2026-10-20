@@ -36,6 +36,9 @@ type Receipt struct {
 	PhotoURL   string        `json:"photoUrl,omitempty" protobuf:"bytes,5,opt,name=photoUrl"`
 	Items      []ReceiptItem `json:"items" protobuf:"bytes,6,rep,name=items"`
 	TotalCents int64         `json:"totalCents" protobuf:"fixed64,7,opt,name=totalCents"`
+	// ExternalID is an opaque import identifier, e.g. "costco:<barcode>".
+	// Empty for photo/manual receipts. Used for idempotent re-imports.
+	ExternalID string `json:"externalId,omitempty" protobuf:"bytes,8,opt,name=external_id"`
 }
 
 type ReceiptItem struct {
@@ -54,21 +57,24 @@ type Proposal struct {
 	Items            []ProposalItem `json:"items" protobuf:"bytes,7,rep,name=items"`
 	TotalCents       int64          `json:"totalCents" protobuf:"fixed64,8,opt,name=totalCents"`
 	Status           string         `json:"status" protobuf:"bytes,9,opt,name=status"`
-	Error            string         `json:"error,omitempty" protobuf:"bytes,10,opt,name=error"`
-	OriginalHash     string         `json:"originalHash,omitempty" protobuf:"bytes,11,opt,name=originalHash"`
+	Error            string         `json:"error,omitempty" protobuf:"bytes,13,opt,name=error"`
+	OriginalHash     string         `json:"originalHash,omitempty" protobuf:"bytes,10,opt,name=originalHash"`
 	OcrMarkdown      string         `json:"ocrMarkdown,omitempty" protobuf:"bytes,11,opt,name=ocrMarkdown"`
 	OcrMinConfidence float32        `json:"ocrMinConfidence,omitempty" protobuf:"fixed32,12,opt,name=ocrMinConfidence"`
+	// ExternalID mirrors Receipt.ExternalID for importer-created proposals.
+	ExternalID string `json:"externalId,omitempty" protobuf:"bytes,14,opt,name=external_id"`
 }
 
 type ProposalItem struct {
-	ParsedName      string  `json:"parsedName" protobuf:"bytes,1,opt,name=parsedName"`
-	Quantity        float64 `json:"quantity" protobuf:"fixed64,2,opt,name=quantity"`
-	UnitPriceCents  int64   `json:"unitPriceCents" protobuf:"fixed64,3,opt,name=unitPriceCents"`
-	MatchedItemID   uint64  `json:"matchedItemId,omitempty,string" protobuf:"fixed64,4,opt,name=matchedItemId"`
-	CategoryID      uint64  `json:"categoryId,omitempty,string" protobuf:"fixed64,5,opt,name=categoryId"`
-	IsNewCategory   bool    `json:"isNewCategory,omitempty" protobuf:"varint,6,opt,name=isNewCategory"`
-	UserChoice      string  `json:"userChoice,omitempty" protobuf:"bytes,7,opt,name=userChoice"`
-	OcrConfidence   float32 `json:"ocrConfidence,omitempty" protobuf:"fixed32,8,opt,name=ocrConfidence"`
-	SourceBlockType string  `json:"sourceBlockType,omitempty" protobuf:"bytes,9,opt,name=sourceBlockType"`
-	TotalPriceCents int64   `json:"totalPriceCents,omitempty" protobuf:"varint,10,opt,name=totalPriceCents"`
+	ParsedName        string  `json:"parsedName" protobuf:"bytes,1,opt,name=parsedName"`
+	Quantity          float64 `json:"quantity" protobuf:"fixed64,2,opt,name=quantity"`
+	UnitPriceCents    int64   `json:"unitPriceCents" protobuf:"fixed64,3,opt,name=unitPriceCents"`
+	MatchedItemID     uint64  `json:"matchedItemId,omitempty,string" protobuf:"fixed64,4,opt,name=matchedItemId"`
+	CategoryID        uint64  `json:"categoryId,omitempty,string" protobuf:"fixed64,5,opt,name=categoryId"`
+	IsNewCategory     bool    `json:"isNewCategory,omitempty" protobuf:"varint,6,opt,name=isNewCategory"`
+	UserChoice        string  `json:"userChoice,omitempty" protobuf:"bytes,7,opt,name=userChoice"`
+	OcrConfidence     float32 `json:"ocrConfidence,omitempty" protobuf:"fixed32,8,opt,name=ocrConfidence"`
+	SourceBlockType   string  `json:"sourceBlockType,omitempty" protobuf:"bytes,9,opt,name=sourceBlockType"`
+	TotalPriceCents   int64   `json:"totalPriceCents,omitempty" protobuf:"varint,10,opt,name=totalPriceCents"`
+	SuggestedCategory string  `json:"suggestedCategory,omitempty" protobuf:"bytes,11,opt,name=suggestedCategory"`
 }

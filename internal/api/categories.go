@@ -41,6 +41,14 @@ func (r *Router) handleCreateCategory(w http.ResponseWriter, req *http.Request) 
 	}
 	if reqBody.ParentID != nil {
 		pid := reqBody.ParentID.Uint64()
+		if pid == category.CategoryID {
+			writeError(w, http.StatusBadRequest, "category cannot be its own parent")
+			return
+		}
+		if _, err := r.store.GetCategory(pid); err != nil {
+			writeError(w, http.StatusBadRequest, "parent category not found")
+			return
+		}
 		category.ParentID = &pid
 	}
 
@@ -86,6 +94,30 @@ func (r *Router) handleUpdateCategory(w http.ResponseWriter, req *http.Request) 
 	}
 	if reqBody.ParentID != nil {
 		pid := reqBody.ParentID.Uint64()
+		if pid == id {
+			writeError(w, http.StatusBadRequest, "category cannot be its own parent")
+			return
+		}
+		parent, err := r.store.GetCategory(pid)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "parent category not found")
+			return
+		}
+		// Cycle detection: walk the parent chain; reaching `id` would
+		// create a loop (A->B->A) and break the spending rollup.
+		seen := map[uint64]bool{id: true}
+		for cur := parent; cur != nil && cur.ParentID != nil; {
+			if seen[*cur.ParentID] {
+				writeError(w, http.StatusBadRequest, "parent would create a category cycle")
+				return
+			}
+			seen[*cur.ParentID] = true
+			next, err := r.store.GetCategory(*cur.ParentID)
+			if err != nil {
+				break
+			}
+			cur = next
+		}
 		category.ParentID = &pid
 	}
 	if reqBody.SortOrder != nil {

@@ -160,6 +160,12 @@ func NewStore() (*Store, error) {
 						Unique:  false,
 						Indexer: &memdb.IntFieldIndex{Field: "Date"},
 					},
+					"external_id": {
+						Name:         "external_id",
+						Unique:       false,
+						AllowMissing: true,
+						Indexer:      &memdb.StringFieldIndex{Field: "ExternalID"},
+					},
 				},
 			},
 			"proposals": {
@@ -179,6 +185,12 @@ func NewStore() (*Store, error) {
 						Name:    "status",
 						Unique:  false,
 						Indexer: &memdb.StringFieldIndex{Field: "Status"},
+					},
+					"external_id": {
+						Name:         "external_id",
+						Unique:       false,
+						AllowMissing: true,
+						Indexer:      &memdb.StringFieldIndex{Field: "ExternalID"},
 					},
 				},
 			},
@@ -916,6 +928,46 @@ func (s *Store) FindProposalByHash(hash string) (*domain.Proposal, error) {
 	}
 
 	return nil, ErrNotFound
+}
+
+// FindReceiptByExternalID returns the receipt previously imported with the
+// given external ID (e.g. "costco:<barcode>"), or ErrNotFound.
+func (s *Store) FindReceiptByExternalID(externalID string) (*domain.Receipt, error) {
+	if externalID == "" {
+		return nil, ErrNotFound
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	txn := s.db.Txn(false)
+	defer txn.Abort()
+	raw, err := txn.First("receipts", "external_id", externalID)
+	if err != nil {
+		return nil, err
+	}
+	if raw == nil {
+		return nil, ErrNotFound
+	}
+	return raw.(*domain.Receipt), nil
+}
+
+// FindProposalByExternalID returns the proposal previously imported with the
+// given external ID, or ErrNotFound.
+func (s *Store) FindProposalByExternalID(externalID string) (*domain.Proposal, error) {
+	if externalID == "" {
+		return nil, ErrNotFound
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	txn := s.db.Txn(false)
+	defer txn.Abort()
+	raw, err := txn.First("proposals", "external_id", externalID)
+	if err != nil {
+		return nil, err
+	}
+	if raw == nil {
+		return nil, ErrNotFound
+	}
+	return raw.(*domain.Proposal), nil
 }
 
 func (s *Store) UpdateProposal(p *domain.Proposal) error {

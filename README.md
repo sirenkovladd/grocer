@@ -105,6 +105,27 @@ When `OCR_PROVIDER=none` the legacy single-stage path is used: the photo is sent
 
 Per-item auto-match to the catalog is gated on OCR confidence: items whose OCR confidence is below 0.85 are always routed to human review, even when the parsed name matches an existing item.
 
+## Costco import
+
+Import warehouse receipts from costco.ca order history without passwords or
+stored tokens (paste-first flow):
+
+1. In a logged-in Costco tab, open DevTools → Network, filter `graphql`.
+2. Open Order History, copy the `receiptsWithCounts` list response.
+3. In Grocer, open **Costco** → paste into Step 1 → Preview list.
+4. Click into each receipt, copy each `barcode` detail response, paste them
+   all into Step 2 → Preview details.
+5. Pick an owner, choose **Proposal** (review first, recommended) or
+   **Receipt** (commit directly), then Import.
+
+Re-imports are idempotent: receipts are keyed by `costco:<barcode>` and
+already-imported rows are skipped. New items reuse the photo pipeline's
+matcher + LLM categorizer, so aliases and categories keep learning.
+
+`POST /api/costco/sync` (experimental) accepts a seconds-fresh bearer and
+fetches the list server-side; it fails when the token expires or Kasada
+challenges — the paste flow always works.
+
 ## API
 
 See [design spec](docs/superpowers/specs/2026-06-01-grocer-design.md#7-http-api) for full API reference.

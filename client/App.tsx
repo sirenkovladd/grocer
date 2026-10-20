@@ -15,6 +15,7 @@ import MergeItemsPage from "./pages/merge-items.tsx"
 import MerchantsPage from "./pages/merchants.tsx"
 import CategoriesPage from "./pages/categories.tsx"
 import AnalysisPage from "./pages/analysis.tsx"
+import CostcoPage from "./pages/costco.tsx"
 
 // Logout handler. The server clears the session cookie via
 // `POST /api/auth/logout`; the client just needs to call it and redirect
@@ -44,6 +45,7 @@ function Sidebar() {
       <A href="/merchants" activeClass="active">Merchants</A>
       <A href="/categories" activeClass="active">Categories</A>
       <A href="/analysis" activeClass="active">Analysis</A>
+      <A href="/costco" activeClass="active">Costco</A>
       <div class="sidebar-footer">
         <button class="sidebar-logout" type="button" onClick={handleLogout}>
           Sign out
@@ -87,6 +89,7 @@ export const routeName = (path: string): string => {
   if (path === "/merchants") return "Merchants"
   if (path === "/categories") return "Categories"
   if (path === "/analysis") return "Analysis"
+  if (path === "/costco") return "Costco import"
   return path
 }
 
@@ -107,6 +110,7 @@ export const defaultTitleFor = (path: string): string => {
   if (routePath === "/merchants") return "Merchants"
   if (routePath === "/categories") return "Categories"
   if (routePath === "/analysis") return "Analysis"
+  if (routePath === "/costco") return "Costco import"
   if (routePath.startsWith("/receipts/")) return "Receipt"
   if (routePath.startsWith("/proposals/")) return "Proposal"
   if (routePath.startsWith("/items/")) return "Item"
@@ -137,6 +141,7 @@ export default function App() {
       <Route path="/merchants" component={MerchantsPage} />
       <Route path="/categories" component={CategoriesPage} />
       <Route path="/analysis" component={AnalysisPage} />
+      <Route path="/costco" component={CostcoPage} />
       <Route path="*404" component={TodoPage} />
     </HashRouter>
   )

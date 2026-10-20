@@ -261,6 +261,7 @@ func main() {
 
 	// Initialize router
 	router := api.NewRouter(s, parser, photoStore, photoCache, eventHub)
+	api.SetVersion(fmt.Sprintf("%s (%s)", GitCommit, BuildTime))
 
 	// Initialize bots
 	telegramToken := os.Getenv("TELEGRAM_BOT_TOKEN")
@@ -290,12 +291,22 @@ func main() {
 		addr = ":" + port
 	}
 
-	// Apply middleware
-	handler := api.RecoveryMiddleware(api.LoggingMiddleware(router))
+	// Apply middleware. Order: recovery (outermost) -> request ID -> logging -> router.
+	handler := api.RecoveryMiddleware(api.RequestIDMiddleware(api.LoggingMiddleware(router)))
 
 	server := &http.Server{
 		Addr:    addr,
 		Handler: handler,
+		// Production timeouts: slowloris protection + bounded handler time.
+		// SSE proposal streams hold connections open for minutes, so
+		// WriteTimeout must exceed the longest parse (LLM 180s + OCR).
+		// IdleTimeout closes stale keep-alives; ReadHeaderTimeout alone
+		// guards the header phase while ReadTimeout covers the body.
+		ReadTimeout:       30 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      5 * time.Minute,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1MB
 	}
 
 	// Graceful shutdown

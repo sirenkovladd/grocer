@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"strconv"
 
 	"code.sirenko.ca/grocer/internal/domain"
@@ -45,6 +46,167 @@ func NewParser(store *store.Store, llmProvider llm.Provider) *Parser {
 
 func (p *Parser) SetEventHub(hub EventPublisher) {
 	p.eventHub = hub
+}
+
+// Matcher exposes the catalog matcher for preview endpoints (e.g. Costco
+// import preview) that need match info without running the full pipeline.
+func (p *Parser) Matcher() *Matcher {
+	return p.matcher
+}
+
+// BuildForImport runs matcher + LLM categorizer over an already-structured
+// receipt (e.g. from the Costco importer) and returns proposal items plus
+// the resolved merchant. Costco data has no OCR confidences, so matching
+// uses string similarity alone (ocr == nil disables the confidence gate).
+func (p *Parser) BuildForImport(ctx context.Context, parsed *llm.ParsedReceipt) ([]domain.ProposalItem, uint64, string) {
+	merchant, err := p.findOrCreateMerchant(parsed.Merchant)
+	if err != nil {
+		// findOrCreateMerchant only fails on store errors; fall back to a
+		// zero merchant so the import can still be reviewed by hand.
+		log.Printf("BuildForImport: merchant %q: %v", parsed.Merchant, err)
+		return p.buildProposalItems(ctx, parsed.Items, nil), 0, parsed.Merchant
+	}
+	return p.buildProposalItems(ctx, parsed.Items, nil), merchant.MerchantID, merchant.Name
+}
+
+// CreateProposalForImport persists an importer-built receipt as a pending
+// proposal for human review. externalID (e.g. "costco:<barcode>") enables
+// idempotent re-imports.
+func (p *Parser) CreateProposalForImport(ownerID, merchantID uint64, merchantName string, dateUnix, totalCents int64, externalID string, items []domain.ProposalItem) (*domain.Proposal, error) {
+	proposal := &domain.Proposal{
+		ProposalID: p.store.ProposalID.Gen(),
+		OwnerID:    ownerID,
+		MerchantID: merchantID,
+		Merchant:   merchantName,
+		Date:       dateUnix,
+		Items:      items,
+		TotalCents: totalCents,
+		Status:     StatusPending,
+		ExternalID: externalID,
+	}
+	if err := p.store.CreateProposal(proposal); err != nil {
+		return nil, err
+	}
+	return proposal, nil
+}
+
+// CommitImportAsReceipt persists an importer-built receipt directly,
+// creating catalog items for unmatched lines. Used for trusted sources
+// (Costco API) where human review of every line is overkill. New items
+// get the matched CategoryID (or the default category when the LLM
+// suggested none); every new item records the parsed name as its first
+// alias so future imports match exactly.
+func (p *Parser) CommitImportAsReceipt(ctx context.Context, ownerID, merchantID uint64, dateUnix, totalCents int64, externalID string, proposalItems []domain.ProposalItem) (*domain.Receipt, error) {
+	_ = ctx
+	var itemsToCreate []*domain.Item
+	receiptItems := make([]domain.ReceiptItem, len(proposalItems))
+	for i, pi := range proposalItems {
+		if pi.Quantity <= 0 {
+			pi.Quantity = 1
+			proposalItems[i].Quantity = 1
+		}
+		if pi.UnitPriceCents < 0 {
+			pi.UnitPriceCents = 0
+			proposalItems[i].UnitPriceCents = 0
+		}
+		if pi.ParsedName == "" {
+			pi.ParsedName = "Costco item"
+			proposalItems[i].ParsedName = "Costco item"
+		}
+		var itemID uint64
+		if pi.MatchedItemID != 0 {
+			if existing, err := p.store.GetItem(pi.MatchedItemID); err == nil {
+				itemID = existing.ItemID
+				if !equalFoldOrEmpty(pi.ParsedName, existing.Name) && !containsFold(existing.Aliases, pi.ParsedName) && len(existing.Aliases) < 20 {
+					existing.Aliases = append(existing.Aliases, pi.ParsedName)
+					_ = p.store.UpdateItem(existing)
+				}
+			} else {
+				pi.MatchedItemID = 0
+				proposalItems[i].MatchedItemID = 0
+			}
+		}
+		if itemID == 0 {
+			if pi.IsNewCategory && pi.CategoryID == 0 && pi.SuggestedCategory != "" {
+				if created, err := p.findOrCreateCategoryByName(pi.SuggestedCategory); err == nil {
+					pi.CategoryID = created.CategoryID
+					proposalItems[i].CategoryID = created.CategoryID
+				}
+			}
+			if pi.CategoryID != 0 {
+				if _, err := p.store.GetCategory(pi.CategoryID); err != nil {
+					pi.CategoryID = 0
+					proposalItems[i].CategoryID = 0
+				}
+			}
+			if pi.CategoryID == 0 {
+				if def, err := p.defaultCategory(); err == nil {
+					pi.CategoryID = def
+					proposalItems[i].CategoryID = def
+				}
+			}
+			item := &domain.Item{
+				ItemID:     p.store.ItemID.Gen(),
+				Name:       pi.ParsedName,
+				CategoryID: pi.CategoryID,
+				MerchantID: merchantID,
+				Normalized: normalizeName(pi.ParsedName),
+				Aliases:    []string{pi.ParsedName},
+			}
+			itemsToCreate = append(itemsToCreate, item)
+			itemID = item.ItemID
+		}
+		receiptItems[i] = domain.ReceiptItem{
+			ItemID:         itemID,
+			Quantity:       pi.Quantity,
+			UnitPriceCents: pi.UnitPriceCents,
+		}
+	}
+	receipt := &domain.Receipt{
+		ReceiptID:  p.store.ReceiptID.Gen(),
+		MerchantID: merchantID,
+		OwnerID:    ownerID,
+		Date:       dateUnix,
+		Items:      receiptItems,
+		TotalCents: totalCents,
+		ExternalID: externalID,
+	}
+	// Reuse the atomic approve path with a synthetic pending proposal so
+	// receipt + items commit together. The proposal row is transient and
+	// marked approved in the same transaction.
+	synth := &domain.Proposal{
+		ProposalID: p.store.ProposalID.Gen(),
+		OwnerID:    ownerID,
+		MerchantID: merchantID,
+		Date:       dateUnix,
+		Items:      proposalItems,
+		TotalCents: totalCents,
+		Status:     StatusPending,
+		ExternalID: externalID,
+	}
+	if err := p.store.CreateProposal(synth); err != nil {
+		return nil, err
+	}
+	// Flip to approved via the transactional path: create items + receipt,
+	// mark proposal approved atomically.
+	if err := p.store.ApproveProposalWithTransaction(synth.ProposalID, itemsToCreate, receipt); err != nil {
+		// Best effort cleanup of the synthetic proposal on failure.
+		_ = p.store.DeleteProposal(synth.ProposalID)
+		return nil, err
+	}
+	return receipt, nil
+}
+
+// defaultCategory returns the first available category ID for imports
+// whose LLM categorizer returned nothing (offline, or uncategorized).
+// Callers fall back to 0 ("Uncategorized" in the UI) when the catalog
+// is empty.
+func (p *Parser) defaultCategory() (uint64, error) {
+	cats, err := p.store.ListCategories()
+	if err != nil || len(cats) == 0 {
+		return 0, fmt.Errorf("no categories")
+	}
+	return cats[0].CategoryID, nil
 }
 
 // SetOCREngine wires a Mistral OCR engine (or any OCREngine) into the parser.
@@ -493,12 +655,39 @@ func (p *Parser) buildProposalItems(ctx context.Context, items []llm.ParsedItem,
 			if err == nil {
 				pi.CategoryID = cat.CategoryID
 				pi.IsNewCategory = cat.IsNew
+				if cat.IsNew {
+					pi.SuggestedCategory = cat.SuggestedName
+				}
 			}
 		}
 
 		out[i] = pi
 	}
 	return out
+}
+
+func (p *Parser) findOrCreateCategoryByName(name string) (*domain.Category, error) {
+	trimmed := normalizeName(name)
+	if trimmed == "" {
+		return nil, fmt.Errorf("empty category name")
+	}
+	cats, err := p.store.ListCategories()
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range cats {
+		if normalizeName(c.Name) == trimmed {
+			return c, nil
+		}
+	}
+	cat := &domain.Category{
+		CategoryID: p.store.CategoryID.Gen(),
+		Name:       name,
+	}
+	if err := p.store.CreateCategory(cat); err != nil {
+		return nil, err
+	}
+	return cat, nil
 }
 
 func (p *Parser) findOrCreateMerchant(name string) (*domain.Merchant, error) {
@@ -568,6 +757,56 @@ func (p *Parser) ApproveProposal(ctx context.Context, proposalID uint64, choices
 		proposal.Items[i].UserChoice = choice
 	}
 
+	// Validate + resolve categories before touching the store so a bad row
+	// fails fast without a half-written transaction.
+	resolvedCategory := make([]uint64, len(proposal.Items))
+	aliasUpdates := make(map[uint64]string) // itemID -> new alias
+	for i, pi := range proposal.Items {
+		if pi.Quantity <= 0 {
+			return nil, fmt.Errorf("item %d: quantity must be positive", i)
+		}
+		if pi.UnitPriceCents < 0 {
+			return nil, fmt.Errorf("item %d: unit price cannot be negative", i)
+		}
+		if pi.ParsedName == "" {
+			return nil, fmt.Errorf("item %d: name is required", i)
+		}
+		if pi.UserChoice == "existing" && pi.MatchedItemID != 0 {
+			matched, err := p.store.GetItem(pi.MatchedItemID)
+			if err != nil {
+				return nil, fmt.Errorf("item %d: matched item not found", i)
+			}
+			resolvedCategory[i] = matched.CategoryID
+			// Alias learning: if the user confirmed a match whose printed
+			// name differs from the catalog name, remember the variant so
+			// future receipts match exactly. Capped to avoid unbounded growth.
+			if !equalFoldOrEmpty(pi.ParsedName, matched.Name) && !containsFold(matched.Aliases, pi.ParsedName) {
+				if len(matched.Aliases) < 20 {
+					aliasUpdates[matched.ItemID] = pi.ParsedName
+				}
+			}
+		} else {
+			catID := pi.CategoryID
+			if pi.IsNewCategory && catID == 0 && pi.SuggestedCategory != "" {
+				created, err := p.findOrCreateCategoryByName(pi.SuggestedCategory)
+				if err != nil {
+					log.Printf("ApproveProposal: create category %q: %v", pi.SuggestedCategory, err)
+				} else {
+					catID = created.CategoryID
+					proposal.Items[i].CategoryID = catID
+				}
+			}
+			if catID != 0 {
+				if _, err := p.store.GetCategory(catID); err != nil {
+					log.Printf("ApproveProposal: item %d references missing category %d, falling back to Uncategorized", i, catID)
+					catID = 0
+					proposal.Items[i].CategoryID = 0
+				}
+			}
+			resolvedCategory[i] = catID
+		}
+	}
+
 	var itemsToCreate []*domain.Item
 	receiptItems := make([]domain.ReceiptItem, len(proposal.Items))
 
@@ -580,7 +819,8 @@ func (p *Parser) ApproveProposal(ctx context.Context, proposalID uint64, choices
 			item := &domain.Item{
 				ItemID:     p.store.ItemID.Gen(),
 				Name:       pi.ParsedName,
-				CategoryID: pi.CategoryID,
+				CategoryID: resolvedCategory[i],
+				MerchantID: proposal.MerchantID,
 				Normalized: normalizeName(pi.ParsedName),
 				Aliases:    []string{pi.ParsedName},
 			}
@@ -603,16 +843,48 @@ func (p *Parser) ApproveProposal(ctx context.Context, proposalID uint64, choices
 		PhotoURL:   proposal.PhotoURL,
 		Items:      receiptItems,
 		TotalCents: proposal.TotalCents,
+		ExternalID: proposal.ExternalID,
 	}
 
 	if err := p.store.ApproveProposalWithTransaction(proposalID, itemsToCreate, receipt); err != nil {
 		return nil, err
 	}
 
+	// Best-effort alias learning after commit (non-critical path).
+	for itemID, alias := range aliasUpdates {
+		if it, err := p.store.GetItem(itemID); err == nil {
+			it.Aliases = append(it.Aliases, alias)
+			if err := p.store.UpdateItem(it); err != nil {
+				log.Printf("ApproveProposal: alias update for item %d: %v", itemID, err)
+			}
+		}
+	}
+
 	return receipt, nil
 }
 
-// dollarsToCents converts a dollar amount (float64) to cents (int64)
+func equalFoldOrEmpty(a, b string) bool {
+	if a == "" || b == "" {
+		return true
+	}
+	return normalizeName(a) == normalizeName(b)
+}
+
+func containsFold(list []string, s string) bool {
+	n := normalizeName(s)
+	for _, v := range list {
+		if normalizeName(v) == n {
+			return true
+		}
+	}
+	return false
+}
+
+// dollarsToCents converts a dollar amount (float64) to cents (int64).
+// math.Round (not truncation) is critical: int64(19.99*100) truncates to
+// 1998 because 19.99 is not exactly representable in binary floating
+// point (19.99*100 = 1998.999999...). Every money path in the codebase
+// must go through this helper so $19.99 is always 1999¢.
 func dollarsToCents(dollars float64) int64 {
-	return int64(dollars * 100)
+	return int64(math.Round(dollars * 100))
 }

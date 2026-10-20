@@ -2178,3 +2178,29 @@ button:disabled {
   background: #74b9ff;
   color: #2d3436;
 }
+
+/* Costco import page */
+.costco-page .card { margin-bottom: 1.5rem; }
+.costco-page .paste-box {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  padding: 0.75rem;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 6px;
+  background: var(--bg-muted, #fafafa);
+}
+.costco-page .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.costco-page .row-actions { display: flex; gap: 0.75rem; align-items: center; margin: 0.75rem 0; }
+.costco-page .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem; }
+.costco-page .form-grid .span-2 { grid-column: span 2; }
+.costco-page .form-grid label { display: flex; flex-direction: column; gap: 0.25rem; font-weight: 600; }
+.costco-page .form-grid select, .costco-page .form-grid input {
+  padding: 0.5rem; border: 1px solid var(--border, #ddd); border-radius: 6px;
+}
+.costco-page .costco-detail { margin-top: 1rem; border-top: 1px solid var(--border, #eee); padding-top: 0.75rem; }
+.costco-page .badge-new { background: #e6f4ea; color: #137333; padding: 2px 8px; border-radius: 999px; font-size: 12px; }
+.costco-page .badge { background: #e8f0fe; color: #1967d2; padding: 2px 8px; border-radius: 999px; font-size: 12px; }
+.costco-help { margin-bottom: 1.5rem; padding: 1rem; border: 1px solid var(--border, #ddd); border-radius: 8px; background: var(--bg-muted, #fafafa); }
+.costco-help ol { margin: 0.5rem 0 0.5rem 1.25rem; }
+.costco-help code { background: #eee; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
