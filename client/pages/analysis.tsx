@@ -180,6 +180,13 @@ export default function AnalysisPage() {
     return cats.filter((d) => rootIds.has(String(d.categoryId)))
   }
 
+  // Legend + pie share one biggest-first ordering so legend row i
+  // always addresses pie slice i (hide/highlight work by index).
+  const sortedCategories = (): CategoryPoint[] =>
+    filteredCategories()
+      .slice()
+      .sort((a, b) => b.total - a.total)
+
   // Charts. One effect, guarded by resource state: builds on first
   // ready, rebuilds on refetch/remount, picks up the late-arriving
   // category lookup via tracking. Destroy-before-rebuild +
@@ -202,7 +209,7 @@ export default function AnalysisPage() {
   createEffect(() => {
     if (data.state !== "ready") return
     const d = data()!
-    const filtered = filteredCategories()
+    const filtered = sortedCategories()
 
     if (spendingEl && d.spending.length > 0) {
       spendingChart?.destroy()
@@ -315,7 +322,7 @@ export default function AnalysisPage() {
     )
   }
   const exportCategoriesCsv = () => {
-    const f = filteredCategories()
+    const f = sortedCategories()
     if (f.length === 0) return
     downloadFile(
       `grocer-categories-${dateTag()}.csv`,
@@ -347,7 +354,7 @@ export default function AnalysisPage() {
   // onHover writes chartHover, so hovering a slice lights its row.
   const CategoryLegend = () => {
     hiddenTick() // subscribe: hide/show bumps this to re-render rows
-    const cats = filteredCategories()
+    const cats = sortedCategories()
     return (
       <ul class="category-legend">
         <For each={cats}>
