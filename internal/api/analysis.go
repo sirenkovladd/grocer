@@ -289,8 +289,9 @@ func (r *Router) handleAnalysisItem(w http.ResponseWriter, req *http.Request) {
 
 	// Find all receipts containing this item
 	type PricePoint struct {
-		Date  string  `json:"date"`
-		Price float64 `json:"price"`
+		ReceiptID uint64  `json:"receiptId,string"`
+		Date      string  `json:"date"`
+		Price     float64 `json:"price"`
 	}
 
 	var history []PricePoint
@@ -299,8 +300,9 @@ func (r *Router) handleAnalysisItem(w http.ResponseWriter, req *http.Request) {
 			if item.ItemID == itemID {
 				date := time.Unix(receipt.Date, 0)
 				history = append(history, PricePoint{
-					Date:  date.Format("2006-01-02"),
-					Price: float64(item.UnitPriceCents) / 100.0,
+					ReceiptID: receipt.ReceiptID,
+					Date:      date.Format("2006-01-02"),
+					Price:     float64(item.UnitPriceCents) / 100.0,
 				})
 			}
 		}

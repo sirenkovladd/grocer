@@ -29,6 +29,7 @@ interface Category {
 //   - `price` is in DOLLARS (not cents)
 // Page-level conversion handles both warts.
 interface PricePoint {
+  receiptId: string
   date: string
   price: number
 }
@@ -267,7 +268,11 @@ export default function ItemDetailPage() {
                     const unixSecs = Math.floor(new Date(h.date + "T00:00:00").getTime() / 1000)
                     return (
                       <tr>
-                        <td data-label="Date">{formatDateTime(unixSecs)}</td>
+                        <td data-label="Date">
+                          <A href={`/receipts/${h.receiptId}`} class="item-name-link">
+                            {formatDateTime(unixSecs)}
+                          </A>
+                        </td>
                         <td data-label="Price" class="money">
                           {formatMoney(h.price * 100)}
                         </td>

@@ -435,7 +435,7 @@ Analysis (Analysis page):
     if (sub === "history") {
       const h = await get(`/api/analysis/items/${id}`);
       if (json) { console.log(JSON.stringify(h, null, 2)); return; }
-      for (const p of h) console.log(`${p.date} ${fmtMoney(p.price * 100)}`);
+      for (const p of h) console.log(`${p.date} ${fmtMoney(p.price * 100)} receipt=${p.receiptId}`);
       return;
     }
     if (sub === "delete") {
