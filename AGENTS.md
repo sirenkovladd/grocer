@@ -94,6 +94,28 @@ Notes:
 - Item rename also refreshes the `normalized` index so future parses match —
   requires the server binary to include the items.go fix (restart after pull).
 
+## Solid table gotcha
+
+The Solid compiler walks templates by child index and does **not**
+account for nodes the browser auto-inserts. A `<table>` parsed via
+`innerHTML` always gains a `<tbody>` around a bare `<tr>`, so any
+template shaped `<div><table><tr>…` with a dynamic binding *inside*
+the header row (e.g. a clickable sort `<button>` in a `<th>`) compiles
+to a walk that lands one level off and crashes with
+`Cannot read properties of null (reading 'firstChild')`.
+
+Rules:
+- Put the header row in an explicit `<thead>` (also what
+  `.responsive-table`'s mobile CSS expects) and data rows in the
+  `<tbody>`/`<table>` body. Explicit elements keep compiler and browser
+  in sync. Never put dynamic bindings inside a bare `<tr>` directly
+  under `<table>`.
+- Templates that *start* with `<tr>`/`<td>` are safe: the compiler
+  wraps them in `<table><tbody>` itself (this is how all `For` row
+  callbacks work).
+- Static headers never crash (the compiler emits no refs into them)
+  — the crash only appears once you add a binding inside the row.
+
 ## Building and Running
 
 > ⚠️ **Never run `mise run start_server` from an agent session.** The server is a long-running process that doesn't terminate cleanly, will block the agent's tool runtime, and can leave port 8080 bound after being aborted. Use `mise run build_server && ./dist/server` in a separate, user-controlled terminal, or `go build -o ./dist/server ./cmd/server` and run the binary directly. To stop an existing server, find the PID with `lsof -nP -iTCP:8080 -sTCP:LISTEN` (or `ps -axo pid,command | grep cmd/server`) and kill it.

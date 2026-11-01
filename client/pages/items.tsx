@@ -380,6 +380,16 @@ export default function ItemsPage() {
           >
             <div class="items-table-wrapper">
               <table class="responsive-table">
+                {/* NOTE: the header row must live in an explicit <thead>.
+                    The Solid compiler walks templates by child index
+                    assuming no auto-inserted nodes, but the browser inserts
+                    a <tbody> around a bare <tr> — so any dynamic binding
+                    inside the header (sortable <button>s) would resolve
+                    against the wrong level and crash with
+                    "Cannot read properties of null (reading 'firstChild')".
+                    The explicit thead keeps compiler and browser in sync
+                    (and is what .responsive-table's mobile CSS expects). */}
+                <thead>
                 <tr>
                   <th aria-sort={ariaSort("name")}>
                     <button type="button" class="th-sort" onClick={() => cycleSort("name")}>
@@ -404,6 +414,7 @@ export default function ItemsPage() {
                   </th>
                   <th>Actions</th>
                 </tr>
+                </thead>
                 <For each={list()}>
                   {(item) =>
                     editingId() === item.itemId ? (
