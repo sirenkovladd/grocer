@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"flag"
 	"fmt"
@@ -39,6 +40,7 @@ func main() {
 
 	// Flags
 	createUser := flag.Bool("create-user", false, "Create a new user")
+	createSession := flag.Bool("create-session", false, "Mint a long-lived API token for an agent/CLI (no password needed, requires snapshot access)")
 	name := flag.String("name", "", "User's display name")
 	username := flag.String("username", "", "Username")
 	password := flag.String("password", "", "Password")
@@ -147,6 +149,40 @@ func main() {
 		}
 
 		fmt.Printf("User %s created successfully\n", *username)
+		return
+	}
+
+	// Handle create-session flag (agent/CLI auth without password).
+	// The caller must have snapshot access (GCS creds), which is
+	// equivalent to full access anyway. Prints the raw token
+	// "<sessionID>:<secret>" to stdout — use as
+	// Authorization: Bearer <token> or GROCER_TOKEN.
+	if *createSession {
+		if *username == "" {
+			log.Fatal("--username is required")
+		}
+		user, err := s.GetUserByUsername(*username)
+		if err != nil || user == nil {
+			log.Fatalf("User %s not found", *username)
+		}
+		secret := make([]byte, 32)
+		if _, err := rand.Read(secret); err != nil {
+			log.Fatalf("Failed to generate token: %v", err)
+		}
+		secretStr := base64.RawStdEncoding.EncodeToString(secret)
+		sum := sha256.Sum256([]byte(secretStr))
+		session := &store.Session{
+			SessionID: s.SessionID.Gen(),
+			TokenHash: base64.RawStdEncoding.EncodeToString(sum[:]),
+			UserID:    user.UserID,
+		}
+		if err := s.CreateSession(session); err != nil {
+			log.Fatalf("Failed to create session: %v", err)
+		}
+		if err := s.SaveSnapshot(ctx); err != nil {
+			log.Printf("Warning: Failed to save snapshot: %v", err)
+		}
+		fmt.Printf("%d:%s\n", session.SessionID, secretStr)
 		return
 	}
 

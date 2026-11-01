@@ -55,6 +55,45 @@ Protobuf-based, normalized, compact for GCloud snapshots. Key entities:
 
 Full schema: `proto/grocer.proto`
 
+## Agent interface (chat)
+
+An agent (pi, etc.) can do everything the website can via `scripts/grocer.ts`
+(Bun, wraps the HTTP API with chat-friendly text output):
+
+```bash
+# One-time auth — mint a token (needs GCS snapshot access, same machine):
+go run ./cmd/server --create-session --username vlad  # prints <id>:<secret>
+export GROCER_TOKEN='<id>:<secret>'                   # or --token, or `login`
+# Server URL: --url, GROCER_URL, default http://localhost:8080
+
+bun ./scripts/grocer.ts help                          # full command list
+```
+
+Chat receipt flow (same as Upload → Proposal pages):
+
+```bash
+bun ./scripts/grocer.ts upload ./receipt.jpg          # uploads, waits for parse, prints proposal
+bun ./scripts/grocer.ts proposal show <id>            # merchant, date, items with #index
+bun ./scripts/grocer.ts proposal rename-item <id> <index> "Milk 2L"
+bun ./scripts/grocer.ts proposal set-price <id> <index> <totalCents> [--qty N]
+bun ./scripts/grocer.ts proposal remove-item <id> <index>
+bun ./scripts/grocer.ts proposal approve <id>          # → receipt; ask user before this step
+```
+
+Everything else mirrors a website page (run `help` for flags):
+`receipts` / `receipt show <id>` / `receipt set-merchant|set-total|set-item|reopen`,
+`items [query]` / `item show|rename|set-category|history|delete`, `items merge <src> <dst>`,
+`categories` / `category create|rename|delete`, `merchants` / `merchant create|rename|delete`,
+`merchants merge <src> <dst>`, `analysis spending|categories|family`, `users`.
+
+Notes:
+- Renaming a catalog item (`item rename`) retargets every receipt showing it
+  (enriched views are a live join) and keeps the old name as an alias.
+- For an already-approved receipt, rename the *catalog item*, not the proposal
+  (the proposal row is frozen with status `approved`).
+- Item rename also refreshes the `normalized` index so future parses match —
+  requires the server binary to include the items.go fix (restart after pull).
+
 ## Building and Running
 
 > ⚠️ **Never run `mise run start_server` from an agent session.** The server is a long-running process that doesn't terminate cleanly, will block the agent's tool runtime, and can leave port 8080 bound after being aborted. Use `mise run build_server && ./dist/server` in a separate, user-controlled terminal, or `go build -o ./dist/server ./cmd/server` and run the binary directly. To stop an existing server, find the PID with `lsof -nP -iTCP:8080 -sTCP:LISTEN` (or `ps -axo pid,command | grep cmd/server`) and kill it.
