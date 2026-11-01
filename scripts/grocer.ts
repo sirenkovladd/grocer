@@ -198,7 +198,7 @@ Catalog:
 
 Analysis (Analysis page):
   grocer analysis spending [--from D --to D --granularity day|week|month]
-  grocer analysis categories [--from D --to D --owner ID]
+  grocer analysis categories [--from D --to D --owner ID --no-rollup]
   grocer analysis family [--from D --to D]
 `);
     return;
@@ -542,6 +542,7 @@ Analysis (Analysis page):
     const [kind, ..._a] = rest;
     const q = new URLSearchParams();
     for (const k of ["from", "to", "owner", "granularity"]) if (flags[k]) q.set(k, String(flags[k]));
+    if (kind === "categories" && (flags["no-rollup"] === true || flags["no-rollup"] === "true")) q.set("rollup", "false");
     const suffix = q.size ? "?" + q : "";
     if (kind === "spending") {
       const rows = await get(`/api/analysis/spending${suffix}`);
@@ -556,8 +557,7 @@ Analysis (Analysis page):
       if (json) { console.log(JSON.stringify(rows, null, 2)); return; }
       for (const r of rows) console.log(`${r.name} $${r.total.toFixed(2)}`);
       return;
-    }
-    if (kind === "family") {
+    }    if (kind === "family") {
       const rows = await get(`/api/analysis/family${suffix}`);
       if (json) { console.log(JSON.stringify(rows, null, 2)); return; }
       for (const r of rows) console.log(`${r.name} $${r.total.toFixed(2)}`);

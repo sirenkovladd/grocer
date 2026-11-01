@@ -45,7 +45,6 @@ function Sidebar() {
       <A href="/merchants" activeClass="active">Merchants</A>
       <A href="/categories" activeClass="active">Categories</A>
       <A href="/analysis" activeClass="active">Analysis</A>
-      <A href="/costco" activeClass="active">Costco</A>
       <div class="sidebar-footer">
         <button class="sidebar-logout" type="button" onClick={handleLogout}>
           Sign out

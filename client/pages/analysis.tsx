@@ -99,6 +99,10 @@ export default function AnalysisPage() {
   const [granularity, setGranularity] = createSignal("month")
   const [from, setFrom] = createSignal("")
   const [to, setTo] = createSignal("")
+  // Show every subcategory as its own pie slice instead of rolling
+  // child spending into the parent. Off by default (matches the old
+  // behavior); toggling refetches with ?rollup=false.
+  const [showSubcategories, setShowSubcategories] = createSignal(false)
 
   // Main trio. The fetcher reads the filter signals, so changing
   // granularity / from / to refetches automatically — no
@@ -109,9 +113,11 @@ export default function AnalysisPage() {
     const params = new URLSearchParams({ granularity: granularity() })
     if (from()) params.set("from", from())
     if (to()) params.set("to", to())
+    const catParams = new URLSearchParams(params)
+    if (showSubcategories()) catParams.set("rollup", "false")
     const [spending, categories, family] = await Promise.all([
       api.get(`/analysis/spending?${params}`),
-      api.get(`/analysis/categories?${params}`),
+      api.get(`/analysis/categories?${catParams}`),
       api.get(`/analysis/family?${params}`),
     ])
     return {
@@ -149,15 +155,17 @@ export default function AnalysisPage() {
       .finally(() => setLoadingReceipts(false))
   })
 
-  // Root-only Category Breakdown. IDs normalized to strings: the
+  // Root-only Category Breakdown (unless subcategories are shown).
+  // IDs normalized to strings: the
   // analysis endpoint serializes categoryId as a JSON number while
   // /categories uses strings — without normalization the Set lookup
   // never matches and the filter removes everything. While the
   // lookup hasn't loaded, return unfiltered data so the chart still
   // renders on first paint.
   const filteredCategories = (): CategoryPoint[] => {
-    const lookup = catLookup()
     const cats = data.state === "ready" ? data()!.categories : []
+    if (showSubcategories()) return cats
+    const lookup = catLookup()
     if (lookup.length === 0) return cats
     const rootIds = new Set(lookup.filter((c) => !c.parentId).map((c) => String(c.categoryId)))
     return cats.filter((d) => rootIds.has(String(d.categoryId)))
@@ -334,6 +342,14 @@ export default function AnalysisPage() {
           </div>
           <div class="chart-container card">
             <h2>Category Breakdown</h2>
+            <label class="muted" style={{ display: "flex", "align-items": "center", gap: "0.4rem", "margin-bottom": "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={showSubcategories()}
+                onChange={(e) => setShowSubcategories(e.currentTarget.checked)}
+              />
+              Show subcategories
+            </label>
             <canvas ref={categoryEl} id="category-chart" />
           </div>
           <div class="chart-container card">

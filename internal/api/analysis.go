@@ -163,23 +163,27 @@ func (r *Router) handleAnalysisCategories(w http.ResponseWriter, req *http.Reque
 	// with no direct items of its own never appears in the chart.
 	// Repeat until no more rollups can happen, so multi-level
 	// hierarchies (Beef → Meat → Food) collapse to the root.
+	// ?rollup=false skips this so the Analysis page (and CLI) can
+	// show every subcategory separately. Default stays rolled up.
 	rolledUp := make(map[uint64]float64)
 	for catID, total := range categoryMap {
 		rolledUp[catID] = total
 	}
-	for {
-		changed := false
-		for catID, total := range rolledUp {
-			cat, err := r.store.GetCategory(catID)
-			if err != nil || cat.ParentID == nil {
-				continue
+	if req.URL.Query().Get("rollup") != "false" {
+		for {
+			changed := false
+			for catID, total := range rolledUp {
+				cat, err := r.store.GetCategory(catID)
+				if err != nil || cat.ParentID == nil {
+					continue
+				}
+				rolledUp[*cat.ParentID] += total
+				delete(rolledUp, catID)
+				changed = true
 			}
-			rolledUp[*cat.ParentID] += total
-			delete(rolledUp, catID)
-			changed = true
-		}
-		if !changed {
-			break
+			if !changed {
+				break
+			}
 		}
 	}
 
