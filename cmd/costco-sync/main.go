@@ -21,6 +21,32 @@ import (
 	"code.sirenko.ca/grocer/internal/store"
 )
 
+// finalize prints the run summary, pushes the snapshot when the run changed
+// the store, and returns the process exit code. The push happens before
+// the failure exit so partial successes (created N + failed M) are kept
+// instead of refetched next time.
+func finalize(sum costcosync.Summary, dryRun bool, save func() error) int {
+	for _, f := range sum.Failed {
+		fmt.Printf("failed %s: %s\n", f.Barcode, f.Err)
+	}
+	dry := ""
+	if dryRun {
+		dry = " (dry run, nothing written)"
+	}
+	fmt.Printf("created %d, skipped %d, failed %d%s\n", sum.Created, sum.Skipped, len(sum.Failed), dry)
+	if !dryRun && costcosync.ShouldPush(sum.Created) {
+		if err := save(); err != nil {
+			fmt.Printf("save snapshot: %v\n", err)
+			return 1
+		}
+		fmt.Println("snapshot saved")
+	}
+	if len(sum.Failed) > 0 {
+		return 1
+	}
+	return 0
+}
+
 func main() {
 	owner := flag.String("owner", "", "Grocer username to tag receipts with (default: the single user)")
 	since := flag.String("since", "1/01/2025", "List start date (M/D/YYYY)")
@@ -99,21 +125,5 @@ func main() {
 	if err != nil {
 		log.Fatalf("sync: %v", err)
 	}
-	for _, f := range sum.Failed {
-		fmt.Printf("failed %s: %s\n", f.Barcode, f.Err)
-	}
-	dry := ""
-	if *dryRun {
-		dry = " (dry run, nothing written)"
-	}
-	fmt.Printf("created %d, skipped %d, failed %d%s\n", sum.Created, sum.Skipped, len(sum.Failed), dry)
-	if len(sum.Failed) > 0 {
-		os.Exit(1)
-	}
-	if !*dryRun && costcosync.ShouldPush(sum.Created) {
-		if err := s.SaveSnapshot(ctx); err != nil {
-			log.Fatalf("save snapshot: %v", err)
-		}
-		fmt.Println("snapshot saved")
-	}
+	os.Exit(finalize(sum, *dryRun, func() error { return s.SaveSnapshot(ctx) }))
 }
