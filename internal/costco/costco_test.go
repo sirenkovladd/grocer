@@ -1,6 +1,7 @@
 package costco
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -117,6 +118,18 @@ func TestParseCostcoDate(t *testing.T) {
 func TestExternalID(t *testing.T) {
 	if got := ExternalID("  abc  "); got != "costco:abc" {
 		t.Errorf("ExternalID = %q", got)
+	}
+}
+
+func TestExportedQueryDocs(t *testing.T) {
+	if ListQueryDoc == "" || DetailQueryDoc == "" {
+		t.Fatalf("query docs must be non-empty")
+	}
+	if !strings.Contains(ListQueryDoc, "receiptsWithCounts") || !strings.Contains(DetailQueryDoc, "receiptsWithCounts") {
+		t.Fatalf("query docs must contain receiptsWithCounts")
+	}
+	if WCSClientID == "" || ClientIdentifier == "" {
+		t.Fatalf("header IDs must be non-empty")
 	}
 }
 
