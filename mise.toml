@@ -42,16 +42,30 @@ sources = ["**/*.go"]
 outputs = ["dist/server"]
 
 [tasks.create_user]
-run = "go run ./cmd/server --create-user --name {{arg(name='name')}} --username {{arg(name='username')}} --password {{arg(name='password')}}"
+usage = '''
+arg "<name>" help="Display name"
+arg "<username>" help="Login username"
+arg "<password>" help="Login password"
+'''
+run = "go run ./cmd/server --create-user --name \"{{ usage.name }}\" --username \"{{ usage.username }}\" --password \"{{ usage.password }}\""
 
 [tasks.link_bot]
-run = "go run ./cmd/server --link-bot --username {{arg(name='username')}} --{{arg(name='platform')}} {{arg(name='id')}}"
+usage = '''
+arg "<username>" help="Grocer username to link"
+arg "<platform>" help="Bot platform" {
+  choices "telegram" "discord"
+}
+arg "<id>" help="Platform user ID"
+'''
+run = "go run ./cmd/server --link-bot --username \"{{ usage.username }}\" --{{ usage.platform }} {{ usage.id }}"
 
 [tasks.backup_export]
-run = "go run ./cmd/backup export {{arg(name='output', default='snapshot.pb.gz')}}"
+usage = 'arg "[output]" help="Snapshot output file" default="snapshot.pb.gz"'
+run = "go run ./cmd/backup export \"{{ usage.output }}\""
 
 [tasks.backup_import]
-run = "go run ./cmd/backup import {{arg(name='file')}}"
+usage = 'arg "<file>" help="Snapshot file to import"'
+run = "go run ./cmd/backup import \"{{ usage.file }}\""
 
 [tasks.sync_costco]
 run = "go run ./cmd/costco-sync"
