@@ -16,7 +16,7 @@ run = [
   "bunx vite build --config vite.config.ts --sourcemap=inline ./client",
 ]
 outputs = ["dist/*"]
-sources = ["client/*"]
+sources = ["client/**/*"]
 
 [tasks.build_client_prod]
 run = [
@@ -24,7 +24,7 @@ run = [
   "bunx vite build --config vite.config.ts ./client",
 ]
 outputs = ["dist/*"]
-sources = ["client/*"]
+sources = ["client/**/*"]
 
 [tasks.start_server]
 depends = ["proto", "build_client"]
