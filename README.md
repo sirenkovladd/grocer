@@ -32,7 +32,7 @@ grocer/
 
 ## Prerequisites
 
-- Go 1.25+
+- Go 1.27+ (via mise, `go = "latest"`)
 - Bun (for frontend)
 - GCloud Storage bucket
 - LLM API key (Kimi or Qwen via [opencode.ai](https://opencode.ai))

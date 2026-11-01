@@ -109,7 +109,7 @@ mise run build_server
 ./dist/server
 ```
 
-Requires Go 1.25+. Entry point: `cmd/server/main.go`
+Requires Go 1.27+. Entry point: `cmd/server/main.go`
 
 ### Frontend
 

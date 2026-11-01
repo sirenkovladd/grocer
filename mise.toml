@@ -3,7 +3,7 @@ _.file = ".env"
 GIT_COMMIT = "{{exec(command='git rev-parse --short HEAD')}}"
 
 [settings]
-task_output = "interleave"
+task.output = "interleave"
 
 [tasks.proto]
 sources = ["proto/grocer.proto"]
@@ -68,3 +68,6 @@ run = "docker compose -f deploy/docker-compose.yml down"
 [tools]
 bun = "latest"
 go = "latest"
+# protoc plugin for the `proto` task (protobuf codegen). Same `go:`
+# backend pattern as the global config's gow entry.
+"go:google.golang.org/protobuf/cmd/protoc-gen-go" = "latest"
