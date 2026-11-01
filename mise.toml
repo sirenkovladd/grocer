@@ -53,6 +53,9 @@ run = "go run ./cmd/backup export {{arg(name='output', default='snapshot.pb.gz')
 [tasks.backup_import]
 run = "go run ./cmd/backup import {{arg(name='file')}}"
 
+[tasks.sync_costco]
+run = "go run ./cmd/costco-sync"
+
 [tasks.docker_build]
 run = "docker build -f deploy/Dockerfile -t grocer ."
 

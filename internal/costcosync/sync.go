@@ -14,18 +14,23 @@ import (
 	"code.sirenko.ca/grocer/internal/store"
 )
 
-// ordersURL is the Orders & Purchases SPA. Loading it in the tab warms
-// the logged-in session (and its short-lived API token) that the
-// in-tab GraphQL fetch relies on.
-const ordersURL = "https://www.costco.ca/myaccount/#/app/e442e6e6-2602-4a39-937b-8b28b4457ed3/ordersandpurchases"
+// homeURL is the Costco storefront. Loading it in a fresh tab bootstraps
+// the logged-in session (and its short-lived API token) that the in-tab
+// GraphQL fetch relies on. A cold deep-link into the Orders & Purchases
+// SPA does not bootstrap it (verified: no token after 30s), while the
+// homepage yields a working token within seconds and the fetch runs fine
+// from the homepage origin — so no SPA navigation is needed.
+const homeURL = "https://www.costco.ca/"
 
 // gqlEndpoint is Costco's order-history GraphQL gateway.
 const gqlEndpoint = "https://ecom-api.costco.com/ebusiness/order/v1/orders/graphql"
 
-// tokenLookupJS finds the short-lived API token in the tab's session
-// storage by prefix — the suffix is not stable, so it is never
-// hardcoded. Evaluates to null when logged out.
-const tokenLookupJS = `Object.keys(sessionStorage).find(k => k.indexOf('authToken_') === 0) || null`
+// readinessJS reports the login token plus the page load state. The token
+// alone is not enough: fetched too early (page still settling its session
+// cookies) the list query returns 200 with an empty receipt array. Both
+// the token (looked up by prefix — the suffix is not stable, so it is
+// never hardcoded) and document.readyState === 'complete' are required.
+const readinessJS = `(function(){var k=Object.keys(sessionStorage).find(function(x){return x.indexOf('authToken_')===0});return JSON.stringify({t:k?sessionStorage.getItem(k):null,rs:document.readyState});})()`
 
 // Cfg configures one sync run.
 type Cfg struct {
@@ -115,17 +120,21 @@ func gqlError(raw string) string {
 	return ""
 }
 
-// pollToken waits for the login token to appear in the tab (the SPA
-// needs a moment after navigation), polling every 500ms up to 30s.
-func pollToken(ctx context.Context, tab *Tab) (string, error) {
+// pollReadiness waits for a usable session in the tab: login token
+// present and page load complete. Polls every 500ms up to 30s.
+func pollReadiness(ctx context.Context, tab *Tab) (string, error) {
 	deadline := time.Now().Add(30 * time.Second)
 	for {
-		tok, err := tab.Evaluate(tokenLookupJS, false)
+		raw, err := tab.Evaluate(readinessJS, false)
 		if err != nil {
 			return "", fmt.Errorf("costco session read: %w", err)
 		}
-		if tok != "" && tok != "null" {
-			return tok, nil
+		var st struct {
+			T  *string `json:"t"`
+			RS string  `json:"rs"`
+		}
+		if json.Unmarshal([]byte(raw), &st) == nil && st.T != nil && *st.T != "" && st.RS == "complete" {
+			return *st.T, nil
 		}
 		if time.Now().After(deadline) {
 			return "", fmt.Errorf("not logged into Costco in Brave (no session token after 30s) — log into costco.ca and retry")
@@ -166,10 +175,10 @@ func Run(ctx context.Context, cfg Cfg) (Summary, error) {
 	if prevActive != "" {
 		_ = cfg.CDP.ActivateTab(prevActive) // best effort; cosmetic only
 	}
-	if err := tab.Navigate(ordersURL); err != nil {
+	if err := tab.Navigate(homeURL); err != nil {
 		return sum, err
 	}
-	token, err := pollToken(ctx, tab)
+	token, err := pollReadiness(ctx, tab)
 	if err != nil {
 		return sum, err
 	}

@@ -138,7 +138,8 @@ func (s *scriptedCDP) respond(m cdpMsg) any {
 		if s.token == "" {
 			return map[string]any{"result": map[string]any{"type": "object", "subtype": "null"}}
 		}
-		return strVal(s.token)
+		ready, _ := json.Marshal(map[string]string{"t": s.token, "rs": "complete"})
+		return strVal(string(ready))
 	}
 	if strings.Contains(p.Expression, "startDate") {
 		return strVal(s.list)
@@ -302,6 +303,34 @@ func TestDryRunWritesNothing(t *testing.T) {
 	}
 	if _, findErr := s.FindReceiptByExternalID("costco:" + syncBarcodeA); findErr == nil {
 		t.Fatalf("dry run must not write receipts")
+	}
+}
+
+func TestResolveOwner(t *testing.T) {
+	s := testStore(t)
+	mkUser := func(username, name string) {
+		t.Helper()
+		u := &domain.User{UserID: s.UserID.Gen(), Name: name, Username: username}
+		if err := s.CreateUser(u); err != nil {
+			t.Fatalf("CreateUser: %v", err)
+		}
+	}
+	mkUser("vlad", "Vlad")
+	if id, err := ResolveOwner(s, ""); err != nil || id == 0 {
+		t.Fatalf("single user: id=%d err=%v", id, err)
+	}
+	if _, err := ResolveOwner(s, "nobody"); err == nil {
+		t.Fatalf("unknown owner should fail")
+	}
+	id, err := ResolveOwner(s, "vlad")
+	if err != nil || id == 0 {
+		t.Fatalf("named owner: id=%d err=%v", id, err)
+	}
+	mkUser("anna", "Anna")
+	if _, err := ResolveOwner(s, ""); err == nil {
+		t.Fatalf("two users without flag should fail")
+	} else if !strings.Contains(err.Error(), "vlad") || !strings.Contains(err.Error(), "anna") {
+		t.Fatalf("error should list usernames, got: %v", err)
 	}
 }
 
