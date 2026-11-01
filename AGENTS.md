@@ -93,6 +93,20 @@ Notes:
   (the proposal row is frozen with status `approved`).
 - Item rename also refreshes the `normalized` index so future parses match —
   requires the server binary to include the items.go fix (restart after pull).
+- Approve FIRST, rename AFTER: `proposal rename-item` on a new line bakes
+  the pretty name into the catalog item WITHOUT the receipt text as an
+  alias (approve stores only `parsedName`), so future receipts with the
+  same printed text won't match. Approving with receipt text then
+  `item rename` keeps the receipt text as an alias. Same for
+  `proposal remove-item` + `set-qty` (duplicate identical lines) — prefer
+  post-approve `items merge` so both receipt lines survive on one item.
+- Enriched receipt lines show `unit x qty`, NOT the parsed line total:
+  `ReceiptItem` stores no per-line total, so folded deposits/discounts
+  live only in `receipt.totalCents`. Verify money against the proposal
+  (which keeps parsed totals) and the receipt total, not summed lines.
+- UIDs: all entity types share ONE `store.Generator` (same-millisecond
+  creations must still differ). Pre-existing data has 9 category/item
+  ID collisions (separate memdb tables, all references resolve — benign).
 
 ## Solid table gotcha
 
