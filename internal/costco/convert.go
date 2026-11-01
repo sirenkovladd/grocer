@@ -87,9 +87,12 @@ func ConvertDetail(d *DetailReceipt, loc *time.Location) *ParsedReceipt {
 		SubTotalCents: roundCents(d.SubTotal.Float64()),
 		TaxCents:      roundCents(d.Taxes.Float64()),
 	}
+	rawItems := make([]DetailItem, len(d.ItemArray))
+	copy(rawItems, d.ItemArray)
 	for _, it := range d.ItemArray {
 		out.Lines = append(out.Lines, convertLine(it))
 	}
+	out.Lines = foldAdjustments(out.Lines, rawItems)
 	for _, t := range d.TenderArray {
 		desc := strings.TrimSpace(t.TenderDescription)
 		if desc == "" {
@@ -264,6 +267,93 @@ func relDiff(a, b float64) float64 {
 		b = -b
 	}
 	return d / b
+}
+
+// foldAdjustments merges fee/discount lines (zero unit price, nonzero
+// amount: ENVIRO FEE, DEPOSIT, TPD/..., bare /<sku>) into the product
+// they reference, so the catalog never learns junk items. The parent is
+// the sibling named after the slash: digits match ItemNumber, other text
+// matches a product name substring (first in line order). A link with no
+// product match — or one pointing at another adjustment — is an orphan
+// and kept verbatim so no money goes missing. The parent's unit price
+// becomes round((parentTotal + fees) / qty) and its total the exact fee
+// sum, keeping receipt-level reconciliation intact.
+func foldAdjustments(lines []ParsedLine, raw []DetailItem) []ParsedLine {
+	isAdjust := make([]bool, len(raw))
+	for i, it := range raw {
+		isAdjust[i] = it.ItemUnitPriceAmount.Float64() == 0 && it.Amount.Float64() != 0
+	}
+	parentOf := make(map[int]int, len(raw))
+	for i := range raw {
+		if !isAdjust[i] {
+			continue
+		}
+		par := -1
+		if token := afterSlash(lines[i].Name); token != "" {
+			if isDigits(token) {
+				for j := range raw {
+					if !isAdjust[j] && lines[j].SKU == token {
+						par = j
+						break
+					}
+				}
+			} else {
+				up := strings.ToUpper(token)
+				for j := range raw {
+					if !isAdjust[j] && strings.Contains(strings.ToUpper(lines[j].Name), up) {
+						par = j
+						break
+					}
+				}
+			}
+		}
+		if par >= 0 {
+			parentOf[i] = par
+		}
+	}
+	if len(parentOf) == 0 {
+		return lines
+	}
+	fees := make(map[int]int64, len(parentOf))
+	for a, par := range parentOf {
+		fees[par] += lines[a].TotalPriceCents
+	}
+	out := make([]ParsedLine, 0, len(lines))
+	for i, ln := range lines {
+		if _, ok := parentOf[i]; ok {
+			continue // absorbed into the parent
+		}
+		if fsum, ok := fees[i]; ok && ln.Quantity != 0 {
+			ln.TotalPriceCents += fsum
+			ln.UnitPriceCents = int64(math.Round(float64(ln.TotalPriceCents) / ln.Quantity))
+		}
+		out = append(out, ln)
+	}
+	return out
+}
+
+// afterSlash returns the trimmed text after the last slash in a fee-line
+// name ("ENVIRO FEE CLN/1377112" -> "1377112", "TPD/SOCKS" ->
+// "SOCKS"), or "" when there is none.
+func afterSlash(name string) string {
+	i := strings.LastIndex(name, "/")
+	if i < 0 {
+		return ""
+	}
+	return strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(name[i+1:]), "$"))
+}
+
+// isDigits reports whether s is a nonempty run of ASCII digits.
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // ToLLMParsed adapts a ParsedReceipt to the llm.ParsedReceipt shape so
