@@ -126,7 +126,7 @@ func (t *Tab) Navigate(url string) error {
 // (used for async fetch work).
 func (t *Tab) Evaluate(expression string, awaitPromise bool) (string, error) {
 	raw, err := t.sess.call("Runtime.evaluate", map[string]any{
-		"expression":   expression,
+		"expression":    expression,
 		"returnByValue": true,
 		"awaitPromise":  awaitPromise,
 	})
