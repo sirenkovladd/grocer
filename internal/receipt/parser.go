@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"strconv"
+	"time"
 
 	"code.sirenko.ca/grocer/internal/domain"
 	"code.sirenko.ca/grocer/internal/llm"
@@ -451,6 +452,11 @@ func (p *Parser) ParseReceiptAsync(ctx context.Context, proposalID uint64, photo
 	runSingleShot := func() *llm.ParsedReceipt {
 		var parsed *llm.ParsedReceipt
 		var err error
+		// Same bound as categorizeItem: never let a hung gateway
+		// wedge the parse forever. 5 minutes covers thinking +
+		// a full receipt at current speeds, with margin.
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+		defer cancel()
 		if ocr != nil {
 			parsed, err = p.llm.ParseReceiptFromText(ctx, ocr)
 		} else {
@@ -747,6 +753,13 @@ func (p *Parser) categorizeItem(ctx context.Context, itemName string) (*llm.Cate
 		categories[i] = *c
 	}
 
+	// Bound the call: the gateway has held categorize requests open
+	// indefinitely before (goroutine dump showed a CategorizeItem
+	// stuck in roundTrip 4x past the http.Client timeout). A timeout
+	// here degrades gracefully — the item just gets no category and
+	// the user picks one during review.
+	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	defer cancel()
 	return p.llm.CategorizeItem(ctx, itemName, categories)
 }
 
