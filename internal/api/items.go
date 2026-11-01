@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 func (r *Router) handleListItems(w http.ResponseWriter, req *http.Request) {
@@ -63,7 +64,15 @@ func (r *Router) handleUpdateItem(w http.ResponseWriter, req *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		// Keep the old display name as an alias so future parses
+		// of the printed receipt text still match. normalizeName
+		// mirrors receipt.normalizeName (lowercase + collapse spaces).
+		oldName := item.Name
 		item.Name = *reqBody.Name
+		item.Normalized = normalizeItemName(*reqBody.Name)
+		if oldName != "" && !containsAliasFold(item.Aliases, oldName) && len(item.Aliases) < 20 {
+			item.Aliases = append(item.Aliases, oldName)
+		}
 	}
 	if reqBody.CategoryID != nil {
 		item.CategoryID = reqBody.CategoryID.Uint64()
@@ -81,6 +90,24 @@ func (r *Router) handleUpdateItem(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, item)
+}
+
+// normalizeItemName mirrors receipt.normalizeName: lowercase, trim,
+// collapse inner whitespace. Kept local to api so renames keep the
+// memdb "normalized" index in sync (the matcher queries it).
+func normalizeItemName(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	return strings.Join(strings.Fields(name), " ")
+}
+
+func containsAliasFold(aliases []string, name string) bool {
+	n := normalizeItemName(name)
+	for _, a := range aliases {
+		if normalizeItemName(a) == n {
+			return true
+		}
+	}
+	return false
 }
 
 // handleDeleteItem removes an item from the catalog. Refuses with
