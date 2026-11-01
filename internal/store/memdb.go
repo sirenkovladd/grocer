@@ -734,12 +734,62 @@ func (s *Store) DeleteItem(id uint64) error {
 // Returns the number of receipt line items that were retargeted so
 // the caller can report a summary to the user. The merge is
 // all-or-nothing within a single store write transaction.
+// equalFold / containsFoldStr are local copies of the receipt package's
+// alias helpers (receipt imports store, so they can't be shared).
+func equalFold(a, b string) bool {
+	return strings.EqualFold(a, b)
+}
+
+func containsFoldStr(list []string, s string) bool {
+	for _, v := range list {
+		if strings.EqualFold(v, s) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Store) MergeItem(sourceID, targetID uint64) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	txn := s.db.Txn(true)
 	defer txn.Abort()
+
+	// Backfill the source name + aliases onto the target so future
+	// parses of the absorbed receipt text still match. Without this,
+	// merging "VP COD FILLET WILD FZ" into "Wild Cod Fillet Frozen"
+	// orphans the printed variant and the next identical receipt
+	// creates a fresh duplicate item.
+	srcRaw, err := txn.First("items", "id", sourceID)
+	if err != nil {
+		return 0, err
+	}
+	tgtRaw, err := txn.First("items", "id", targetID)
+	if err != nil {
+		return 0, err
+	}
+	var variants []string
+	if srcRaw != nil {
+		src := srcRaw.(*domain.Item)
+		variants = append(variants, src.Name)
+		variants = append(variants, src.Aliases...)
+	}
+	if tgtRaw != nil {
+		tgt := tgtRaw.(*domain.Item)
+		for _, v := range variants {
+			if v == "" || equalFold(tgt.Name, v) || containsFoldStr(tgt.Aliases, v) {
+				continue
+			}
+			if len(tgt.Aliases) >= 20 {
+				break
+			}
+			tgt.Aliases = append(tgt.Aliases, v)
+		}
+		if err := txn.Insert("items", tgt); err != nil {
+			return 0, err
+		}
+	}
 
 	// Walk every receipt. For each one whose Items contain
 	// sourceID, replace with targetID and re-insert the receipt.
