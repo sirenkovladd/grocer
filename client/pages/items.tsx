@@ -167,7 +167,28 @@ export default function ItemsPage() {
   const UNCATEGORIZED = "__uncategorized__"
   const [search, setSearch] = createSignal("")
   const [categoryFilter, setCategoryFilter] = createSignal("")
-  const [sort, setSort] = createSignal<"alpha" | "frequent">("alpha")
+  type SortKey = "name" | "category" | "lastBought" | "purchases"
+  const [sortKey, setSortKey] = createSignal<SortKey>("name")
+  const [sortDir, setSortDir] = createSignal<"asc" | "desc">("asc")
+
+  // Clicking the active header toggles direction; clicking a new
+  // header starts with that column's sensible default (A→Z for
+  // text, biggest/most-recent first for counts and dates).
+  const cycleSort = (key: SortKey) => {
+    if (sortKey() === key) {
+      setSortDir(sortDir() === "asc" ? "desc" : "asc")
+    } else {
+      setSortKey(key)
+      setSortDir(key === "purchases" || key === "lastBought" ? "desc" : "asc")
+    }
+  }
+
+  // ▲/▼ marker for the active header; empty for the rest.
+  const indicator = (key: SortKey) =>
+    sortKey() === key ? (sortDir() === "asc" ? " ▲" : " ▼") : ""
+
+  const ariaSort = (key: SortKey): "ascending" | "descending" | "none" =>
+    sortKey() === key ? (sortDir() === "asc" ? "ascending" : "descending") : "none"
 
   // Edit state — only one row is in edit mode at a time.
   const [editingId, setEditingId] = createSignal("")
@@ -189,14 +210,29 @@ export default function ItemsPage() {
 
   const sorted = (): Item[] => {
     const all = [...(data()?.items ?? [])]
-    if (sort() === "frequent") {
-      all.sort((a, b) => {
-        if (b.purchaseCount !== a.purchaseCount) return b.purchaseCount - a.purchaseCount
-        return a.name.toLowerCase().localeCompare(b.name.toLowerCase())
-      })
-    } else {
-      all.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
-    }
+    const cats = data()?.categories ?? {}
+    const catName = (i: Item) => cats[i.categoryId]?.name ?? "Uncategorized"
+    const alpha = (a: Item, b: Item) =>
+      a.name.toLowerCase().localeCompare(b.name.toLowerCase())
+    const dir = sortDir() === "asc" ? 1 : -1
+    all.sort((a, b) => {
+      switch (sortKey()) {
+        case "name":
+          return dir * alpha(a, b)
+        case "category": {
+          const c = catName(a).toLowerCase().localeCompare(catName(b).toLowerCase())
+          return c !== 0 ? dir * c : alpha(a, b)
+        }
+        case "lastBought":
+          return b.lastPurchasedAt !== a.lastPurchasedAt
+            ? dir * (a.lastPurchasedAt - b.lastPurchasedAt)
+            : alpha(a, b)
+        case "purchases":
+          return b.purchaseCount !== a.purchaseCount
+            ? dir * (a.purchaseCount - b.purchaseCount)
+            : alpha(a, b)
+      }
+    })
     return all
   }
 
@@ -289,18 +325,6 @@ export default function ItemsPage() {
             onInput={(e) => setSearch(e.currentTarget.value)}
           />
           <select
-            onChange={(e) => setSort(e.currentTarget.value as "alpha" | "frequent")}
-            aria-label="Sort items"
-            class="sort-picker"
-          >
-            <option value="alpha" selected={sort() === "alpha"}>
-              Alphabetical
-            </option>
-            <option value="frequent" selected={sort() === "frequent"}>
-              Most frequently bought
-            </option>
-          </select>
-          <select
             onChange={(e) => setCategoryFilter(e.currentTarget.value)}
             aria-label="Filter by category"
             class="category-filter"
@@ -357,11 +381,27 @@ export default function ItemsPage() {
             <div class="items-table-wrapper">
               <table class="responsive-table">
                 <tr>
-                  <th>Name</th>
-                  <th>Category</th>
+                  <th aria-sort={ariaSort("name")}>
+                    <button type="button" class="th-sort" onClick={() => cycleSort("name")}>
+                      Name{indicator("name")}
+                    </button>
+                  </th>
+                  <th aria-sort={ariaSort("category")}>
+                    <button type="button" class="th-sort" onClick={() => cycleSort("category")}>
+                      Category{indicator("category")}
+                    </button>
+                  </th>
                   <th>Aliases</th>
-                  <th>Last Bought</th>
-                  <th>Purchases</th>
+                  <th aria-sort={ariaSort("lastBought")}>
+                    <button type="button" class="th-sort" onClick={() => cycleSort("lastBought")}>
+                      Last Bought{indicator("lastBought")}
+                    </button>
+                  </th>
+                  <th aria-sort={ariaSort("purchases")}>
+                    <button type="button" class="th-sort" onClick={() => cycleSort("purchases")}>
+                      Purchases{indicator("purchases")}
+                    </button>
+                  </th>
                   <th>Actions</th>
                 </tr>
                 <For each={list()}>

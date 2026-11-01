@@ -799,9 +799,31 @@ th {
   max-width: 12rem;
 }
 
-/* Sort dropdown used in the items list filter bar. */
-.sort-picker {
-  min-width: 12rem;
+/* Sortable table headers (items list). The button fills the header
+   so the whole header is the click target; it inherits the header
+   typography so it looks like a plain <th> until hovered. */
+.th-sort {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+.th-sort:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.th-sort:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* Category filter dropdown used in the items list filter bar. */
