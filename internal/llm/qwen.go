@@ -117,8 +117,10 @@ func (q *ZenAnthropicProvider) ParseReceipt(ctx context.Context, photo []byte) (
 }
 
 // ParseReceiptStream is not supported for the Zen Anthropic path.
+// Callers detect this with errors.Is(err, ErrStreamingUnsupported)
+// and fall back to ParseReceipt.
 func (q *ZenAnthropicProvider) ParseReceiptStream(ctx context.Context, photo []byte) (<-chan StreamChunk, error) {
-	return nil, fmt.Errorf("streaming not supported for zen-anthropic provider")
+	return nil, fmt.Errorf("%w for zen-anthropic provider", ErrStreamingUnsupported)
 }
 
 // ParseReceiptFromText extracts structured JSON from pre-OCR'd text.

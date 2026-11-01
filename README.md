@@ -84,7 +84,7 @@ mise run build_client
 | `LLM_MODEL` | Yes | Model ID (e.g. `kimi-k2.6`, `qwen3.6-plus`, `minimax-m3`) |
 | `OCR_PROVIDER` | No | OCR engine. `mistral` (default) or `none` to disable |
 | `MISTRAL_API_KEY` | When `OCR_PROVIDER=mistral` | Mistral API key for OCR 4 |
-| `MISTRAL_OCR_MODEL` | No | OCR model (default `mistral-ocr-4-0`) |
+| `MISTRAL_OCR_MODEL` | No | OCR model (default `mistral-ocr-latest`) |
 | `GCS_BUCKET` | Yes | GCloud Storage bucket name |
 | `GCS_PREFIX` | No | Snapshot prefix (default: `snapshots/`) |
 | `GCS_CREDENTIALS_FILE` | Yes | Path to GCloud service account JSON |

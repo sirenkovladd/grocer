@@ -15,7 +15,9 @@ import (
 )
 
 // MistralOCR implements OCREngine against Mistral's /v1/ocr endpoint.
-// Default model: "mistral-ocr-4-0". Requires blocks, tables, header/footer,
+// Default model: "mistral-ocr-latest" (tracks Mistral's current OCR;
+// pinned names like "mistral-ocr-4-0" have been retired without
+// warning). Requires blocks, tables, header/footer,
 // and per-word confidence to be returned.
 //
 // Pages, if non-empty, restricts OCR to the given page indices
@@ -37,7 +39,7 @@ type MistralOCR struct {
 
 func NewMistralOCR(apiKey, model string) *MistralOCR {
 	if model == "" {
-		model = "mistral-ocr-4-0"
+		model = "mistral-ocr-latest"
 	}
 	return &MistralOCR{
 		apiKey:  apiKey,

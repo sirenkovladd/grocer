@@ -238,7 +238,7 @@ root cause is identified and confirmed fixed.
 | `LLM_MODEL` | Yes | Model ID (e.g. `kimi-k2.6`, `qwen3.6-plus`, `minimax-m3`) |
 | `OCR_PROVIDER` | No | `mistral` (default) or `none` to skip OCR |
 | `MISTRAL_API_KEY` | When OCR enabled | Mistral API key for OCR 4 |
-| `MISTRAL_OCR_MODEL` | No | OCR model (default `mistral-ocr-4-0`) |
+| `MISTRAL_OCR_MODEL` | No | OCR model (default `mistral-ocr-latest`) |
 | `GCS_BUCKET` | Yes | GCloud Storage bucket |
 | `GCS_PREFIX` | No | Snapshot prefix (default: `snapshots/`) |
 | `GCS_CREDENTIALS_FILE` | Yes | Service account JSON path |

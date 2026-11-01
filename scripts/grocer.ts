@@ -163,7 +163,7 @@ async function main() {
 Usage: grocer [--url URL] [--token TOK] [--json] <command> [args]
 
 Auth:  grocer login --username U --password P
-Upload: grocer upload <photo.jpg> [--owner ID]
+Upload: grocer upload <photo.jpg> [--owner ID] [--no-wait]
   → uploads, waits for parse, prints the proposal (same as Upload page)
 
 Proposals (review page):
@@ -239,6 +239,7 @@ Analysis (Analysis page):
     if (!uploadRes.ok) throw new Error(`upload → ${uploadRes.status}: ${uploadText}`);
     const { id } = JSON.parse(uploadText) as { id: string };
     console.log(`Uploaded → proposal ${id}, parsing…`);
+    if (flags["no-wait"] === true || flags["no-wait"] === "true") return;
     const p = await waitForProposal(base, token, id);
     if (json) { console.log(JSON.stringify(p, null, 2)); return; }
     printProposal(p);

@@ -3,6 +3,7 @@ package receipt
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -443,6 +444,25 @@ func (p *Parser) ParseReceiptAsync(ctx context.Context, proposalID uint64, photo
 
 	// Stage 2: LLM extraction
 	publish(ParseEvent{Type: "progress", Message: "Extracting items..."})
+
+	// runSingleShot is the non-streaming fallback for providers
+	// that don't support SSE (e.g. the Zen Anthropic gateway).
+	// It returns nil after failing (fail publishes the error).
+	runSingleShot := func() *llm.ParsedReceipt {
+		var parsed *llm.ParsedReceipt
+		var err error
+		if ocr != nil {
+			parsed, err = p.llm.ParseReceiptFromText(ctx, ocr)
+		} else {
+			parsed, err = p.llm.ParseReceipt(ctx, photo)
+		}
+		if err != nil {
+			fail(fmt.Sprintf("LLM: %v", err))
+			return nil
+		}
+		return parsed
+	}
+
 	var streamCh <-chan llm.StreamChunk
 	var err error
 	if ocr != nil {
@@ -450,10 +470,17 @@ func (p *Parser) ParseReceiptAsync(ctx context.Context, proposalID uint64, photo
 	} else {
 		streamCh, err = p.llm.ParseReceiptStream(ctx, photo)
 	}
+	var parsed *llm.ParsedReceipt
 	if err != nil {
-		fail(fmt.Sprintf("LLM stream: %v", err))
-		return
-	}
+		if !errors.Is(err, llm.ErrStreamingUnsupported) {
+			fail(fmt.Sprintf("LLM stream: %v", err))
+			return
+		}
+		log.Printf("PARSE_ASYNC: streaming unsupported, single-shot fallback for proposal %d", proposalID)
+		if parsed = runSingleShot(); parsed == nil {
+			return
+		}
+	} else {
 
 	var accumulated string
 	var lastItemCount int
@@ -491,10 +518,11 @@ func (p *Parser) ParseReceiptAsync(ctx context.Context, proposalID uint64, photo
 		}
 	}
 
-	parsed, err := llm.ParseReceiptResponse(ctx, accumulated)
+	parsed, err = llm.ParseReceiptResponse(ctx, accumulated)
 	if err != nil {
 		fail(fmt.Sprintf("parse response: %v", err))
 		return
+	}
 	}
 
 	publish(ParseEvent{Type: "progress", Message: "Matching items to catalog..."})
