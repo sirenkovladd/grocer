@@ -482,47 +482,47 @@ func (p *Parser) ParseReceiptAsync(ctx context.Context, proposalID uint64, photo
 		}
 	} else {
 
-	var accumulated string
-	var lastItemCount int
-	chunkCount := 0
+		var accumulated string
+		var lastItemCount int
+		chunkCount := 0
 
-	for chunk := range streamCh {
-		if chunk.Error != nil {
-			fail(fmt.Sprintf("LLM stream error: %v", chunk.Error))
+		for chunk := range streamCh {
+			if chunk.Error != nil {
+				fail(fmt.Sprintf("LLM stream error: %v", chunk.Error))
+				return
+			}
+			chunkCount++
+			accumulated += chunk.Text
+
+			var partial struct {
+				Items []struct {
+					Name       string  `json:"name"`
+					Quantity   float64 `json:"quantity"`
+					UnitPrice  float64 `json:"unit_price"`
+					TotalPrice float64 `json:"total_price"`
+				} `json:"items"`
+			}
+			if err := json.Unmarshal([]byte(accumulated), &partial); err == nil && len(partial.Items) > lastItemCount {
+				for i := lastItemCount; i < len(partial.Items); i++ {
+					it := partial.Items[i]
+					pi := domain.ProposalItem{
+						ParsedName:     it.Name,
+						Quantity:       it.Quantity,
+						UnitPriceCents: dollarsToCents(it.UnitPrice),
+					}
+					_ = p.store.AppendProposalItem(proposalID, pi)
+					publish(ParseEvent{Type: "item", Index: i, Item: &pi})
+				}
+				lastItemCount = len(partial.Items)
+				publish(ParseEvent{Type: "progress", Message: fmt.Sprintf("Found %d items...", lastItemCount)})
+			}
+		}
+
+		parsed, err = llm.ParseReceiptResponse(ctx, accumulated)
+		if err != nil {
+			fail(fmt.Sprintf("parse response: %v", err))
 			return
 		}
-		chunkCount++
-		accumulated += chunk.Text
-
-		var partial struct {
-			Items []struct {
-				Name       string  `json:"name"`
-				Quantity   float64 `json:"quantity"`
-				UnitPrice  float64 `json:"unit_price"`
-				TotalPrice float64 `json:"total_price"`
-			} `json:"items"`
-		}
-		if err := json.Unmarshal([]byte(accumulated), &partial); err == nil && len(partial.Items) > lastItemCount {
-			for i := lastItemCount; i < len(partial.Items); i++ {
-				it := partial.Items[i]
-				pi := domain.ProposalItem{
-					ParsedName:     it.Name,
-					Quantity:       it.Quantity,
-					UnitPriceCents: dollarsToCents(it.UnitPrice),
-				}
-				_ = p.store.AppendProposalItem(proposalID, pi)
-				publish(ParseEvent{Type: "item", Index: i, Item: &pi})
-			}
-			lastItemCount = len(partial.Items)
-			publish(ParseEvent{Type: "progress", Message: fmt.Sprintf("Found %d items...", lastItemCount)})
-		}
-	}
-
-	parsed, err = llm.ParseReceiptResponse(ctx, accumulated)
-	if err != nil {
-		fail(fmt.Sprintf("parse response: %v", err))
-		return
-	}
 	}
 
 	publish(ParseEvent{Type: "progress", Message: "Matching items to catalog..."})
@@ -655,9 +655,9 @@ func (p *Parser) buildProposalItems(ctx context.Context, items []llm.ParsedItem,
 		}
 
 		pi := domain.ProposalItem{
-			ParsedName:     item.Name,
-			Quantity:       item.Quantity,
-			UnitPriceCents: dollarsToCents(item.UnitPrice),
+			ParsedName:      item.Name,
+			Quantity:        item.Quantity,
+			UnitPriceCents:  dollarsToCents(item.UnitPrice),
 			TotalPriceCents: dollarsToCents(item.TotalPrice),
 		}
 		if ocr != nil {

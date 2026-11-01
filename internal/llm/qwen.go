@@ -90,6 +90,18 @@ type zenAnthropicText struct {
 	Text string `json:"text"`
 }
 
+// maxTokens returns the max_tokens budget for a request. Reasoning
+// models (Muse Spark) spend most of the budget on thinking — a
+// 4096 cap leaves ~380 tokens for the answer and the receipt JSON
+// gets truncated mid-items ("unexpected end of JSON input"). Spark
+// gets 16384; other models keep the historic 4096.
+func (q *ZenAnthropicProvider) maxTokens() int {
+	if strings.Contains(strings.ToLower(q.model), "spark") {
+		return 16384
+	}
+	return 4096
+}
+
 type zenAnthropicResponse struct {
 	Content []struct {
 		Type string `json:"type"`
@@ -104,7 +116,7 @@ func (q *ZenAnthropicProvider) ParseReceipt(ctx context.Context, photo []byte) (
 
 	req := zenAnthropicRequest{
 		Model:     q.model,
-		MaxTokens: 4096,
+		MaxTokens: q.maxTokens(),
 		System:    "You are a receipt parser. Return only valid JSON.",
 		Messages: []zenAnthropicMsg{
 			{
@@ -168,7 +180,7 @@ func (q *ZenAnthropicProvider) ParseReceiptFromTextStream(ctx context.Context, o
 	prompt := buildReceiptFromTextPrompt(ocr)
 	return q.streamMessages(ctx, zenAnthropicRequest{
 		Model:     q.model,
-		MaxTokens: 4096,
+		MaxTokens: q.maxTokens(),
 		System:    "You are a receipt parser. Return only valid JSON.",
 		Messages: []zenAnthropicMsg{
 			{Role: "user", Content: prompt},
@@ -249,7 +261,7 @@ func (q *ZenAnthropicProvider) callAnthropic(ctx context.Context, endpoint strin
 func (q *ZenAnthropicProvider) callAnthropicText(ctx context.Context, userPrompt string) (string, error) {
 	req := zenAnthropicRequest{
 		Model:     q.model,
-		MaxTokens: 4096,
+		MaxTokens: q.maxTokens(),
 		System:    "You are a receipt parser. Return only valid JSON.",
 		Messages: []zenAnthropicMsg{
 			{Role: "user", Content: userPrompt},
