@@ -104,6 +104,15 @@ export default function AnalysisPage() {
   // behavior); toggling refetches with ?rollup=false.
   const [showSubcategories, setShowSubcategories] = createSignal(false)
 
+  // Custom HTML legend state (the pie's canvas legend is off, so
+  // all legend interaction lives in CategoryLegend below):
+  //   legendHover — legend row under the pointer (lights the slice)
+  //   chartHover  — pie slice under the pointer (lights the row)
+  //   hiddenTick  — bumped on hide/show so rows re-render dimmed
+  const [legendHover, setLegendHover] = createSignal(-1)
+  const [chartHover, setChartHover] = createSignal(-1)
+  const [hiddenTick, setHiddenTick] = createSignal(0)
+
   // Main trio. The fetcher reads the filter signals, so changing
   // granularity / from / to refetches automatically — no
   // handleFilterChange needed. Errors suspend to the boundary's
@@ -241,7 +250,19 @@ export default function AnalysisPage() {
         },
         options: {
           responsive: true,
-          plugins: { legend: { position: "bottom", labels: { color: "#e5e5e5" } } },
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) =>
+                  ` ${ctx.label}: ${formatMoney(Math.round((ctx.parsed as number) * 100))}`,
+              },
+            },
+          },
+          onHover: (_event, elements) => {
+            setChartHover(elements.length > 0 ? (elements[0]?.index ?? -1) : -1)
+          },
         },
       })
     } else {
@@ -318,6 +339,80 @@ export default function AnalysisPage() {
     )
   }
 
+  // Custom HTML legend for the pie: the canvas legend is off, so
+  // this owns all three interactions — swatch click hides the slice
+  // (chart.toggleDataVisibility, same as the old legend), row hover
+  // lights the slice (chart.setActiveElements), and name/total click
+  // drills into the Items page filtered to that category. The pie's
+  // onHover writes chartHover, so hovering a slice lights its row.
+  const CategoryLegend = () => {
+    hiddenTick() // subscribe: hide/show bumps this to re-render rows
+    const cats = filteredCategories()
+    return (
+      <ul class="category-legend">
+        <For each={cats}>
+          {(c, i) => {
+            const hidden = () => categoryChart?.getDataVisibility(i()) === false
+            const highlighted = () => legendHover() === i() || chartHover() === i()
+            const activate = () => {
+              const ch = categoryChart
+              if (!ch) return
+              ch.setActiveElements([{ datasetIndex: 0, index: i() }])
+              ch.update()
+            }
+            const deactivate = () => {
+              const ch = categoryChart
+              if (!ch) return
+              ch.setActiveElements([])
+              ch.update()
+            }
+            return (
+              <li
+                classList={{
+                  "legend-row": true,
+                  "legend-hover": highlighted(),
+                  "legend-hidden": hidden(),
+                }}
+                onMouseEnter={() => {
+                  setLegendHover(i())
+                  activate()
+                }}
+                onMouseLeave={() => {
+                  setLegendHover(-1)
+                  deactivate()
+                }}
+              >
+                <button
+                  type="button"
+                  class="legend-swatch"
+                  style={{ "background-color": PIE_COLORS[i() % PIE_COLORS.length] }}
+                  onClick={() => {
+                    const ch = categoryChart
+                    if (!ch) return
+                    ch.toggleDataVisibility(i())
+                    ch.update()
+                    setHiddenTick((t) => t + 1)
+                  }}
+                  title={hidden() ? `Show ${c.name}` : `Hide ${c.name}`}
+                  aria-label={hidden() ? `Show ${c.name}` : `Hide ${c.name}`}
+                />
+                <button
+                  type="button"
+                  class="legend-label"
+                  onClick={() => navigate(`/items?category=${String(c.categoryId)}`)}
+                  title={`See all ${c.name} items`}
+                >
+                  {c.name}
+                </button>
+                <span class="legend-total">{formatMoney(Math.round(c.total * 100))}</span>
+              </li>
+            )
+          }}
+        </For>
+      </ul>
+    )
+  }
+
   // Charts section reads the resource (suspending until ready).
   // Closure component so reads stay inside the boundary.
   const ChartsSection = () => {
@@ -350,7 +445,10 @@ export default function AnalysisPage() {
               />
               Show subcategories
             </label>
-            <canvas ref={categoryEl} id="category-chart" />
+            <div class="pie-wrap" onMouseLeave={() => setChartHover(-1)}>
+              <canvas ref={categoryEl} id="category-chart" />
+            </div>
+            <CategoryLegend />
           </div>
           <div class="chart-container card">
             <h2>Family Member Spending</h2>

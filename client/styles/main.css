@@ -459,6 +459,82 @@ th {
   max-height: 300px;
 }
 
+/* Category pie: fixed-height wrapper so the pie fills the card
+   now that the legend is HTML below it (maintainAspectRatio is
+   off). The legend scrolls instead of cropping at 20+ rows. */
+.pie-wrap {
+  position: relative;
+  height: 300px;
+  margin-bottom: 0.75rem;
+}
+
+.pie-wrap canvas {
+  max-height: none;
+}
+
+.category-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 6px;
+}
+
+.legend-row.legend-hover {
+  background: var(--bg-tertiary);
+}
+
+.legend-swatch {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.legend-hidden .legend-swatch {
+  background: transparent !important;
+}
+
+.legend-hidden .legend-label,
+.legend-hidden .legend-total {
+  opacity: 0.45;
+}
+
+.legend-label {
+  flex: 1;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-primary, #e5e5e5);
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.legend-label:hover {
+  text-decoration: underline;
+}
+
+.legend-total {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Upload Page */
 .upload-page {
   max-width: 800px;

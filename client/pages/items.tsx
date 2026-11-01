@@ -1,9 +1,9 @@
-import { createSignal, For, Show } from "solid-js"
-import { A } from "@solidjs/router"
+import { createEffect, createSignal, For, Show } from "solid-js"
+import { A, useLocation } from "@solidjs/router"
 import QueryBoundary from "../components/QueryBoundary.tsx"
 import { createQuery } from "../lib/query.ts"
 import { api, idStr, navigate } from "../lib/api.ts"
-import { indexBy, formatRelativeDate } from "../utils.ts"
+import { indexBy, formatRelativeDate, parseHashQuery } from "../utils.ts"
 
 // ID fields are `string` (uint64 precision safety).
 interface Item {
@@ -170,6 +170,21 @@ export default function ItemsPage() {
   type SortKey = "name" | "category" | "lastBought" | "purchases"
   const [sortKey, setSortKey] = createSignal<SortKey>("name")
   const [sortDir, setSortDir] = createSignal<"asc" | "desc">("asc")
+
+  // Deep-link: ?category=<id> seeds the dropdown (the entry point
+  // is the Analysis legend). Reactive like the Receipts ?item=
+  // filter: back/forward navigation re-seeds. Empty param leaves a
+  // user-picked value alone (remount already resets the filter).
+  const location = useLocation()
+  const categoryParam = (): string => {
+    const q = new URLSearchParams(location.search).get("category")
+    if (q !== null) return q
+    return parseHashQuery(window.location.hash.slice(1) || "/").category ?? ""
+  }
+  createEffect(() => {
+    const c = categoryParam()
+    if (c) setCategoryFilter(c)
+  })
 
   // Clicking the active header toggles direction; clicking a new
   // header starts with that column's sensible default (A→Z for
