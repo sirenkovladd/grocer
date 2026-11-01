@@ -182,6 +182,7 @@ Receipts:
   grocer receipts [--from YYYY-MM-DD --to YYYY-MM-DD --owner ID --category ID --item ID]
   grocer receipt show <id>                       enriched receipt (names + categories)
   grocer receipt set-merchant <id> <merchantId>
+  grocer receipt set-date <id> <YYYY-MM-DD[THH:MM]>  (date-only = noon, same as website)
   grocer receipt set-total <id> <totalCents>
   grocer receipt set-item <id> <index> --item <itemId> [--qty N] [--unit-cents C]
   grocer receipt reopen <id>                     back to proposal for full re-edit
@@ -376,6 +377,19 @@ Analysis (Analysis page):
     if (sub === "set-total") {
       const r = await patch(`/api/receipts/${id}`, { totalCents: Number(a[0]) });
       console.log(`Receipt ${id} total → ${fmtMoney((r as any).totalCents)}`);
+      return;
+    }
+    if (sub === "set-date") {
+      // Mirrors the website's datetime-local handling: parsed as
+      // machine-local wall-clock (the agent machine runs on
+      // America/Vancouver, same as the user). Date-only defaults
+      // to noon, matching the server's LLM date convention.
+      const raw = a[0] ?? "";
+      const dt = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T12:00:00` : raw;
+      const unix = Math.floor(new Date(dt).getTime() / 1000);
+      if (!Number.isFinite(unix)) throw new Error(`bad date: ${raw} (want YYYY-MM-DD or YYYY-MM-DDTHH:MM)`);
+      await patch(`/api/receipts/${id}`, { date: unix });
+      console.log(`Receipt ${id} date → ${new Date(unix * 1000).toISOString()} (unix ${unix})`);
       return;
     }
     if (sub === "set-item") {
