@@ -1701,6 +1701,14 @@ button:disabled {
   font-size: 0.85rem;
 }
 
+/* Live "Showing X of Y …" count under the filter bar. Hidden when
+   the filtered list is empty (the empty-state takes over there). */
+.result-count {
+  margin: -0.75rem 0 1rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
 /* Active-filter banner (e.g. receipts page when ?item= is set).
    Visually distinct from the filter bar so the user can see the
    page is showing a subset of data, not the full list. */

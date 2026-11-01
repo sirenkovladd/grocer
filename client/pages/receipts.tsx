@@ -215,6 +215,12 @@ export default function ReceiptsPage() {
           </select>
         </div>
 
+        <Show when={filtered().length > 0}>
+          <p class="result-count">
+            Showing {filtered().length} of {data()?.receipts.length ?? 0} receipts
+          </p>
+        </Show>
+
         <Show
           when={filtered().length > 0}
           fallback={

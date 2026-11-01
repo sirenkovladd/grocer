@@ -347,6 +347,11 @@ export default function ItemsPage() {
           </select>
         </div>
 
+        <Show when={list().length > 0}>
+          <p class="result-count">
+            Showing {list().length} of {data()?.items.length ?? 0} items
+          </p>
+        </Show>
         <Show
           when={(data()?.items.length ?? 0) > 0}
           fallback={
