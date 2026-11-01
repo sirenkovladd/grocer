@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 
 	"code.sirenko.ca/grocer/internal/domain"
@@ -40,6 +41,20 @@ func NewQwenProvider(apiKey, model string) *ZenAnthropicProvider {
 func NewMinimaxProvider(apiKey, model string) *ZenAnthropicProvider {
 	if model == "" {
 		model = "minimax-m3"
+	}
+	return &ZenAnthropicProvider{
+		BaseProvider: NewBaseProvider(apiKey, model, "https://opencode.ai/zen/go/v1"),
+	}
+}
+
+// NewSparkProvider returns a Zen Anthropic client configured for a
+// Muse Spark contributor model on the OpenCode Go subscription.
+// Default model is "muse-spark-1.3-contributor" if the argument is
+// empty. Same wire format as Qwen/MiniMax (Anthropic messages via
+// the zen/go gateway); only the model — and its billing — differs.
+func NewSparkProvider(apiKey, model string) *ZenAnthropicProvider {
+	if model == "" {
+		model = "muse-spark-1.3-contributor"
 	}
 	return &ZenAnthropicProvider{
 		BaseProvider: NewBaseProvider(apiKey, model, "https://opencode.ai/zen/go/v1"),
@@ -176,10 +191,22 @@ func (q *ZenAnthropicProvider) CategorizeItem(ctx context.Context, itemName stri
 // Both are mandatory per the spec: x-api-key for auth and anthropic-version
 // to pin the API behavior. Some Anthropic-compatible proxies (like the
 // opencode.ai Zen gateway) reject requests missing either, typically with 401.
+//
+// The Zen gateway additionally requires x-opencode-session (a stable ID per
+// conversation, used for routing + prompt caching) and asks Go clients to
+// identify with their own User-Agent. The session ID comes from
+// OPENCODE_SESSION_ID (default "grocer-server" — the server is one
+// long-lived client; per-receipt IDs would fragment the prompt cache).
 func setAnthropicHeaders(req *http.Request, apiKey string) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-key", apiKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("User-Agent", "grocer/1.0")
+	session := os.Getenv("OPENCODE_SESSION_ID")
+	if session == "" {
+		session = "grocer-server"
+	}
+	req.Header.Set("x-opencode-session", session)
 }
 
 func (q *ZenAnthropicProvider) callAnthropic(ctx context.Context, endpoint string, req zenAnthropicRequest) (string, error) {

@@ -239,6 +239,8 @@ func main() {
 		provider = llm.NewQwenProvider(llmAPIKey, llmModel)
 	case "minimax":
 		provider = llm.NewMinimaxProvider(llmAPIKey, llmModel)
+	case "spark":
+		provider = llm.NewSparkProvider(llmAPIKey, llmModel)
 	default:
 		log.Fatalf("Unknown LLM provider: %s", llmProvider)
 	}

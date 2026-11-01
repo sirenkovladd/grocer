@@ -79,9 +79,9 @@ mise run build_client
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `LLM_PROVIDER` | Yes | `kimi`, `qwen`, or `minimax` |
+| `LLM_PROVIDER` | Yes | `kimi`, `qwen`, `minimax`, or `spark` (OpenCode Go subscription) |
 | `LLM_API_KEY` | Yes | API key for LLM provider |
-| `LLM_MODEL` | Yes | Model ID (e.g. `kimi-k2.6`, `qwen3.6-plus`, `minimax-m3`) |
+| `LLM_MODEL` | Yes | Model ID (e.g. `muse-spark-1.3-contributor`, `kimi-k2.6`, `minimax-m3`) |
 | `OCR_PROVIDER` | No | OCR engine. `mistral` (default) or `none` to disable |
 | `MISTRAL_API_KEY` | When `OCR_PROVIDER=mistral` | Mistral API key for OCR 4 |
 | `MISTRAL_OCR_MODEL` | No | OCR model (default `mistral-ocr-latest`) |
@@ -99,7 +99,7 @@ mise run build_client
 Receipts are parsed in two stages when `OCR_PROVIDER=mistral` (the default):
 
 1. **OCR** — Mistral OCR 4 extracts text, structural blocks, and per-word confidence from the photo. The markdown is stored on the proposal and a `parsed_ocr` status is set.
-2. **LLM extraction** — The OCR markdown is passed to `LLM_PROVIDER` (`minimax-m3`, `qwen3.6-plus`, or `kimi-k2.6`) which extracts merchant, date, and line items as JSON. A `parsed_llm` status is set, then `pending` when ready for review.
+2. **LLM extraction** — The OCR markdown is passed to the LLM (`LLM_MODEL`, e.g. `muse-spark-1.3-contributor`), which extracts merchant, date, and line items as JSON. A `parsed_llm` status is set, then `pending` when ready for review.
 
 When `OCR_PROVIDER=none` the legacy single-stage path is used: the photo is sent directly to the LLM as a multimodal message.
 

@@ -233,9 +233,9 @@ root cause is identified and confirmed fixed.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `LLM_PROVIDER` | Yes | `kimi`, `qwen`, or `minimax` |
+| `LLM_PROVIDER` | Yes | `kimi`, `qwen`, `minimax`, or `spark` (OpenCode Go subscription) |
 | `LLM_API_KEY` | Yes | API key |
-| `LLM_MODEL` | Yes | Model ID (e.g. `kimi-k2.6`, `qwen3.6-plus`, `minimax-m3`) |
+| `LLM_MODEL` | Yes | Model ID (e.g. `muse-spark-1.3-contributor`, `kimi-k2.6`, `minimax-m3`) |
 | `OCR_PROVIDER` | No | `mistral` (default) or `none` to skip OCR |
 | `MISTRAL_API_KEY` | When OCR enabled | Mistral API key for OCR 4 |
 | `MISTRAL_OCR_MODEL` | No | OCR model (default `mistral-ocr-latest`) |
