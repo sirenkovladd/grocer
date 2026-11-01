@@ -1,6 +1,7 @@
 package costco
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -83,6 +84,160 @@ func TestConvertDetail(t *testing.T) {
 	}
 }
 
+func TestConvertIgnoresSpuriousFuelQty(t *testing.T) {
+	// Real 2026-10-29 warehouse receipt: `unit` is 1 and the printed
+	// amount equals the unit price, but `fuelUnitQuantity` carries a
+	// stray 10.0 on non-fuel grocery lines. Quantity must resolve to 1
+	// with balanced economics, not 10.
+	it := DetailItem{
+		ItemNumber: "1377112", ItemDescription01: "NAT PLUS 2%",
+		Unit: "1", Amount: 6.89, ItemUnitPriceAmount: 6.89,
+		FuelUnitQuantity: 10.0,
+	}
+	ln := convertLine(it)
+	if ln.Quantity != 1 {
+		t.Errorf("qty = %v, want 1", ln.Quantity)
+	}
+	if ln.UnitPriceCents != 689 {
+		t.Errorf("unit = %d, want 689", ln.UnitPriceCents)
+	}
+	if ln.TotalPriceCents != 689 {
+		t.Errorf("total = %d, want 689", ln.TotalPriceCents)
+	}
+}
+
+func TestConvertWeightedLineDerivesQty(t *testing.T) {
+	// Real rotisserie-thighs line: `unit` is a vacuous "1" but the
+	// economics say 2.29 lb @ $15.89 = $36.39. The derived qty must win
+	// so the line balances; the stray fuelUnitQuantity must not.
+	it := DetailItem{
+		ItemNumber: "55506", ItemDescription01: "B/S THIGHS",
+		Unit: "1", Amount: 36.39, ItemUnitPriceAmount: 15.89,
+		FuelUnitQuantity: 10.0,
+	}
+	ln := convertLine(it)
+	if ln.Quantity != 2.29 {
+		t.Errorf("qty = %v, want 2.29", ln.Quantity)
+	}
+	if ln.TotalPriceCents != 3639 {
+		t.Errorf("total = %d, want 3639", ln.TotalPriceCents)
+	}
+}
+
+func TestConvertFuelLineUsesFuelQty(t *testing.T) {
+	// A real fuel line (grade/uom descriptors present) still honors
+	// fuelUnitQuantity: 40L @ $1.85 = $74.00.
+	it := DetailItem{
+		ItemNumber: "FUEL", ItemDescription01: "REGULAR GAS",
+		Unit: "1", Amount: 74.00, ItemUnitPriceAmount: 1.85,
+		FuelUnitQuantity: 40.0, FuelGradeCode: "REG", FuelUomCode: "L",
+	}
+	ln := convertLine(it)
+	if ln.Quantity != 40 {
+		t.Errorf("qty = %v, want 40", ln.Quantity)
+	}
+	if ln.TotalPriceCents != 7400 {
+		t.Errorf("total = %d, want 7400", ln.TotalPriceCents)
+	}
+}
+
+func TestFoldFeeIntoParent(t *testing.T) {
+	raw := `{"data":{"receiptsWithCounts":{"receipts":[{"warehouseName":"VANCOUVER BC","transactionDateTime":"2026-10-29T17:41:00","transactionBarcode":"FOLD1","total":7.01,"subTotal":7.01,"taxes":0,"itemArray":[{"itemNumber":"1377112","itemDescription01":"NAT PLUS 2%","unit":1,"amount":6.89,"itemUnitPriceAmount":6.89},{"itemNumber":"4390","itemDescription01":"ENVIRO FEE CLN/1377112","unit":1,"amount":0.02,"itemUnitPriceAmount":0},{"itemNumber":"9481","itemDescription01":"DEPOSIT CL/1377112","unit":1,"amount":0.10,"itemUnitPriceAmount":0}]}]}}}`
+	d, err := ParseDetail([]byte(raw))
+	if err != nil {
+		t.Fatalf("ParseDetail: %v", err)
+	}
+	parsed := ConvertDetail(d, time.UTC)
+	if len(parsed.Lines) != 1 {
+		t.Fatalf("want 1 folded line, got %d", len(parsed.Lines))
+	}
+	ln := parsed.Lines[0]
+	if ln.Name != "NAT PLUS 2%" || ln.Quantity != 1 || ln.UnitPriceCents != 701 || ln.TotalPriceCents != 701 {
+		t.Errorf("got %+v, want milk qty 1 @ 701 = 701", ln)
+	}
+}
+
+func TestFoldDiscountLowersParent(t *testing.T) {
+	raw := `{"data":{"receiptsWithCounts":{"receipts":[{"warehouseName":"VANCOUVER BC","transactionDateTime":"2026-10-29T17:41:00","transactionBarcode":"FOLD2","total":5.99,"subTotal":5.99,"taxes":0,"itemArray":[{"itemNumber":"116218","itemDescription01":"BAGELS","unit":1,"amount":7.99,"itemUnitPriceAmount":7.99},{"itemNumber":"396884","itemDescription01":"/ 116218","unit":-1,"amount":-2.00,"itemUnitPriceAmount":0}]}]}}}`
+	d, err := ParseDetail([]byte(raw))
+	if err != nil {
+		t.Fatalf("ParseDetail: %v", err)
+	}
+	parsed := ConvertDetail(d, time.UTC)
+	if len(parsed.Lines) != 1 {
+		t.Fatalf("want 1 folded line, got %d", len(parsed.Lines))
+	}
+	ln := parsed.Lines[0]
+	if ln.Name != "BAGELS" || ln.Quantity != 1 || ln.UnitPriceCents != 599 || ln.TotalPriceCents != 599 {
+		t.Errorf("got %+v, want bagels qty 1 @ 599 = 599", ln)
+	}
+}
+
+func TestFoldOrphanStaysSeparate(t *testing.T) {
+	raw := `{"data":{"receiptsWithCounts":{"receipts":[{"warehouseName":"VANCOUVER BC","transactionDateTime":"2026-10-29T17:41:00","transactionBarcode":"FOLD3","total":6.91,"subTotal":6.91,"taxes":0,"itemArray":[{"itemNumber":"1377112","itemDescription01":"NAT PLUS 2%","unit":1,"amount":6.89,"itemUnitPriceAmount":6.89},{"itemNumber":"4390","itemDescription01":"ENVIRO FEE CLN/9999999","unit":1,"amount":0.02,"itemUnitPriceAmount":0}]}]}}}`
+	d, err := ParseDetail([]byte(raw))
+	if err != nil {
+		t.Fatalf("ParseDetail: %v", err)
+	}
+	parsed := ConvertDetail(d, time.UTC)
+	if len(parsed.Lines) != 2 {
+		t.Fatalf("want 2 lines (orphan kept), got %d", len(parsed.Lines))
+	}
+	if parsed.Lines[1].Name != "ENVIRO FEE CLN/9999999" || parsed.Lines[1].TotalPriceCents != 2 {
+		t.Errorf("orphan changed: %+v", parsed.Lines[1])
+	}
+}
+
+func TestFoldNameFallback(t *testing.T) {
+	raw := `{"data":{"receiptsWithCounts":{"receipts":[{"warehouseName":"VANCOUVER BC","transactionDateTime":"2026-10-29T17:41:00","transactionBarcode":"FOLD4","total":14.99,"subTotal":14.99,"taxes":0,"itemArray":[{"itemNumber":"111","itemDescription01":"CHAMP SOCKS","unit":1,"amount":19.99,"itemUnitPriceAmount":19.99},{"itemNumber":"2087244","itemDescription01":"TPD/SOCKS","unit":-1,"amount":-5.00,"itemUnitPriceAmount":0}]}]}}}`
+	d, err := ParseDetail([]byte(raw))
+	if err != nil {
+		t.Fatalf("ParseDetail: %v", err)
+	}
+	parsed := ConvertDetail(d, time.UTC)
+	if len(parsed.Lines) != 1 {
+		t.Fatalf("want 1 folded line, got %d", len(parsed.Lines))
+	}
+	ln := parsed.Lines[0]
+	if ln.Name != "CHAMP SOCKS" || ln.UnitPriceCents != 1499 || ln.TotalPriceCents != 1499 {
+		t.Errorf("got %+v, want socks @ 1499 = 1499", ln)
+	}
+}
+
+func TestFoldMultiMatchFirstWins(t *testing.T) {
+	raw := `{"data":{"receiptsWithCounts":{"receipts":[{"warehouseName":"VANCOUVER BC","transactionDateTime":"2026-10-29T17:41:00","transactionBarcode":"FOLD5","total":27.98,"subTotal":27.98,"taxes":0,"itemArray":[{"itemNumber":"111","itemDescription01":"CHAMP SOCKS","unit":1,"amount":19.99,"itemUnitPriceAmount":19.99},{"itemNumber":"222","itemDescription01":"WOOL SOCKS","unit":1,"amount":12.99,"itemUnitPriceAmount":12.99},{"itemNumber":"2087244","itemDescription01":"TPD/SOCKS","unit":-1,"amount":-5.00,"itemUnitPriceAmount":0}]}]}}}`
+	d, err := ParseDetail([]byte(raw))
+	if err != nil {
+		t.Fatalf("ParseDetail: %v", err)
+	}
+	parsed := ConvertDetail(d, time.UTC)
+	if len(parsed.Lines) != 2 {
+		t.Fatalf("want 2 lines, got %d", len(parsed.Lines))
+	}
+	if parsed.Lines[0].Name != "CHAMP SOCKS" || parsed.Lines[0].UnitPriceCents != 1499 {
+		t.Errorf("discount should land on first match: %+v", parsed.Lines[0])
+	}
+	if parsed.Lines[1].Name != "WOOL SOCKS" || parsed.Lines[1].UnitPriceCents != 1299 {
+		t.Errorf("second match untouched: %+v", parsed.Lines[1])
+	}
+}
+
+func TestFoldWeightedParent(t *testing.T) {
+	raw := `{"data":{"receiptsWithCounts":{"receipts":[{"warehouseName":"VANCOUVER BC","transactionDateTime":"2026-10-29T17:41:00","transactionBarcode":"FOLD6","total":36.99,"subTotal":36.99,"taxes":0,"itemArray":[{"itemNumber":"55506","itemDescription01":"B/S THIGHS","unit":1,"amount":36.39,"itemUnitPriceAmount":15.89},{"itemNumber":"9483","itemDescription01":"DEPOSIT CL/55506","unit":1,"amount":0.60,"itemUnitPriceAmount":0}]}]}}}`
+	d, err := ParseDetail([]byte(raw))
+	if err != nil {
+		t.Fatalf("ParseDetail: %v", err)
+	}
+	parsed := ConvertDetail(d, time.UTC)
+	if len(parsed.Lines) != 1 {
+		t.Fatalf("want 1 folded line, got %d", len(parsed.Lines))
+	}
+	ln := parsed.Lines[0]
+	if ln.Quantity != 2.29 || ln.UnitPriceCents != 1615 || ln.TotalPriceCents != 3699 {
+		t.Errorf("got %+v, want thighs qty 2.29 @ 1615 = 3699", ln)
+	}
+}
+
 func TestMoneyRounding(t *testing.T) {
 	// 19.99 must be 1999¢, not 1998¢ (float truncation bug).
 	if got := roundCents(19.99); got != 1999 {
@@ -117,6 +272,18 @@ func TestParseCostcoDate(t *testing.T) {
 func TestExternalID(t *testing.T) {
 	if got := ExternalID("  abc  "); got != "costco:abc" {
 		t.Errorf("ExternalID = %q", got)
+	}
+}
+
+func TestExportedQueryDocs(t *testing.T) {
+	if ListQueryDoc == "" || DetailQueryDoc == "" {
+		t.Fatalf("query docs must be non-empty")
+	}
+	if !strings.Contains(ListQueryDoc, "receiptsWithCounts") || !strings.Contains(DetailQueryDoc, "receiptsWithCounts") {
+		t.Fatalf("query docs must contain receiptsWithCounts")
+	}
+	if WCSClientID == "" || ClientIdentifier == "" {
+		t.Fatalf("header IDs must be non-empty")
 	}
 }
 

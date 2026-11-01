@@ -12,7 +12,10 @@ import (
 // Direct-fetch GraphQL documents. They mirror the browser queries from
 // DevTools so server-side results have the same shape as pasted ones
 // and flow through the same Parse/Convert path.
-const listQuery = `query receiptsWithCounts($startDate: String!, $endDate: String!,$documentType:String!,$documentSubType:String!) {
+//
+// Exported for the costco-sync helper, which runs the same documents
+// inside the user's logged-in Brave tab via CDP.
+const ListQueryDoc = `query receiptsWithCounts($startDate: String!, $endDate: String!,$documentType:String!,$documentSubType:String!) {
     receiptsWithCounts(startDate: $startDate, endDate: $endDate,documentType:$documentType,documentSubType:$documentSubType) {
     inWarehouse
     gasStation
@@ -36,7 +39,7 @@ const listQuery = `query receiptsWithCounts($startDate: String!, $endDate: Strin
 }
   }`
 
-const detailQuery = `query receiptsWithCounts($barcode: String!,$documentType:String!) {
+const DetailQueryDoc = `query receiptsWithCounts($barcode: String!,$documentType:String!) {
     receiptsWithCounts(barcode: $barcode,documentType:$documentType) {
 receipts{
       warehouseName
@@ -136,6 +139,12 @@ type gqlRequest struct {
 	Variables map[string]any `json:"variables"`
 }
 
+// Default browser header IDs for the Costco ecom gateway. Exported for
+// the costco-sync helper's in-tab fetch; doGraphQL falls back to the same
+// values when the caller supplies none.
+const WCSClientID = "e442e6e6-2602-4a39-937b-8b28b4457ed3"
+const ClientIdentifier = "481b1aec-aa3b-454b-b81b-48187e28f205"
+
 func (c *Client) doGraphQL(ctx context.Context, creds FetchCredentials, query string, vars map[string]any) (json.RawMessage, error) {
 	if creds.Bearer == "" {
 		return nil, fmt.Errorf("bearer token is required")
@@ -158,12 +167,12 @@ func (c *Client) doGraphQL(ctx context.Context, creds FetchCredentials, query st
 	if creds.WCSClientID != "" {
 		req.Header.Set("costco-x-wcs-clientid", creds.WCSClientID)
 	} else {
-		req.Header.Set("costco-x-wcs-clientid", "e442e6e6-2602-4a39-937b-8b28b4457ed3")
+		req.Header.Set("costco-x-wcs-clientid", WCSClientID)
 	}
 	if creds.ClientIdentifier != "" {
 		req.Header.Set("client-identifier", creds.ClientIdentifier)
 	} else {
-		req.Header.Set("client-identifier", "481b1aec-aa3b-454b-b81b-48187e28f205")
+		req.Header.Set("client-identifier", ClientIdentifier)
 	}
 	if creds.Cookies != "" {
 		req.Header.Set("Cookie", creds.Cookies)
@@ -196,7 +205,7 @@ func (c *Client) doGraphQL(ctx context.Context, creds FetchCredentials, query st
 // FetchList returns the raw list envelope for a date range. Dates use
 // Costco's M/D/YYYY format ("8/01/2026").
 func (c *Client) FetchList(ctx context.Context, creds FetchCredentials, startDate, endDate string) ([]ListReceipt, error) {
-	raw, err := c.doGraphQL(ctx, creds, listQuery, map[string]any{
+	raw, err := c.doGraphQL(ctx, creds, ListQueryDoc, map[string]any{
 		"startDate": startDate, "endDate": endDate,
 		"text": "Last 3 Months", "documentType": "all", "documentSubType": "all",
 	})
@@ -208,7 +217,7 @@ func (c *Client) FetchList(ctx context.Context, creds FetchCredentials, startDat
 
 // FetchDetail returns the full breakdown for one barcode.
 func (c *Client) FetchDetail(ctx context.Context, creds FetchCredentials, barcode string) (*DetailReceipt, error) {
-	raw, err := c.doGraphQL(ctx, creds, detailQuery, map[string]any{
+	raw, err := c.doGraphQL(ctx, creds, DetailQueryDoc, map[string]any{
 		"barcode": barcode, "documentType": "warehouse",
 	})
 	if err != nil {
