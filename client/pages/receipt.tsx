@@ -404,6 +404,7 @@ export default function ReceiptDetailPage() {
             >
               <div class="items-table-wrapper">
                 <table class="responsive-table">
+                  <thead>
                   <tr>
                     <th>Item</th>
                     <th>Category</th>
@@ -411,6 +412,7 @@ export default function ReceiptDetailPage() {
                     <th class="money">Unit Price</th>
                     <th class="money">Total</th>
                   </tr>
+                  </thead>
                   <For each={r().items}>
                     {(item, index) =>
                       isEditing() ? (

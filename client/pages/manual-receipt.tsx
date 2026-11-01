@@ -224,12 +224,14 @@ export default function ManualReceiptPage() {
             <h2>Items</h2>
             <div class="items-table-wrapper">
               <table class="responsive-table">
+                <thead>
                 <tr>
                   <th style="width: 50%">Item</th>
                   <th>Qty</th>
                   <th>Unit Price ($)</th>
                   <th />
                 </tr>
+                </thead>
                 <For each={rows}>
                   {(row, i) => (
                     <tr>

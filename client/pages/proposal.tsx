@@ -676,11 +676,13 @@ function ParsingView(props: { progressMsg: string; items: ProposalItem[]; onBack
           <div class="streaming-items">
             <h2>Items ({props.items.length})</h2>
             <table>
+              <thead>
               <tr>
                 <th>Item</th>
                 <th>Qty</th>
                 <th>Price</th>
               </tr>
+              </thead>
               <For each={props.items}>
                 {(it) => (
                   <tr>
@@ -746,12 +748,14 @@ function PendingView(props: {
           <h2>Items</h2>
           <div class="items-table-wrapper">
             <table>
+              <thead>
               <tr>
                 <th>Item</th>
                 <th>Qty</th>
                 <th>Price</th>
                 <th>Action</th>
               </tr>
+              </thead>
               <For each={props.items}>
                 {(item, index) =>
                   // Single-row edit mode. Inputs bind the shared edit

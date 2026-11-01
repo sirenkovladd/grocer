@@ -256,10 +256,12 @@ export default function ItemDetailPage() {
             <h2>Purchase History</h2>
             <div class="items-table-wrapper">
               <table class="responsive-table">
+                <thead>
                 <tr>
                   <th>Date</th>
                   <th class="money">Price</th>
                 </tr>
+                </thead>
                 <For each={d().history}>
                   {(h) => {
                     // Analysis endpoint date is "2006-01-02" (no

@@ -162,10 +162,12 @@ export default function MerchantsPage() {
       >
         <div class="items-table-wrapper">
           <table class="responsive-table">
+            <thead>
             <tr>
               <th>Name</th>
               <th>Actions</th>
             </tr>
+            </thead>
             <For each={list()}>
               {(m) =>
                 editingId() === m.merchantId ? (

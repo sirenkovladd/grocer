@@ -211,7 +211,9 @@ export default function CostcoPage() {
         <Show when={listRows().length > 0}>
           <div class="items-table-wrapper">
             <table class="responsive-table">
+              <thead>
               <tr><th>Date</th><th>Warehouse</th><th class="money">Total</th><th>Items</th><th>Status</th><th>Barcode</th></tr>
+              </thead>
               <For each={listRows()}>
                 {(r) => (
                   <tr>
@@ -258,7 +260,9 @@ export default function CostcoPage() {
               </h3>
               <div class="items-table-wrapper">
                 <table class="responsive-table">
+                  <thead>
                   <tr><th>Item</th><th>SKU</th><th>Qty</th><th class="money">Unit</th><th class="money">Total</th><th>Catalog</th></tr>
+                  </thead>
                   <For each={d.lines}>
                     {(ln) => (
                       <tr>
