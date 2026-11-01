@@ -84,6 +84,63 @@ func TestConvertDetail(t *testing.T) {
 	}
 }
 
+func TestConvertIgnoresSpuriousFuelQty(t *testing.T) {
+	// Real 2026-10-29 warehouse receipt: `unit` is 1 and the printed
+	// amount equals the unit price, but `fuelUnitQuantity` carries a
+	// stray 10.0 on non-fuel grocery lines. Quantity must resolve to 1
+	// with balanced economics, not 10.
+	it := DetailItem{
+		ItemNumber: "1377112", ItemDescription01: "NAT PLUS 2%",
+		Unit: "1", Amount: 6.89, ItemUnitPriceAmount: 6.89,
+		FuelUnitQuantity: 10.0,
+	}
+	ln := convertLine(it)
+	if ln.Quantity != 1 {
+		t.Errorf("qty = %v, want 1", ln.Quantity)
+	}
+	if ln.UnitPriceCents != 689 {
+		t.Errorf("unit = %d, want 689", ln.UnitPriceCents)
+	}
+	if ln.TotalPriceCents != 689 {
+		t.Errorf("total = %d, want 689", ln.TotalPriceCents)
+	}
+}
+
+func TestConvertWeightedLineDerivesQty(t *testing.T) {
+	// Real rotisserie-thighs line: `unit` is a vacuous "1" but the
+	// economics say 2.29 lb @ $15.89 = $36.39. The derived qty must win
+	// so the line balances; the stray fuelUnitQuantity must not.
+	it := DetailItem{
+		ItemNumber: "55506", ItemDescription01: "B/S THIGHS",
+		Unit: "1", Amount: 36.39, ItemUnitPriceAmount: 15.89,
+		FuelUnitQuantity: 10.0,
+	}
+	ln := convertLine(it)
+	if ln.Quantity != 2.29 {
+		t.Errorf("qty = %v, want 2.29", ln.Quantity)
+	}
+	if ln.TotalPriceCents != 3639 {
+		t.Errorf("total = %d, want 3639", ln.TotalPriceCents)
+	}
+}
+
+func TestConvertFuelLineUsesFuelQty(t *testing.T) {
+	// A real fuel line (grade/uom descriptors present) still honors
+	// fuelUnitQuantity: 40L @ $1.85 = $74.00.
+	it := DetailItem{
+		ItemNumber: "FUEL", ItemDescription01: "REGULAR GAS",
+		Unit: "1", Amount: 74.00, ItemUnitPriceAmount: 1.85,
+		FuelUnitQuantity: 40.0, FuelGradeCode: "REG", FuelUomCode: "L",
+	}
+	ln := convertLine(it)
+	if ln.Quantity != 40 {
+		t.Errorf("qty = %v, want 40", ln.Quantity)
+	}
+	if ln.TotalPriceCents != 7400 {
+		t.Errorf("total = %d, want 7400", ln.TotalPriceCents)
+	}
+}
+
 func TestMoneyRounding(t *testing.T) {
 	// 19.99 must be 1999¢, not 1998¢ (float truncation bug).
 	if got := roundCents(19.99); got != 1999 {

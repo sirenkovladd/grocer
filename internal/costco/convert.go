@@ -128,20 +128,31 @@ func convertLine(it DetailItem) ParsedLine {
 		}
 	}
 
-	qty := parseQty(it.Unit.String(), it.FuelUnitQuantity.Float64())
+	qty := parseUnitQty(it.Unit.String())
 	total := roundCents(it.Amount.Float64())
 	var unit int64
 	if up := roundCents(it.ItemUnitPriceAmount.Float64()); up != 0 {
 		unit = up
-		// Re-derive qty from economics when the printed unit quantity
-		// disagrees (e.g. unit="1CT" with a 2-pack total): prefer a qty
-		// that makes qty*unit == total so the line balances.
-		if qty != 0 {
-			if want := float64(total) / float64(up); want > 0 && !almostEqual(want, qty) && want < 1000 {
-				// Keep the printed qty for weighted/fuel lines where the
-				// unit price is per-kg/per-litre; only adjust eaches.
-				if it.FuelUnitQuantity.Float64() == 0 && it.ItemUnitPriceAmount.Float64() != 0 && qty == 1 && want != 1 {
-					qty = roundQty(want)
+		// Economics is the source of truth: the printed `unit` field is
+		// free text ("1CT", "0.875KG") and fuelUnitQuantity carries
+		// filler (e.g. 10.0) on non-fuel grocery lines. When qty*unit
+		// disagrees with the printed amount, resolve in favor of a qty
+		// that balances — the fuel field only for actual fuel lines,
+		// otherwise a clean integer implied by amount/unitPrice.
+		if !lineBalances(qty, unit, total) {
+			if it.isFuelLine() {
+				if fq := it.FuelUnitQuantity.Float64(); fq != 0 && lineBalances(fq, unit, total) {
+					qty = fq
+				}
+			} else if want := float64(total) / float64(up); want > 0 && want < 10000 {
+				// An explicit weighted unit ("0.875KG") within rounding
+				// noise of the economics is unit-price rounding, not a
+				// truer quantity — keep the printed weight. Anything
+				// else (vacuous "1", miscounted packs, weighted lines
+				// like 2.29 lb of thighs) takes the derived qty so the
+				// line balances.
+				if !hasWeightSuffix(it.Unit.String()) || relDiff(want, qty) >= 0.02 {
+					qty = math.Round(want*1000) / 1000
 				}
 			}
 		}
@@ -163,16 +174,15 @@ func convertLine(it DetailItem) ParsedLine {
 	}
 }
 
-func parseQty(unit string, fuelQty float64) float64 {
-	if fuelQty != 0 {
-		return fuelQty
-	}
+// parseUnitQty extracts the leading number from Costco's free-text unit
+// field ("2", "1CT", "0.875KG", "2 x 1.5L"). Unparseable values
+// default to 1. Fuel quantities are deliberately NOT handled here; see
+// isFuelLine — the fuel field carries filler on grocery lines.
+func parseUnitQty(unit string) float64 {
 	unit = strings.TrimSpace(unit)
 	if unit == "" {
 		return 1
 	}
-	// Common Costco forms: "2", "1CT", "0.875KG", "2 x 1.5L".
-	// Extract the leading number.
 	i := 0
 	for i < len(unit) && (unit[i] == '.' || unit[i] == '-' || (unit[i] >= '0' && unit[i] <= '9')) {
 		i++
@@ -180,38 +190,80 @@ func parseQty(unit string, fuelQty float64) float64 {
 	if i == 0 {
 		return 1
 	}
-	var v float64
-	for _, f := range []func(string) (float64, error){parseFloatStrict} {
-		if q, err := f(unit[:i]); err == nil && q != 0 {
-			v = q
-			break
+	if q, err := strconv.ParseFloat(unit[:i], 64); err == nil && q != 0 {
+		return q
+	}
+	return 1
+}
+
+// isFuelLine reports whether the row is an actual fuel purchase, the only
+// case where fuelUnitQuantity is trustworthy. Non-fuel warehouse lines
+// may still carry a nonzero fuelUnitQuantity (observed: 10.0 on milk,
+// eggs, bagels), which must not become the quantity.
+func (it DetailItem) isFuelLine() bool {
+	for _, s := range []string{
+		it.FuelGradeCode.String(),
+		it.FuelUomCode.String(),
+		it.FuelUomDescription,
+		it.FuelGradeDescription,
+	} {
+		if strings.TrimSpace(s) != "" {
+			return true
 		}
 	}
-	if v == 0 {
-		return 1
+	return false
+}
+
+// lineBalances reports whether qty*unitPrice matches the printed amount:
+// exact to a cent (half-cent rounding on both sides), or within 0.5%
+// for per-litre fuel rounding on larger totals.
+func lineBalances(qty float64, unit, total int64) bool {
+	d := qty*float64(unit) - float64(total)
+	if d < 0 {
+		d = -d
 	}
-	return v
+	if d <= 1.0 {
+		return true
+	}
+	if total <= 0 {
+		return false
+	}
+	return d*200 <= float64(total)
 }
 
-func parseFloatStrict(s string) (float64, error) {
-	// Local helper to keep parseQty's fallback chain explicit.
-	return parseFloat(s)
+// hasWeightSuffix reports whether the free-text unit names an explicit
+// weighted unit ("0.875KG", "2 x 1.5L"): any letter beyond the leading
+// number counts, so bare counts like "1" or "10" do not.
+func hasWeightSuffix(unit string) bool {
+	unit = strings.TrimSpace(unit)
+	i := 0
+	for i < len(unit) && (unit[i] == '.' || unit[i] == '-' || (unit[i] >= '0' && unit[i] <= '9')) {
+		i++
+	}
+	for _, r := range unit[i:] {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+			return true
+		}
+	}
+	return false
 }
 
-func parseFloat(s string) (float64, error) {
-	return strconv.ParseFloat(strings.TrimSpace(s), 64)
-}
-
-func almostEqual(a, b float64) bool {
+// relDiff is |a-b|/|b| for nonzero b, +Inf when b is zero and a is not.
+func relDiff(a, b float64) float64 {
 	d := a - b
 	if d < 0 {
 		d = -d
 	}
-	return d < 0.001
-}
-
-func roundQty(q float64) float64 {
-	return math.Round(q*1000) / 1000
+	if b == 0 {
+		if d == 0 {
+			return 0
+		}
+		return math.Inf(1)
+	}
+	if b < 0 {
+		b = -b
+	}
+	return d / b
 }
 
 // ToLLMParsed adapts a ParsedReceipt to the llm.ParsedReceipt shape so
