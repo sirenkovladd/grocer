@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"code.sirenko.ca/grocer/internal/domain"
@@ -22,8 +23,13 @@ var (
 )
 
 type Store struct {
-	mu         sync.RWMutex
-	db         *memdb.MemDB
+	mu sync.RWMutex
+	db *memdb.MemDB
+	// All entity types share ONE generator. Per-type generators could
+	// mint the same uint64 for different entities created within the
+	// same millisecond (e.g. a category and an item from one approve),
+	// corrupting every lookup that assumes IDs are unique. The field
+	// names stay so call sites (s.ItemID.Gen() etc.) are unchanged.
 	UserID     *Generator
 	SessionID  *Generator
 	CategoryID *Generator
@@ -37,6 +43,10 @@ type Store struct {
 	snapshotMu       sync.Mutex
 	snapshotTimer    *time.Timer
 	snapshotDebounce time.Duration
+	// snapshotPending is true while local mutations are waiting for
+	// the debounced save. ReloadSnapshot skips the reload while set
+	// so a GCS event can never clobber unsaved local state.
+	snapshotPending atomic.Bool
 }
 
 type Session struct {
@@ -217,15 +227,18 @@ func NewStore() (*Store, error) {
 		return nil, err
 	}
 
+	// One generator for every entity type: same-millisecond creations
+	// across types must still yield distinct IDs (see Store docs).
+	uidGen := NewGenerator()
 	return &Store{
 		db:               db,
-		UserID:           NewGenerator(),
-		SessionID:        NewGenerator(),
-		CategoryID:       NewGenerator(),
-		MerchantID:       NewGenerator(),
-		ItemID:           NewGenerator(),
-		ReceiptID:        NewGenerator(),
-		ProposalID:       NewGenerator(),
+		UserID:           uidGen,
+		SessionID:        uidGen,
+		CategoryID:       uidGen,
+		MerchantID:       uidGen,
+		ItemID:           uidGen,
+		ReceiptID:        uidGen,
+		ProposalID:       uidGen,
 		snapshotDebounce: time.Duration(debounceSeconds) * time.Second,
 	}, nil
 }
@@ -1198,15 +1211,22 @@ func (s *Store) LoadSnapshot(ctx context.Context) error {
 //     observe a partial state. Concurrent operations block on s.mu
 //     for the duration of the reload (typically <1s).
 //
-//   - An in-flight local write that races with a remote reload is
-//     lost: the reload's snapshot overwrites the local change. This
-//     is the trade-off of the "last-writer-wins" model used by the
-//     family tool. In practice, the watcher fires in response to
-//     remote writes, and the local debounced save re-pushes any
-//     subsequent local change within SNAPSHOT_DEBOUNCE_SECONDS
-//     (default 5s).
+//   - A reload never clobbers unsaved local changes: if a debounced
+//     save is pending, the pulled bytes are by definition older than
+//     memdb, so the reload is skipped. The pending save re-pushes
+//     local state to GCS when it fires. s.mu serializes mutations
+//     against the reload transaction, so a change landing mid-reload
+//     commits after it and schedules its own save — no interleaving
+//     can lose a write. Genuinely remote writes (no local save
+//     pending) still reload normally; simultaneous writers remain
+//     last-writer-wins at the GCS object level.
 func (s *Store) ReloadSnapshot(ctx context.Context) error {
 	if s.snapshot == nil {
+		return nil
+	}
+
+	if s.snapshotPending.Load() {
+		log.Printf("ReloadSnapshot: local changes awaiting save, skipping reload")
 		return nil
 	}
 
@@ -1678,10 +1698,17 @@ func (s *Store) SaveSnapshotAsync(ctx context.Context) {
 		s.snapshotTimer.Stop()
 	}
 
+	// Local state is now ahead of GCS; ReloadSnapshot must skip until
+	// the save below completes, otherwise the pulled (older) bytes
+	// would wipe these unsaved changes out of memdb.
+	s.snapshotPending.Store(true)
+
 	// Create new debounced timer
 	s.snapshotTimer = time.AfterFunc(s.snapshotDebounce, func() {
 		if err := s.SaveSnapshot(ctx); err != nil {
 			log.Printf("Failed to save snapshot: %v", err)
+			return // keep pending: changes are still unsaved
 		}
+		s.snapshotPending.Store(false)
 	})
 }
